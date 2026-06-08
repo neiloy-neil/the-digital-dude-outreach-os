@@ -2,10 +2,11 @@
 
 export const dynamic = 'force-dynamic';
 
+import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import Sidebar from '@/components/Sidebar';
 import { createClient } from '@/utils/supabase/client';
-import { Settings as SettingsIcon, Save, Mail, Bot, Key, CheckCircle } from 'lucide-react';
+import { Settings as SettingsIcon, Save, Mail, Bot, Key, CheckCircle, Sparkles, ShieldAlert, SlidersHorizontal, User, Building2, ArrowRight } from 'lucide-react';
 
 export default function SettingsPage() {
   const supabase = createClient();
@@ -36,6 +37,78 @@ export default function SettingsPage() {
   const [sendingTest, setSendingTest] = useState(false);
   const [testSuccess, setTestSuccess] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
+
+  type SettingsCard = {
+    title: string;
+    description: string;
+    href: string;
+    tone: 'violet' | 'teal' | 'rose' | 'zinc';
+    badge: 'Core' | 'Beta' | 'Coming soon';
+    icon: typeof SettingsIcon;
+    disabled?: boolean;
+  };
+
+  const settingsCards: SettingsCard[] = [
+    {
+      title: 'Email Accounts',
+      description: 'Connect SMTP or Mailgun sending accounts.',
+      href: '/settings/email-accounts',
+      tone: 'violet',
+      badge: 'Core',
+      icon: Mail,
+    },
+    {
+      title: 'AI Usage',
+      description: 'Track AI credits, limits, and savings.',
+      href: '/settings/ai-usage',
+      tone: 'teal',
+      badge: 'Core',
+      icon: Bot,
+    },
+    {
+      title: 'Suppression List',
+      description: 'Manage blocked emails and domains.',
+      href: '/suppression-list',
+      tone: 'rose',
+      badge: 'Beta',
+      icon: ShieldAlert,
+    },
+    {
+      title: 'Templates',
+      description: 'Create reusable outreach templates.',
+      href: '/templates',
+      tone: 'violet',
+      badge: 'Beta',
+      icon: Sparkles,
+    },
+    {
+      title: 'Sending Rules',
+      description: 'Control follow-ups and send limits.',
+      href: '/settings/sending-rules',
+      tone: 'zinc',
+      badge: 'Coming soon',
+      icon: SlidersHorizontal,
+      disabled: true,
+    },
+    {
+      title: 'Profile',
+      description: 'Personal workspace details and preferences.',
+      href: '#',
+      tone: 'zinc',
+      badge: 'Coming soon',
+      icon: User,
+      disabled: true,
+    },
+    {
+      title: 'Company',
+      description: 'Workspace branding and organization settings.',
+      href: '#',
+      tone: 'zinc',
+      badge: 'Coming soon',
+      icon: Building2,
+      disabled: true,
+    },
+  ] as const;
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -160,121 +233,182 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-zinc-950 text-zinc-100">
+    <div className="flex min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(124,58,237,0.08),_transparent_28%),radial-gradient(circle_at_top_right,_rgba(20,184,166,0.08),_transparent_24%),var(--background)] text-zinc-900">
       <Sidebar />
-      <main className="flex-1 p-8 overflow-y-auto max-w-5xl">
-        <div className="flex items-center gap-3 mb-8">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600/10 text-violet-400">
+      <main className="flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-6xl px-6 py-8">
+        <div className="flex items-center gap-3 mb-6">
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-violet-50 text-violet-600 ring-1 ring-violet-100">
             <SettingsIcon className="h-6 w-6" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-white tracking-tight">Configuration Settings</h2>
-            <p className="text-sm text-zinc-400">Manage API keys and external service integrations.</p>
+            <h2 className="text-3xl font-semibold tracking-tight text-zinc-950">Settings</h2>
+            <p className="text-sm text-zinc-500">Manage your ReachMira workspace, sending, and integrations.</p>
           </div>
         </div>
 
+        <section className="mb-8">
+          <div className="mb-4 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-[0.22em] text-violet-600">Quick settings</h3>
+              <p className="mt-1 text-sm text-zinc-500">Jump into the parts of ReachMira that need attention.</p>
+            </div>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {settingsCards.map((card) => {
+              const Icon = card.icon;
+              const cardContent = (
+                <div className={`group h-full rounded-2xl border border-[var(--border)] bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_48px_rgba(15,23,42,0.07)] ${
+                  card.disabled ? 'cursor-not-allowed opacity-80' : 'hover:border-violet-200'
+                }`}>
+                  <div className="flex items-start justify-between gap-4">
+                    <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${
+                      card.tone === 'teal' ? 'bg-teal-50 text-teal-600 ring-1 ring-teal-100' :
+                      card.tone === 'rose' ? 'bg-rose-50 text-rose-600 ring-1 ring-rose-100' :
+                      'bg-violet-50 text-violet-600 ring-1 ring-violet-100'
+                    }`}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
+                      card.badge === 'Core'
+                        ? 'bg-emerald-50 text-emerald-700'
+                        : card.badge === 'Beta'
+                          ? 'bg-violet-50 text-violet-700'
+                          : 'bg-zinc-100 text-zinc-600'
+                    }`}>
+                      {card.badge}
+                    </span>
+                  </div>
+
+                  <div className="mt-4">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-base font-semibold text-zinc-950">{card.title}</h4>
+                      <ArrowRight className="h-4 w-4 text-zinc-400 transition group-hover:translate-x-0.5 group-hover:text-violet-600" />
+                    </div>
+                    <p className="mt-2 text-sm leading-6 text-zinc-500">{card.description}</p>
+                  </div>
+                </div>
+              );
+
+              if (card.disabled) {
+                return (
+                  <div key={card.title} aria-disabled="true">
+                    {cardContent}
+                  </div>
+                );
+              }
+
+              return (
+                <Link key={card.title} href={card.href} className="block">
+                  {cardContent}
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+
         {loading ? (
-          <div className="flex h-64 items-center justify-center">
+          <div className="flex h-64 items-center justify-center rounded-2xl border border-[var(--border)] bg-white">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
           </div>
         ) : (
           <>
             <form onSubmit={handleSave} className="space-y-6">
             {/* Mailgun Configuration */}
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-6 backdrop-blur-sm">
-              <div className="flex items-center gap-2 mb-4 text-white font-semibold">
-                <Mail className="h-5 w-5 text-violet-400" />
+            <div className="rounded-2xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+              <div className="mb-4 flex items-center gap-2 font-semibold text-zinc-950">
+                <Mail className="h-5 w-5 text-violet-500" />
                 <h3>Mailgun Sending Credentials</h3>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <label className="block text-xs text-zinc-400 font-semibold uppercase">API Private Key</label>
+                  <label className="block text-xs font-semibold uppercase text-zinc-500">API Private Key</label>
                   <input
                     type="password"
                     value={mailgunApiKey}
                     onChange={(e) => setMailgunApiKey(e.target.value)}
                     placeholder="key-xxxxxxxxxxxxxxxxxxxxxxxx"
-                    className="mt-1 w-full rounded-lg border border-zinc-855 bg-zinc-950 py-2 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors"
+                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-zinc-400 font-semibold uppercase">Mailgun Domain</label>
+                  <label className="block text-xs font-semibold uppercase text-zinc-500">Mailgun Domain</label>
                   <input
                     type="text"
                     value={mailgunDomain}
                     onChange={(e) => setMailgunDomain(e.target.value)}
                     placeholder="mg.yourdomain.com"
-                    className="mt-1 w-full rounded-lg border border-zinc-855 bg-zinc-950 py-2 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors"
+                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-zinc-400 font-semibold uppercase">From Email Address</label>
+                  <label className="block text-xs font-semibold uppercase text-zinc-500">From Email Address</label>
                   <input
                     type="email"
                     value={mailgunFromEmail}
                     onChange={(e) => setMailgunFromEmail(e.target.value)}
                     placeholder="sender@yourdomain.com"
-                    className="mt-1 w-full rounded-lg border border-zinc-855 bg-zinc-950 py-2 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors"
+                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-zinc-400 font-semibold uppercase">From Name</label>
+                  <label className="block text-xs font-semibold uppercase text-zinc-500">From Name</label>
                   <input
                     type="text"
                     value={mailgunFromName}
                     onChange={(e) => setMailgunFromName(e.target.value)}
-                    placeholder="The Digital Dude"
-                    className="mt-1 w-full rounded-lg border border-zinc-855 bg-zinc-950 py-2 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors"
+                    placeholder="ReachMira"
+                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                   />
                 </div>
               </div>
             </div>
 
             {/* Custom SMTP Configuration */}
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-6 backdrop-blur-sm">
-              <div className="flex items-center gap-2 mb-4 text-white font-semibold">
-                <Mail className="h-5 w-5 text-violet-400" />
+            <div className="rounded-2xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+              <div className="mb-4 flex items-center gap-2 font-semibold text-zinc-950">
+                <Mail className="h-5 w-5 text-violet-500" />
                 <h3>Custom SMTP Sending Credentials (Alternative to Mailgun)</h3>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <label className="block text-xs text-zinc-400 font-semibold uppercase">SMTP Host</label>
+                  <label className="block text-xs font-semibold uppercase text-zinc-500">SMTP Host</label>
                   <input
                     type="text"
                     value={smtpHost}
                     onChange={(e) => setSmtpHost(e.target.value)}
                     placeholder="mail.yourdomain.com"
-                    className="mt-1 w-full rounded-lg border border-zinc-855 bg-zinc-950 py-2 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors"
+                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-zinc-400 font-semibold uppercase">SMTP Port</label>
+                  <label className="block text-xs font-semibold uppercase text-zinc-500">SMTP Port</label>
                   <input
                     type="number"
                     value={smtpPort}
                     onChange={(e) => setSmtpPort(e.target.value)}
                     placeholder="465"
-                    className="mt-1 w-full rounded-lg border border-zinc-855 bg-zinc-950 py-2 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors"
+                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-zinc-400 font-semibold uppercase">SMTP Username</label>
+                  <label className="block text-xs font-semibold uppercase text-zinc-500">SMTP Username</label>
                   <input
                     type="text"
                     value={smtpUser}
                     onChange={(e) => setSmtpUser(e.target.value)}
                     placeholder="user@yourdomain.com"
-                    className="mt-1 w-full rounded-lg border border-zinc-855 bg-zinc-950 py-2 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors"
+                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-zinc-400 font-semibold uppercase">SMTP Password</label>
+                  <label className="block text-xs font-semibold uppercase text-zinc-500">SMTP Password</label>
                   <input
                     type="password"
                     value={smtpPass}
                     onChange={(e) => setSmtpPass(e.target.value)}
                     placeholder="••••••••"
-                    className="mt-1 w-full rounded-lg border border-zinc-855 bg-zinc-950 py-2 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors"
+                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                   />
                 </div>
               </div>
@@ -282,50 +416,50 @@ export default function SettingsPage() {
             </div>
 
             {/* Custom IMAP Configuration */}
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-6 backdrop-blur-sm">
-              <div className="flex items-center gap-2 mb-4 text-white font-semibold">
-                <Bot className="h-5 w-5 text-violet-400" />
+            <div className="rounded-2xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+              <div className="mb-4 flex items-center gap-2 font-semibold text-zinc-950">
+                <Bot className="h-5 w-5 text-violet-500" />
                 <h3>Custom IMAP Incoming Credentials (For cPanel Reply Detection)</h3>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <label className="block text-xs text-zinc-400 font-semibold uppercase">IMAP Host</label>
+                  <label className="block text-xs font-semibold uppercase text-zinc-500">IMAP Host</label>
                   <input
                     type="text"
                     value={imapHost}
                     onChange={(e) => setImapHost(e.target.value)}
                     placeholder="mail.yourdomain.com"
-                    className="mt-1 w-full rounded-lg border border-zinc-855 bg-zinc-950 py-2 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors"
+                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-zinc-400 font-semibold uppercase">IMAP Port</label>
+                  <label className="block text-xs font-semibold uppercase text-zinc-500">IMAP Port</label>
                   <input
                     type="number"
                     value={imapPort}
                     onChange={(e) => setImapPort(e.target.value)}
                     placeholder="993"
-                    className="mt-1 w-full rounded-lg border border-zinc-855 bg-zinc-950 py-2 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors"
+                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-zinc-400 font-semibold uppercase">IMAP Username</label>
+                  <label className="block text-xs font-semibold uppercase text-zinc-500">IMAP Username</label>
                   <input
                     type="text"
                     value={imapUser}
                     onChange={(e) => setImapUser(e.target.value)}
                     placeholder="user@yourdomain.com"
-                    className="mt-1 w-full rounded-lg border border-zinc-855 bg-zinc-950 py-2 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors"
+                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-zinc-400 font-semibold uppercase">IMAP Password</label>
+                  <label className="block text-xs font-semibold uppercase text-zinc-500">IMAP Password</label>
                   <input
                     type="password"
                     value={imapPass}
                     onChange={(e) => setImapPass(e.target.value)}
                     placeholder="••••••••"
-                    className="mt-1 w-full rounded-lg border border-zinc-855 bg-zinc-950 py-2 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors"
+                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                   />
                 </div>
               </div>
@@ -333,49 +467,49 @@ export default function SettingsPage() {
             </div>
 
             {/* Gemini Personalization Configuration */}
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-6 backdrop-blur-sm">
-              <div className="flex items-center gap-2 mb-4 text-white font-semibold">
-                <Key className="h-5 w-5 text-violet-400" />
+            <div className="rounded-2xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+              <div className="mb-4 flex items-center gap-2 font-semibold text-zinc-950">
+                <Key className="h-5 w-5 text-violet-500" />
                 <h3>Gemini AI Key</h3>
               </div>
               <div>
-                <label className="block text-xs text-zinc-400 font-semibold uppercase">Gemini API Key</label>
+                <label className="block text-xs font-semibold uppercase text-zinc-500">Gemini API Key</label>
                 <input
                   type="password"
                   value={geminiApiKey}
                   onChange={(e) => setGeminiApiKey(e.target.value)}
                   placeholder="AIzaSy..."
-                  className="mt-1 w-full rounded-lg border border-zinc-855 bg-zinc-950 py-2 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors"
+                  className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                 />
                 <p className="mt-1 text-xs text-zinc-500">Required to generate personalized introduction strings for leads before queuing emails.</p>
               </div>
             </div>
 
             {/* Telegram Configuration */}
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-6 backdrop-blur-sm">
-              <div className="flex items-center gap-2 mb-4 text-white font-semibold">
-                <Bot className="h-5 w-5 text-violet-400" />
+            <div className="rounded-2xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+              <div className="mb-4 flex items-center gap-2 font-semibold text-zinc-950">
+                <Bot className="h-5 w-5 text-violet-500" />
                 <h3>Telegram Bot Daily Reporting</h3>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div>
-                  <label className="block text-xs text-zinc-400 font-semibold uppercase">Telegram Chat ID</label>
+                  <label className="block text-xs font-semibold uppercase text-zinc-500">Telegram Chat ID</label>
                   <input
                     type="text"
                     value={telegramChatId}
                     onChange={(e) => setTelegramChatId(e.target.value)}
                     placeholder="123456789"
-                    className="mt-1 w-full rounded-lg border border-zinc-855 bg-zinc-950 py-2 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors"
+                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs text-zinc-400 font-semibold uppercase">Telegram Bot Token</label>
+                  <label className="block text-xs font-semibold uppercase text-zinc-500">Telegram Bot Token</label>
                   <input
                     type="password"
                     value={telegramBotToken}
                     onChange={(e) => setTelegramBotToken(e.target.value)}
                     placeholder="123456789:ABCdefGhIJKlmNoPQRsTuvwxYZ"
-                    className="mt-1 w-full rounded-lg border border-zinc-855 bg-zinc-950 py-2 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors"
+                    className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                   />
                 </div>
               </div>
@@ -384,14 +518,14 @@ export default function SettingsPage() {
 
             {/* Error and Success Indicators */}
             {error && (
-              <div className="rounded-lg bg-rose-500/10 p-3 text-xs text-rose-400 border border-rose-500/20">
+              <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
                 {error}
               </div>
             )}
 
             {success && (
-              <div className="rounded-lg bg-emerald-500/10 p-3 text-xs text-emerald-400 border border-emerald-500/20 flex items-center gap-2">
-                <CheckCircle className="h-4 w-4 text-emerald-400" />
+              <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">
+                <CheckCircle className="h-4 w-4 text-emerald-600" />
                 Configurations saved successfully!
               </div>
             )}
@@ -400,7 +534,7 @@ export default function SettingsPage() {
             <button
               type="submit"
               disabled={saving}
-              className="px-6 py-2.5 rounded-lg bg-gradient-to-r from-violet-600 to-blue-600 font-semibold text-white shadow-lg shadow-violet-600/20 hover:opacity-90 active:scale-[0.98] transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-6 py-2.5 font-semibold text-white shadow-lg shadow-violet-600/20 transition hover:opacity-95 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
             >
               {saving ? (
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
@@ -413,33 +547,33 @@ export default function SettingsPage() {
           </form>
 
           {/* Test Email Connection Form */}
-          <div className="mt-8 rounded-xl border border-zinc-800 bg-zinc-900/40 p-6 backdrop-blur-sm">
-            <div className="flex items-center gap-2 mb-4 text-white font-semibold">
-              <Mail className="h-5 w-5 text-violet-400" />
+          <div className="mt-8 rounded-2xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+            <div className="mb-4 flex items-center gap-2 font-semibold text-zinc-950">
+              <Mail className="h-5 w-5 text-violet-500" />
               <h3>Test Mailer Connection</h3>
             </div>
             
             <form onSubmit={handleSendTestEmail} className="space-y-4 max-w-md">
               <div>
-                <label className="block text-xs text-zinc-400 font-semibold uppercase">Recipient Email Address</label>
+                <label className="block text-xs font-semibold uppercase text-zinc-500">Recipient Email Address</label>
                 <input
                   type="email"
                   required
                   value={testEmail}
                   onChange={(e) => setTestEmail(e.target.value)}
                   placeholder="receiver@example.com"
-                  className="mt-1 w-full rounded-lg border border-zinc-855 bg-zinc-950 py-2 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors"
+                  className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2.5 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
                 />
               </div>
 
               {testError && (
-                <div className="rounded-lg bg-rose-500/10 p-3 text-xs text-rose-400 border border-rose-500/20">
+                <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
                   {testError}
                 </div>
               )}
 
               {testSuccess && (
-                <div className="rounded-lg bg-emerald-500/10 p-3 text-xs text-emerald-400 border border-emerald-500/20">
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">
                   {testSuccess}
                 </div>
               )}
@@ -447,7 +581,7 @@ export default function SettingsPage() {
               <button
                 type="submit"
                 disabled={sendingTest}
-                className="px-6 py-2 rounded-lg bg-zinc-900 border border-zinc-800 font-semibold text-zinc-200 hover:text-white hover:bg-zinc-855 transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer text-sm"
+                className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-6 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {sendingTest ? (
                   <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
@@ -461,6 +595,7 @@ export default function SettingsPage() {
           </div>
          </>
         )}
+        </div>
       </main>
     </div>
   );

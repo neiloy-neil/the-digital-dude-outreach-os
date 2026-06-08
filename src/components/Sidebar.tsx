@@ -11,7 +11,6 @@ import {
   Mail,
   MailPlus,
   Megaphone,
-  ShieldAlert,
   Settings,
   Sparkles,
   Users,
@@ -36,14 +35,33 @@ export default function Sidebar() {
       { name: 'Leads', href: '/leads', icon: Users },
       { name: 'Campaigns', href: '/campaigns', icon: Megaphone },
       { name: 'Manual Emails', href: '/manual-emails', icon: MailPlus },
-      { name: 'Templates', href: '/templates', icon: Sparkles },
       { name: 'Email Accounts', href: '/settings/email-accounts', icon: Mail },
       { name: 'Activity', href: '/activity', icon: Activity },
       { name: 'Settings', href: '/settings', icon: Settings },
-      { name: 'Suppression List', href: '/suppression-list', icon: ShieldAlert },
     ],
     []
   );
+
+  const isNavItemActive = (href: string) => {
+    if (!pathname) return false;
+    if (href === '/settings') {
+      return pathname === '/settings' || (pathname.startsWith('/settings/') && !pathname.startsWith('/settings/email-accounts'));
+    }
+
+    if (href === '/settings/email-accounts') {
+      return pathname === '/settings/email-accounts' || pathname.startsWith('/settings/email-accounts/');
+    }
+
+    if (href === '/leads') {
+      return pathname === '/leads' || pathname.startsWith('/leads/');
+    }
+
+    if (href === '/campaigns') {
+      return pathname === '/campaigns' || pathname.startsWith('/campaigns/');
+    }
+
+    return pathname === href || pathname.startsWith(`${href}/`);
+  };
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -108,7 +126,7 @@ export default function Sidebar() {
       <nav className="mt-5 space-y-1.5 overflow-y-auto pr-1">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const isActive = isNavItemActive(item.href);
 
           return (
             <Link
