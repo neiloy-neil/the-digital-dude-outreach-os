@@ -61,10 +61,13 @@ export default function LeadsPage() {
   const [followUpStageFilter, setFollowUpStageFilter] = useState('all');
   const [contactGuardFilter, setContactGuardFilter] = useState('all');
   const [campaignId, setCampaignId] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(12);
   const [error, setError] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
+    setCurrentPage(1);
     try {
       const params = new URLSearchParams();
       if (search) params.set('search', search);
@@ -104,6 +107,16 @@ export default function LeadsPage() {
     if (qualityFilter === 'all') return leads;
     return leads.filter((lead) => lead.data_quality_label === qualityFilter);
   }, [leads, qualityFilter]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredLeads.length / pageSize));
+  const paginatedLeads = useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredLeads.slice(start, start + pageSize);
+  }, [currentPage, filteredLeads, pageSize]);
+
+  useEffect(() => {
+    setCurrentPage((page) => Math.min(page, totalPages));
+  }, [totalPages]);
 
   const toggleSelected = (leadId: string) => {
     setSelected((prev) => (prev.includes(leadId) ? prev.filter((id) => id !== leadId) : [...prev, leadId]));
@@ -219,7 +232,28 @@ export default function LeadsPage() {
           <select value={campaignId} onChange={(e) => setCampaignId(e.target.value)} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-700">
             {campaigns.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
           </select>
-          <div className="self-center text-sm text-zinc-500">{filteredLeads.length} visible leads</div>
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3">
+            <div className="text-sm text-zinc-500">
+              {filteredLeads.length} lead{filteredLeads.length === 1 ? '' : 's'} found
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-400">Page size</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-700"
+              >
+                {[12, 24, 36, 48].map((size) => (
+                  <option key={size} value={size}>
+                    {size} / page
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
 
         {selected.length > 0 && (
@@ -251,45 +285,41 @@ export default function LeadsPage() {
         ) : (
           <>
             <div className="hidden overflow-x-auto lg:block">
-              <table className="w-full text-left text-sm">
+              <table className="w-full table-fixed text-left text-sm">
                 <thead className="sticky top-0 z-10 border-b border-[var(--border)] bg-white text-xs uppercase tracking-[0.18em] text-zinc-400">
                   <tr>
                     <th className="w-10 px-4 py-4" />
-                    <th className="px-4 py-4">Company</th>
-                    <th className="px-4 py-4">Contact</th>
-                    <th className="px-4 py-4">Email</th>
-                    <th className="px-4 py-4">Industry</th>
-                    <th className="px-4 py-4">Pain Point</th>
-                    <th className="px-4 py-4">Priority</th>
-                    <th className="px-4 py-4">Data Quality</th>
-                    <th className="px-4 py-4">Status</th>
-                    <th className="px-4 py-4">AI Status</th>
-                    <th className="px-4 py-4">Last Contacted</th>
-                    <th className="px-4 py-4">Next Follow-up</th>
+                    <th className="w-[18%] px-4 py-4">Company</th>
+                    <th className="w-[14%] px-4 py-4">Contact</th>
+                    <th className="w-[24%] px-4 py-4">Email</th>
+                    <th className="w-[16%] px-4 py-4">Industry</th>
+                    <th className="w-[10%] px-4 py-4">Priority</th>
+                    <th className="w-[13%] px-4 py-4">Data Quality</th>
+                    <th className="w-[12%] px-4 py-4">Status</th>
                     <th className="px-4 py-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border)]">
-                  {filteredLeads.map((lead) => (
+                  {paginatedLeads.map((lead) => (
                     <tr key={lead.id} className="transition hover:bg-violet-50/50">
                       <td className="px-4 py-4">
                         <input type="checkbox" checked={selected.includes(lead.id)} onChange={() => toggleSelected(lead.id)} className="h-4 w-4 rounded border-zinc-300 text-violet-600 focus:ring-violet-500" />
                       </td>
                       <td className="px-4 py-4">
-                        <div className="font-semibold text-zinc-950">{lead.company_name || lead.company || '-'}</div>
+                        <div className="truncate font-semibold text-zinc-950">{lead.company_name || lead.company || '-'}</div>
                       </td>
                       <td className="px-4 py-4">
-                        <div className="font-medium text-zinc-900">{lead.decision_maker_name || `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Prospect'}</div>
+                        <div className="truncate font-medium text-zinc-900">{lead.decision_maker_name || `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Prospect'}</div>
                       </td>
-                      <td className="px-4 py-4 text-zinc-600">{lead.email}</td>
-                      <td className="px-4 py-4 text-zinc-600">{lead.industry || lead.lead_lists?.name || '-'}</td>
-                      <td className="px-4 py-4 text-zinc-600">{lead.pain_points || '-'}</td>
+                      <td className="px-4 py-4 text-zinc-600">
+                        <div className="truncate">{lead.email}</div>
+                      </td>
+                      <td className="px-4 py-4 text-zinc-600">
+                        <div className="truncate">{lead.industry || lead.lead_lists?.name || '-'}</div>
+                      </td>
                       <td className="px-4 py-4 text-zinc-600">{lead.priority || '-'}</td>
                       <td className="px-4 py-4"><QualityScoreBadge score={lead.data_quality_label === 'excellent' ? 95 : lead.data_quality_label === 'good' ? 75 : lead.data_quality_label === 'fair' ? 55 : 35} label={lead.data_quality_label || 'Data quality'} /></td>
                       <td className="px-4 py-4"><StatusBadge status={lead.status} /></td>
-                      <td className="px-4 py-4 text-zinc-600">{lead.ai_status || lead.manual_personalization_status || '-'}</td>
-                      <td className="px-4 py-4 text-zinc-600">{lead.last_email_sent_at ? new Date(lead.last_email_sent_at).toLocaleDateString() : '-'}</td>
-                      <td className="px-4 py-4 text-zinc-600">{lead.next_follow_up_at ? new Date(lead.next_follow_up_at).toLocaleDateString() : lead.next_follow_up_date ? new Date(lead.next_follow_up_date).toLocaleDateString() : '-'}</td>
                       <td className="px-4 py-4 text-right">
                         <Link href={`/leads/${lead.id}`} className="inline-flex items-center gap-1 font-semibold text-violet-700 hover:text-violet-800">
                           View <ArrowUpRight className="h-4 w-4" />
@@ -301,9 +331,9 @@ export default function LeadsPage() {
               </table>
             </div>
 
-            <div className="grid gap-4 p-4 lg:hidden">
-              {filteredLeads.map((lead) => (
-                <div key={lead.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]/60 p-4">
+            <div className="grid gap-4 p-4 sm:grid-cols-2 lg:hidden">
+              {paginatedLeads.map((lead) => (
+                <div key={lead.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]/60 p-4 shadow-[0_8px_24px_rgba(15,23,42,0.03)]">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <div className="font-semibold text-zinc-950">{lead.company_name || lead.company || '-'}</div>
@@ -313,8 +343,8 @@ export default function LeadsPage() {
                   </div>
                   <div className="mt-3 grid gap-2 text-sm text-zinc-600">
                     <div><span className="font-medium text-zinc-900">Email:</span> {lead.email}</div>
-                    <div><span className="font-medium text-zinc-900">Status:</span> <StatusBadge status={lead.status} /></div>
-                    <div><span className="font-medium text-zinc-900">Quality:</span> <QualityScoreBadge score={lead.data_quality_label === 'excellent' ? 95 : lead.data_quality_label === 'good' ? 75 : lead.data_quality_label === 'fair' ? 55 : 35} label={lead.data_quality_label || 'Data quality'} /></div>
+                    <div className="flex flex-wrap items-center gap-2"><span className="font-medium text-zinc-900">Status:</span> <StatusBadge status={lead.status} /></div>
+                    <div className="flex flex-wrap items-center gap-2"><span className="font-medium text-zinc-900">Quality:</span> <QualityScoreBadge score={lead.data_quality_label === 'excellent' ? 95 : lead.data_quality_label === 'good' ? 75 : lead.data_quality_label === 'fair' ? 55 : 35} label={lead.data_quality_label || 'Data quality'} /></div>
                   </div>
                   <div className="mt-4 flex items-center justify-between">
                     <Link href={`/leads/${lead.id}`} className="inline-flex items-center gap-2 rounded-xl bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white">
@@ -326,6 +356,39 @@ export default function LeadsPage() {
                   </div>
                 </div>
               ))}
+            </div>
+
+            <div className="flex flex-col gap-3 border-t border-[var(--border)] px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="text-sm text-zinc-500">
+                Showing{' '}
+                <span className="font-semibold text-zinc-900">
+                  {filteredLeads.length === 0 ? 0 : (currentPage - 1) * pageSize + 1}
+                </span>{' '}
+                to{' '}
+                <span className="font-semibold text-zinc-900">
+                  {Math.min(currentPage * pageSize, filteredLeads.length)}
+                </span>{' '}
+                of <span className="font-semibold text-zinc-900">{filteredLeads.length}</span> leads
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  disabled={currentPage <= 1}
+                  className="rounded-xl border border-[var(--border)] bg-white px-4 py-2 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <div className="rounded-xl bg-[var(--surface-muted)] px-4 py-2 text-sm font-semibold text-zinc-700">
+                  Page {currentPage} of {totalPages}
+                </div>
+                <button
+                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  disabled={currentPage >= totalPages}
+                  className="rounded-xl border border-[var(--border)] bg-white px-4 py-2 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
             </div>
           </>
         )}

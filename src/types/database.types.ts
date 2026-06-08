@@ -102,6 +102,8 @@ export interface Lead {
   manual_personalization_status?: 'not_started' | 'drafted' | 'edited' | 'approved' | 'sent';
   manual_email_subject?: string | null;
   manual_email_body?: string | null;
+  manual_email_type?: string | null;
+  manual_email_saved_at?: string | null;
   manual_email_approved?: boolean;
   manual_email_sent_at?: string | null;
   last_manual_email_account_id?: string | null;

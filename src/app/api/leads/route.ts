@@ -55,8 +55,7 @@ export async function GET(request: Request) {
   let query = (useListScopedServiceRead ? serviceSupabase : supabase)
     .from('leads')
     .select('*')
-    .order('created_at', { ascending: false })
-    .limit(250);
+    .order('created_at', { ascending: false });
 
   if (leadListId) {
     query = query.eq('lead_list_id', leadListId);

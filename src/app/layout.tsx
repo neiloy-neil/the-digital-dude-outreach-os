@@ -15,6 +15,10 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "ReachMira",
   description: "Personalized outreach, simplified.",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+  },
 };
 
 export default function RootLayout({
