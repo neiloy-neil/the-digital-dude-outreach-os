@@ -3,22 +3,10 @@ import { createClient } from '@/utils/supabase/server';
 import { createServiceClient } from '@/utils/supabase/service';
 import { sendEmail } from '@/lib/mailers/send-email';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
+import { buildEmailMessageBodies } from '@/lib/email/html';
 import { getStatusForEmailType, isBlockedLeadStatus, type EmailType } from '@/lib/leads/status';
 import { isMissingTableError } from '@/lib/supabase/schema-errors';
 import type { EmailProviderType } from '@/types/email-provider';
-
-function buildHtml(body: string, unsubscribeUrl: string): string {
-  const safeUnsubscribe = unsubscribeUrl.replace(/"/g, '&quot;');
-  return `${body}\n\n<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;" />\n<p style="font-size:12px;color:#6b7280;">If you do not want more emails, you can unsubscribe <a href="${safeUnsubscribe}">here</a>.</p>`;
-}
-
-function ensureUnsubscribe(body: string, unsubscribeUrl: string): string {
-  const replaced = body.includes('{{unsubscribe_url}}') ? body.replace(/\{\{unsubscribe_url\}\}/g, unsubscribeUrl) : body;
-  if (replaced.includes(unsubscribeUrl) || /unsubscribe/i.test(replaced)) {
-    return replaced;
-  }
-  return `${replaced}\n\nUnsubscribe: ${unsubscribeUrl}`;
-}
 
 function isSupportedProvider(provider: string): provider is EmailProviderType {
   return ['smtp', 'mailgun', 'resend', 'amazon_ses'].includes(provider);
@@ -109,8 +97,7 @@ export async function POST(
       `Hi ${lead.decision_maker_name || lead.first_name || 'there'},\n\nThought it might be worth reaching out.\n\nBest,\n${emailAccount.sender_name || emailAccount.email_address}`;
 
     const unsubscribeUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/unsubscribe?token=${lead.unsubscribe_token}`;
-    const emailBody = ensureUnsubscribe(baseBody, unsubscribeUrl);
-    const html = buildHtml(emailBody, unsubscribeUrl);
+    const { html, text } = buildEmailMessageBodies(baseBody, unsubscribeUrl);
     const to = mode === 'test' ? targetEmail || user.email || lead.email : targetEmail || lead.email;
 
     if (!to || !String(to).includes('@')) {
@@ -124,7 +111,7 @@ export async function POST(
       replyTo: emailAccount.email_address,
       subject: emailSubject,
       html,
-      text: emailBody,
+      text,
       leadId: lead.id,
       campaignId: lead.campaign_id || undefined,
       stepNumber: typeof stepNumber === 'number' ? stepNumber : undefined,
@@ -151,7 +138,7 @@ export async function POST(
         manual_personalization_status: 'sent',
         last_email_sent_at: nowIso,
         manual_email_subject: emailSubject,
-        manual_email_body: emailBody,
+        manual_email_body: html,
         updated_at: nowIso,
       };
 
@@ -169,7 +156,7 @@ export async function POST(
         sender_name: emailAccount.sender_name || null,
         subject: emailSubject,
         body_html: html,
-        body_text: emailBody,
+        body_text: text,
         email_type: emailType,
         step_number: typeof stepNumber === 'number' ? stepNumber : null,
         provider_message_id: result.messageId || null,

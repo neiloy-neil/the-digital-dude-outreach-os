@@ -347,32 +347,46 @@ export async function POST(
 
     if (!budgetExceeded && decision.allowGemini) {
       const selectedModel = decision.model === AI_DEEP_MODEL ? AI_DEEP_MODEL : AI_DEFAULT_MODEL;
-      const ai = new GoogleGenAI({ apiKey: profile.gemini_api_key });
-      const response = await ai.models.generateContent({
-        model: selectedModel,
-        contents: prompt,
-        config: { responseMimeType: 'application/json' },
-      });
+      try {
+        const ai = new GoogleGenAI({ apiKey: profile.gemini_api_key });
+        const response = await ai.models.generateContent({
+          model: selectedModel,
+          contents: prompt,
+          config: { responseMimeType: 'application/json' },
+        });
 
-      const responseText = response.text || '{}';
-      const parsed = parseJsonResponse(responseText);
-      personalizationResult = {
-        strategy: typeof parsed.outreach_strategy === 'string' ? parsed.outreach_strategy : localFallback.outreach_strategy,
-        subject: typeof parsed.subject === 'string' ? parsed.subject : localFallback.subject,
-        body:
-          typeof parsed.email_body === 'string'
-            ? parsed.email_body
-            : typeof parsed.body === 'string'
-              ? parsed.body
-              : localFallback.email_body,
-        skipped: false,
-        reason: '',
-        model: selectedModel,
-      };
-      aiModelUsed = selectedModel;
-      skipped = false;
-      completionTokens = estimateTokensFromText(responseText);
-      totalTokens = promptTokens + completionTokens;
+        const responseText = response.text || '{}';
+        const parsed = parseJsonResponse(responseText);
+        personalizationResult = {
+          strategy: typeof parsed.outreach_strategy === 'string' ? parsed.outreach_strategy : localFallback.outreach_strategy,
+          subject: typeof parsed.subject === 'string' ? parsed.subject : localFallback.subject,
+          body:
+            typeof parsed.email_body === 'string'
+              ? parsed.email_body
+              : typeof parsed.body === 'string'
+                ? parsed.body
+                : localFallback.email_body,
+          skipped: false,
+          reason: '',
+          model: selectedModel,
+        };
+        aiModelUsed = selectedModel;
+        skipped = false;
+        completionTokens = estimateTokensFromText(responseText);
+        totalTokens = promptTokens + completionTokens;
+      } catch (aiError: unknown) {
+        console.error('AI personalization failed, falling back to template:', aiError);
+        personalizationResult = {
+          strategy: localFallback.outreach_strategy,
+          subject: localFallback.subject,
+          body: localFallback.email_body,
+          skipped: true,
+          reason: aiError instanceof Error ? aiError.message : 'AI generation failed; template fallback used.',
+          model: 'local-template',
+        };
+        aiModelUsed = 'local-template';
+        skipped = true;
+      }
     }
 
     const leadUpdate = {
@@ -385,7 +399,6 @@ export async function POST(
       ai_personalized_first_line: localFallback.email_body ? localFallback.email_body.split('\n')[0] : null,
       ai_subject: personalizationResult.subject,
       ai_email_body: personalizationResult.body,
-      recommended_offer: body.offerType || lead.recommended_offer || 'Custom software development',
       ai_cta: null,
       ai_confidence_score: skipped ? 0 : 75,
       ai_status: skipped ? 'skipped' : 'generated',

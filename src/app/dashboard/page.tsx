@@ -2,346 +2,353 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect } from 'react';
-import Sidebar from '@/components/Sidebar';
-import { createClient } from '@/utils/supabase/client';
-import {
-  Send, 
-  MailOpen, 
-  MessageSquare, 
-  AlertTriangle, 
-  Zap, 
-  TrendingUp,
-  Clock,
-  ExternalLink,
-  Bot,
-  Layers3,
-  ShieldAlert
-} from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { createClient } from '@/utils/supabase/client';
+import AppShell from '@/components/reachmira/AppShell';
+import PageHeader from '@/components/reachmira/PageHeader';
+import MetricCard from '@/components/reachmira/MetricCard';
+import EmptyState from '@/components/reachmira/EmptyState';
+import NextActionCard from '@/components/reachmira/NextActionCard';
+import { getLeadStatusLabel } from '@/lib/leads/status';
+import {
+  ArrowUpRight,
+  Activity,
+  Send,
+  Reply,
+  CalendarClock,
+  TrendingUp,
+  Sparkles,
+  CheckCircle2,
+  Mail,
+  Database,
+  Users,
+  FolderOpen,
+  CircleDashed,
+} from 'lucide-react';
+
+type LeadRow = {
+  id: string;
+  status?: string | null;
+  priority?: string | null;
+  next_follow_up_date?: string | null;
+  manual_personalization_status?: string | null;
+  pain_points?: string | null;
+  email?: string | null;
+  company_name?: string | null;
+  company?: string | null;
+  decision_maker_name?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+};
+
+type AuditRow = {
+  id: string;
+  action: string;
+  message?: string | null;
+  created_at: string;
+};
+
+type SentEmailRow = {
+  id: string;
+  status?: string | null;
+  replied_at?: string | null;
+  bounced_at?: string | null;
+  sent_at: string;
+};
 
 export default function Dashboard() {
   const supabase = createClient();
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    sent: 0,
-    opened: 0,
-    replied: 0,
-    bounced: 0,
-    unsubscribed: 0,
-  });
-  const [campaigns, setCampaigns] = useState<any[]>([]);
-  const [recentActivities, setRecentActivities] = useState<any[]>([]);
-  const [aiStats, setAiStats] = useState({
-    callsToday: 0,
-    flashLiteToday: 0,
-    flash25Today: 0,
-    deepRemaining: 0 as number | null,
-    totalRemaining: 0 as number | null,
-    cacheHits: 0,
-    skipped: 0,
-  });
+  const [nowIso] = useState(() => new Date().toISOString());
+  const [leads, setLeads] = useState<LeadRow[]>([]);
+  const [campaignCount, setCampaignCount] = useState(0);
+  const [recentActivities, setRecentActivities] = useState<AuditRow[]>([]);
+  const [sentEmails, setSentEmails] = useState<SentEmailRow[]>([]);
+  const [aiStats, setAiStats] = useState({ callsToday: 0, cached: 0, skipped: 0 });
 
   useEffect(() => {
-    const fetchDashboardData = async () => {
+    const loadDashboard = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser();
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
         if (!user) return;
-
-        // 1. Fetch campaigns and count stats
-        const { data: campaignData } = await supabase
-          .from('campaigns')
-          .select('id, name, status, created_at')
-          .eq('user_id', user.id);
-
-        const loadedCampaigns = campaignData || [];
-        setCampaigns(loadedCampaigns);
-
-        if (loadedCampaigns.length > 0) {
-          const campaignIds = loadedCampaigns.map(c => c.id);
-
-          // 2. Fetch all activity logs
-          const { data: logs } = await supabase
-            .from('activity_logs')
-            .select('event_type, created_at, leads (email, first_name, last_name, company)')
-            .in('campaign_id', campaignIds);
-
-          const newStats = { sent: 0, opened: 0, replied: 0, bounced: 0, unsubscribed: 0 };
-          
-          logs?.forEach(log => {
-            if (log.event_type === 'sent') newStats.sent++;
-            else if (log.event_type === 'opened') newStats.opened++;
-            else if (log.event_type === 'replied') newStats.replied++;
-            else if (log.event_type === 'bounced') newStats.bounced++;
-            else if (log.event_type === 'unsubscribed') newStats.unsubscribed++;
-          });
-
-          setStats(newStats);
-
-          // Order logs for recent activity feed
-          const sortedActivities = (logs || [])
-            .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-            .slice(0, 5);
-
-          setRecentActivities(sortedActivities);
-        }
 
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
-        const startOfMonth = new Date();
-        startOfMonth.setDate(1);
-        startOfMonth.setHours(0, 0, 0, 0);
 
-        const usageQuery = (query: ReturnType<typeof supabase.from>) =>
-          query
-            .select('id', { count: 'exact', head: true })
-            .eq('user_id', user.id)
-            .eq('skipped', false)
-            .eq('cache_hit', false);
-
-        const [todayUsage, flashLiteToday, flash25Today, cacheHits, skipped, settingsResult] = await Promise.all([
-          usageQuery(supabase.from('ai_usage_logs')).gte('created_at', startOfDay.toISOString()).catch(() => ({ count: 0 })),
-          usageQuery(supabase.from('ai_usage_logs'))
-            .gte('created_at', startOfMonth.toISOString())
-            .catch(() => ({ count: 0 })),
-          usageQuery(supabase.from('ai_usage_logs'))
-            .eq('model', 'gemini-3.1-flash-lite')
-            .gte('created_at', startOfDay.toISOString())
-            .catch(() => ({ count: 0 })),
-          usageQuery(supabase.from('ai_usage_logs'))
-            .eq('model', 'gemini-2.5-flash')
-            .gte('created_at', startOfDay.toISOString())
-            .catch(() => ({ count: 0 })),
+        const [campaignsResponse, leadsResponse, sentEmailsResponse, auditLogsResponse, aiUsageResponse] = await Promise.all([
+          supabase.from('campaigns').select('id').eq('user_id', user.id),
+          supabase
+            .from('leads')
+            .select('id,status,priority,next_follow_up_date,manual_personalization_status,pain_points,email,company_name,company,decision_maker_name,first_name,last_name')
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('sent_emails')
+            .select('id,status,replied_at,bounced_at,sent_at')
+            .order('sent_at', { ascending: false })
+            .limit(500),
+          supabase
+            .from('audit_logs')
+            .select('id,action,message,created_at')
+            .order('created_at', { ascending: false })
+            .limit(12),
           supabase
             .from('ai_usage_logs')
-            .select('id', { count: 'exact', head: true })
+            .select('id,cache_hit,skipped,created_at')
             .eq('user_id', user.id)
-            .eq('cache_hit', true)
-            .gte('created_at', startOfDay.toISOString())
-            .catch(() => ({ count: 0 })),
-          supabase
-            .from('ai_usage_logs')
-            .select('id', { count: 'exact', head: true })
-            .eq('user_id', user.id)
-            .eq('skipped', true)
-            .gte('created_at', startOfDay.toISOString())
-            .catch(() => ({ count: 0 })),
-          supabase
-            .from('ai_settings')
-            .select('daily_ai_limit, daily_deep_ai_limit')
-            .eq('user_id', user.id)
-            .maybeSingle()
-            .catch(() => ({ data: null })),
+            .gte('created_at', startOfDay.toISOString()),
         ]);
 
-        const settings = settingsResult?.data || null;
-
+        setCampaignCount(campaignsResponse.data?.length || 0);
+        setLeads((leadsResponse.data || []) as LeadRow[]);
+        setSentEmails((sentEmailsResponse.data || []) as SentEmailRow[]);
+        setRecentActivities((auditLogsResponse.data || []) as AuditRow[]);
         setAiStats({
-          callsToday: todayUsage.count || 0,
-          flashLiteToday: flashLiteToday.count || 0,
-          flash25Today: flash25Today.count || 0,
-          deepRemaining: Math.max(0, (Number(settings?.daily_deep_ai_limit ?? 20) || 0) - (flash25Today.count || 0)),
-          totalRemaining: Math.max(0, (Number(settings?.daily_ai_limit ?? 75) || 0) - (todayUsage.count || 0)),
-          cacheHits: cacheHits.count || 0,
-          skipped: skipped.count || 0,
+          callsToday: aiUsageResponse.data?.filter((row) => !row.skipped && !row.cache_hit).length || 0,
+          cached: aiUsageResponse.data?.filter((row) => row.cache_hit).length || 0,
+          skipped: aiUsageResponse.data?.filter((row) => row.skipped).length || 0,
         });
-      } catch (e) {
-        console.error('Error fetching dashboard data:', e);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchDashboardData();
+    loadDashboard();
   }, [supabase]);
 
-  // Calculations
-  const openRate = stats.sent > 0 ? Math.round((stats.opened / stats.sent) * 100) : 0;
-  const replyRate = stats.sent > 0 ? Math.round((stats.replied / stats.sent) * 100) : 0;
+  const metrics = useMemo(() => {
+    const totalLeads = leads.length;
+    const readyToSend = leads.filter((lead) => ['manual_email_draft', 'ai_generated', 'email_approved'].includes(String(lead.status || ''))).length;
+    const replies = sentEmails.filter((email) => Boolean(email.replied_at) || email.status === 'replied').length;
+    const bounces = sentEmails.filter((email) => Boolean(email.bounced_at) || email.status === 'bounced').length;
+    const bounceRate = sentEmails.length > 0 ? Math.round((bounces / sentEmails.length) * 100) : 0;
+    const followUpsDue = leads.filter((lead) => {
+      if (!lead.next_follow_up_date) return false;
+      return lead.next_follow_up_date <= nowIso;
+    }).length;
 
-  const cards = [
-    { name: 'Emails Sent', value: stats.sent, desc: 'Outbound dispatched', icon: Send, color: 'text-blue-400 bg-blue-500/10' },
-    { name: 'Unique Opens', value: stats.opened, desc: `${openRate}% Open Rate`, icon: MailOpen, color: 'text-violet-400 bg-violet-500/10' },
-    { name: 'Replies Received', value: stats.replied, desc: `${replyRate}% Reply Rate`, icon: MessageSquare, color: 'text-emerald-400 bg-emerald-500/10' },
-    { name: 'Bounces / Spam', value: stats.bounced, desc: 'Delivery failures', icon: AlertTriangle, color: 'text-rose-400 bg-rose-500/10' },
-  ];
+    return {
+      totalLeads,
+      readyToSend,
+      emailsSent: sentEmails.length,
+      replies,
+      followUpsDue,
+      bounceRate,
+    };
+  }, [leads, sentEmails, nowIso]);
 
-  const aiCards = [
-    { name: 'AI Calls Today', value: aiStats.callsToday, desc: 'Gemini usage that counted against budget', icon: Bot, color: 'text-violet-400 bg-violet-500/10' },
-    { name: 'Flash Lite Calls', value: aiStats.flashLiteToday, desc: 'Recommended for bulk personalization', icon: Bot, color: 'text-blue-400 bg-blue-500/10' },
-    { name: '2.5 Flash Calls', value: aiStats.flash25Today, desc: `${aiStats.deepRemaining ?? '∞'} deep calls remaining`, icon: Layers3, color: 'text-emerald-400 bg-emerald-500/10' },
-    { name: 'Total Remaining', value: aiStats.totalRemaining ?? '∞', desc: 'Calls left today', icon: ShieldAlert, color: 'text-amber-400 bg-amber-500/10' },
-    { name: 'Cache Reuse', value: aiStats.cacheHits, desc: 'Cached AI output reused', icon: Layers3, color: 'text-emerald-400 bg-emerald-500/10' },
-    { name: 'Skipped Leads', value: aiStats.skipped, desc: 'Low-value leads or budget stops', icon: ShieldAlert, color: 'text-amber-400 bg-amber-500/10' },
+  const needsAction = [
+    {
+      title: 'Follow-ups due today',
+      description: 'Leads with a follow-up date that is due now.',
+      count: metrics.followUpsDue,
+      actionLabel: 'View follow-ups',
+      actionHref: '/leads?followUpStage=1',
+      tone: 'amber' as const,
+    },
+    {
+      title: 'Drafts waiting approval',
+      description: 'Manual drafts that should be reviewed before sending.',
+      count: leads.filter((lead) => lead.manual_personalization_status === 'drafted').length,
+      actionLabel: 'Open drafts',
+      actionHref: '/leads?status=manual_email_draft',
+      tone: 'violet' as const,
+    },
+    {
+      title: 'High-priority untouched',
+      description: 'Priority leads that still need a first touch.',
+      count: leads.filter((lead) => lead.priority === 'high' && !lead.status?.includes('sent')).length,
+      actionLabel: 'Review leads',
+      actionHref: '/leads?priority=high',
+      tone: 'rose' as const,
+    },
+    {
+      title: 'Leads missing pain point',
+      description: 'These leads need richer context before outreach.',
+      count: leads.filter((lead) => !lead.pain_points?.trim()).length,
+      actionLabel: 'Improve context',
+      actionHref: '/leads',
+      tone: 'sky' as const,
+    },
+    {
+      title: 'Replies waiting response',
+      description: 'Use the timeline to reply or update lead state.',
+      count: metrics.replies,
+      actionLabel: 'Open replied leads',
+      actionHref: '/leads?status=replied',
+      tone: 'teal' as const,
+    },
+    {
+      title: 'Bounced leads to review',
+      description: 'Check delivery issues and suppression list entries.',
+      count: sentEmails.filter((email) => Boolean(email.bounced_at) || email.status === 'bounced').length,
+      actionLabel: 'Review bounces',
+      actionHref: '/suppression-list',
+      tone: 'rose' as const,
+    },
   ];
 
   return (
-    <div className="flex min-h-screen bg-zinc-950 text-zinc-100">
-      <Sidebar />
-      <main className="flex-1 p-8 overflow-y-auto">
-        {/* Welcome */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h2 className="text-3xl font-extrabold text-white tracking-tight">Overview Dashboard</h2>
-            <p className="text-zinc-400 text-sm mt-1">Here is how your cold email campaigns are performing.</p>
-          </div>
-          <Link
-            href="/campaigns"
-            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-violet-600 to-blue-600 rounded-lg text-sm font-semibold text-white hover:opacity-90 shadow-md shadow-violet-500/15 cursor-pointer"
-          >
-            <Zap className="h-4 w-4" /> Create Campaign
-          </Link>
+    <AppShell>
+      <PageHeader
+        eyebrow="ReachMira dashboard"
+        title="Welcome back to ReachMira"
+        subtitle="Manage leads, write personalized emails, and track every follow-up from one place."
+        actions={
+          <>
+            <Link href="/campaigns/new" className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 hover:bg-violet-50 hover:text-violet-700">
+              <Sparkles className="h-4 w-4" />
+              Create Campaign
+            </Link>
+            <Link href="/leads" className="inline-flex items-center gap-2 rounded-xl bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white hover:bg-zinc-800">
+              <ArrowUpRight className="h-4 w-4" />
+              Open Follow-ups
+            </Link>
+          </>
+        }
+      />
+
+      {loading ? (
+        <div className="flex h-64 items-center justify-center">
+          <div className="h-9 w-9 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
         </div>
-
-        {loading ? (
-          <div className="flex h-64 items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
+      ) : (
+        <div className="space-y-8">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+            <MetricCard label="Total Leads" value={metrics.totalLeads} description="All leads in your workspace" icon={Users} tone="slate" trend={`${campaignCount} campaigns`} />
+            <MetricCard label="Ready to Send" value={metrics.readyToSend} description="Approved or draft-ready leads" icon={Mail} tone="violet" trend="Manual-first" />
+            <MetricCard label="Emails Sent" value={metrics.emailsSent} description="Tracked sent messages" icon={Send} tone="teal" trend={`${metrics.replies} replies`} />
+            <MetricCard label="Replies" value={metrics.replies} description="Replies detected in history" icon={Reply} tone="sky" trend="Keep conversations warm" />
+            <MetricCard label="Follow-ups Due" value={metrics.followUpsDue} description="Needs a next step today" icon={CalendarClock} tone="amber" trend="High priority" />
+            <MetricCard label="Bounce Rate" value={`${metrics.bounceRate}%`} description="Delivery issues to review" icon={TrendingUp} tone="rose" trend={`${aiStats.callsToday} AI calls today`} />
           </div>
-        ) : (
-          <div className="space-y-8">
-            {/* Metric Cards Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {cards.map((card) => {
-                const Icon = card.icon;
-                return (
-                  <div key={card.name} className="p-6 rounded-xl border border-zinc-800 bg-zinc-900/40 backdrop-blur-sm relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 h-24 w-24 bg-zinc-800/10 rounded-full blur-2xl group-hover:bg-violet-600/5 transition-all duration-500" />
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">{card.name}</span>
-                        <h4 className="text-3xl font-extrabold text-white mt-2 font-mono">{card.value}</h4>
-                      </div>
-                      <div className={`p-3 rounded-lg ${card.color}`}>
-                        <Icon className="h-5 w-5" />
-                      </div>
-                    </div>
-                    <p className="text-xs text-zinc-400 mt-4 flex items-center gap-1">
-                      <TrendingUp className="h-3.5 w-3.5 text-violet-400" />
-                      {card.desc}
-                    </p>
-                  </div>
-                );
-              })}
+
+          <section>
+            <div className="mb-4 flex items-end justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold tracking-tight text-zinc-950">What needs action</h2>
+                <p className="mt-1 text-sm text-zinc-500">Always surface the next best move so outreach keeps moving.</p>
+              </div>
+              <div className="rounded-full border border-[var(--border)] bg-white px-3 py-1.5 text-xs font-semibold text-zinc-600">
+                AI calls today: {aiStats.callsToday} · Cached: {aiStats.cached} · Skipped: {aiStats.skipped}
+              </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              {aiCards.map((card) => {
-                const Icon = card.icon;
-                return (
-                  <div key={card.name} className="p-6 rounded-xl border border-zinc-800 bg-zinc-900/40 backdrop-blur-sm relative overflow-hidden group">
-                    <div className="absolute top-0 right-0 h-24 w-24 bg-zinc-800/10 rounded-full blur-2xl group-hover:bg-violet-600/5 transition-all duration-500" />
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <span className="text-xs font-semibold text-zinc-500 uppercase tracking-wider">{card.name}</span>
-                        <h4 className="text-3xl font-extrabold text-white mt-2 font-mono">{card.value}</h4>
-                      </div>
-                      <div className={`p-3 rounded-lg ${card.color}`}>
-                        <Icon className="h-5 w-5" />
-                      </div>
-                    </div>
-                    <p className="text-xs text-zinc-400 mt-4 flex items-center gap-1">
-                      <TrendingUp className="h-3.5 w-3.5 text-violet-400" />
-                      {card.desc}
-                    </p>
-                  </div>
-                );
-              })}
+            <div className="grid gap-4 lg:grid-cols-2">
+              {needsAction.map((item) => (
+                <NextActionCard key={item.title} {...item} />
+              ))}
             </div>
+          </section>
 
-            {/* Campaign & Activities layout */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* Campaigns List */}
-              <div className="lg:col-span-2 rounded-xl border border-zinc-800 bg-zinc-900/20 p-6 backdrop-blur-sm">
-                <h3 className="font-bold text-white mb-4 text-lg">Your Campaigns</h3>
-                {campaigns.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-48 border border-dashed border-zinc-800 rounded-lg">
-                    <p className="text-sm text-zinc-500">No campaigns found.</p>
-                    <Link href="/campaigns" className="mt-3 text-sm text-violet-400 hover:text-violet-300 font-medium">Create your first campaign &rarr;</Link>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm text-zinc-400">
-                      <thead className="text-xs font-semibold uppercase text-zinc-500 border-b border-zinc-800 bg-zinc-900/30">
-                        <tr>
-                          <th className="py-3 px-4">Name</th>
-                          <th className="py-3 px-4">Status</th>
-                          <th className="py-3 px-4">Created</th>
-                          <th className="py-3 px-4 text-right">Action</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-zinc-800">
-                        {campaigns.map((camp) => (
-                          <tr key={camp.id} className="hover:bg-zinc-900/30 transition-colors">
-                            <td className="py-3.5 px-4 font-semibold text-zinc-100">{camp.name}</td>
-                            <td className="py-3.5 px-4">
-                              <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${
-                                camp.status === 'active' 
-                                  ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-                                  : camp.status === 'paused'
-                                  ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
-                                  : 'bg-zinc-800 text-zinc-400 border border-zinc-700'
-                              }`}>
-                                <span className={`h-1.5 w-1.5 rounded-full ${
-                                  camp.status === 'active' ? 'bg-emerald-400 animate-pulse' : camp.status === 'paused' ? 'bg-amber-400' : 'bg-zinc-500'
-                                }`} />
-                                {camp.status}
-                              </span>
-                            </td>
-                            <td className="py-3.5 px-4 text-xs font-mono">{new Date(camp.created_at).toLocaleDateString()}</td>
-                            <td className="py-3.5 px-4 text-right">
-                              <Link 
-                                href={`/campaigns/${camp.id}`} 
-                                className="inline-flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 font-medium cursor-pointer"
-                              >
-                                Manage <ExternalLink className="h-3 w-3" />
-                              </Link>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+          <div className="grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
+            <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+              <div className="mb-5 flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-zinc-950">Recent activity</h2>
+                  <p className="text-sm text-zinc-500">A quick view of imports, AI actions, approvals, and replies.</p>
+                </div>
+                <Link href="/activity" className="text-sm font-semibold text-violet-700 hover:text-violet-800">
+                  View all
+                </Link>
               </div>
 
-              {/* Recent Activities */}
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-6 backdrop-blur-sm">
-                <h3 className="font-bold text-white mb-4 text-lg">Activity Feed</h3>
+              <div className="space-y-3">
                 {recentActivities.length === 0 ? (
-                  <div className="flex items-center justify-center h-48 border border-dashed border-zinc-800 rounded-lg text-zinc-500 text-sm">
-                    No recent activities recorded.
-                  </div>
+                  <EmptyState
+                    icon={Activity}
+                    title="No activity yet"
+                    description="Import a lead list or send your first email to see the timeline come alive."
+                    actionLabel="Import Leads"
+                    actionHref="/leads/import"
+                    actionIcon={Database}
+                  />
                 ) : (
-                  <div className="space-y-4">
-                    {recentActivities.map((act, idx) => {
-                      const lead = act.leads as any;
-                      const name = lead ? `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || lead.email : 'Unknown Lead';
-                      return (
-                        <div key={idx} className="flex items-start gap-3 border-b border-zinc-800 pb-3 last:border-b-0 last:pb-0">
-                          <div className="mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-zinc-800 text-zinc-400">
-                            <Clock className="h-4 w-4" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs font-semibold text-zinc-200">
-                              {name}
-                            </p>
-                            <p className="text-xs text-zinc-400 mt-0.5">
-                              Event: <span className="font-semibold text-violet-400 uppercase">{act.event_type}</span>
-                            </p>
-                            <span className="text-[10px] text-zinc-500 font-mono block mt-1">
-                              {new Date(act.created_at).toLocaleTimeString()}
-                            </span>
-                          </div>
+                  recentActivities.map((item) => (
+                    <div key={item.id} className="flex items-start gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]/80 p-4">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-violet-600 ring-1 ring-violet-100">
+                        <Activity className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="font-medium text-zinc-950">{getLeadStatusLabel(item.action)}</div>
+                          <span className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-zinc-500 ring-1 ring-[var(--border)]">
+                            {new Date(item.created_at).toLocaleString()}
+                          </span>
                         </div>
-                      );
-                    })}
-                  </div>
+                        <p className="mt-1 text-sm text-zinc-500">{item.message || 'No details provided.'}</p>
+                      </div>
+                    </div>
+                  ))
                 )}
               </div>
-            </div>
+            </section>
+
+            <section className="space-y-4">
+              <div className="rounded-3xl border border-[var(--border)] bg-gradient-to-br from-violet-50 via-white to-teal-50 p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.22em] text-violet-600">ReachMira assistant</div>
+                    <h3 className="mt-2 text-lg font-semibold text-zinc-950">Smarter outreach without the complexity</h3>
+                  </div>
+                  <div className="rounded-2xl bg-white px-3 py-2 text-xs font-semibold text-zinc-600 ring-1 ring-[var(--border)]">
+                    Manual-first
+                  </div>
+                </div>
+                <p className="mt-3 text-sm leading-6 text-zinc-500">
+                  Import leads, generate context, draft manually, approve safely, and keep every follow-up visible in one calm workspace.
+                </p>
+                <div className="mt-5 flex flex-wrap gap-2">
+                  <Link href="/leads/import" className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700">
+                    <Sparkles className="h-4 w-4" />
+                    Import leads
+                  </Link>
+                  <Link href="/manual-emails" className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 hover:bg-teal-50 hover:text-teal-700">
+                    <CircleDashed className="h-4 w-4" />
+                    Open drafts
+                  </Link>
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-zinc-950">Campaigns</h3>
+                    <p className="text-sm text-zinc-500">Track active outreach programs.</p>
+                  </div>
+                  <div className="rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-semibold text-violet-700">
+                    {campaignCount} total
+                  </div>
+                </div>
+                <div className="mt-4 space-y-3">
+                  {campaignCount === 0 ? (
+                    <EmptyState
+                      icon={FolderOpen}
+                      title="No campaigns yet"
+                      description="Create a campaign when you are ready to send a sequence."
+                      actionLabel="Create Campaign"
+                      actionHref="/campaigns/new"
+                      actionIcon={Sparkles}
+                    />
+                  ) : (
+                    <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]/70 p-4">
+                      <div className="flex items-center gap-2 text-sm font-medium text-zinc-700">
+                        <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                        Campaigns are active and ready for follow-up tracking.
+                      </div>
+                      <p className="mt-2 text-sm text-zinc-500">
+                        Keep sequences short, human, and easy to approve.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </section>
           </div>
-        )}
-      </main>
-    </div>
+        </div>
+      )}
+    </AppShell>
   );
 }

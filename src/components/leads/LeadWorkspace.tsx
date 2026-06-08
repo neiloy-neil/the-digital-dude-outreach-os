@@ -5,8 +5,10 @@ import Link from 'next/link';
 import Sidebar from '@/components/Sidebar';
 import StatusBadge from '@/components/leads/StatusBadge';
 import { buildLeadContextPrompt } from '@/lib/leads/context-prompt';
+import { htmlToPlainText, normalizeDraftHtml } from '@/lib/email/html';
 import { EMAIL_TYPES, getLeadStatusLabel } from '@/lib/leads/status';
 import { createClient } from '@/utils/supabase/client';
+import RichTextEditor from '@/components/leads/RichTextEditor';
 import type { AuditLog, EmailAccount, Lead, SentEmail } from '@/types/database.types';
 import {
   ArrowLeft,
@@ -65,6 +67,7 @@ function eventTimestamp(event: { created_at?: string; sent_at?: string }) {
 export default function LeadWorkspace({ leadId, title, subtitle, backHref, backLabel }: Props) {
   const supabase = createClient();
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -111,8 +114,13 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
     manual_email_approved: false,
   });
 
-  const loadLead = useCallback(async () => {
-    setLoading(true);
+  const loadLead = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false;
+    if (silent) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     try {
       const [leadResponse, accountsResponse] = await Promise.all([
         fetch(`/api/leads/${leadId}`),
@@ -165,13 +173,17 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
         ai_personalized_first_line: nextLead.ai_personalized_first_line || '',
         ai_solution_angle: nextLead.ai_solution_angle || '',
         manual_email_subject: nextLead.manual_email_subject || nextLead.ai_subject || nextLead.personalized_subject || '',
-        manual_email_body: nextLead.manual_email_body || nextLead.ai_email_body || nextLead.personalized_body || '',
+        manual_email_body: normalizeDraftHtml(nextLead.manual_email_body || nextLead.ai_email_body || nextLead.personalized_body || ''),
         manual_email_approved: Boolean(nextLead.manual_email_approved),
       });
     } catch (loadError: unknown) {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load lead');
     } finally {
-      setLoading(false);
+      if (silent) {
+        setRefreshing(false);
+      } else {
+        setLoading(false);
+      }
     }
   }, [leadId, supabase]);
 
@@ -206,6 +218,8 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
 
   const leadName = lead?.decision_maker_name || `${lead?.first_name || ''} ${lead?.last_name || ''}`.trim() || 'Prospect';
   const leadContextPrompt = useMemo(() => buildLeadContextPrompt({ ...lead, recommended_offer: form.recommended_offer }), [form.recommended_offer, lead]);
+  const manualEmailBodyText = useMemo(() => htmlToPlainText(form.manual_email_body), [form.manual_email_body]);
+  const isInitialLoading = loading && !lead;
 
   const handleSaveLead = async () => {
     setSaving(true);
@@ -213,7 +227,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
     setSuccess(null);
     try {
       const nextStatus =
-        form.manual_email_subject.trim() || form.manual_email_body.trim()
+        form.manual_email_subject.trim() || manualEmailBodyText
           ? ['new', 'imported', 'data_reviewed'].includes(form.status)
             ? 'manual_email_draft'
             : form.status
@@ -228,13 +242,13 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
           company_name: form.company_name || form.company,
           company: form.company || form.company_name,
           last_manual_email_account_id: selectedEmailAccountId || null,
-          manual_personalization_status: form.manual_email_subject || form.manual_email_body ? 'drafted' : 'not_started',
+          manual_personalization_status: form.manual_email_subject || manualEmailBodyText ? 'drafted' : 'not_started',
         }),
       });
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(payload.error || 'Failed to save lead');
       setSuccess('Lead changes saved.');
-      await loadLead();
+      await loadLead({ silent: true });
     } catch (saveError: unknown) {
       setError(saveError instanceof Error ? saveError.message : 'Failed to save lead');
     } finally {
@@ -264,7 +278,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
       if (!response.ok) throw new Error(payload.error || 'Failed to generate AI');
       setSuccess('AI draft refreshed.');
       setActiveTab('ai');
-      await loadLead();
+      await loadLead({ silent: true });
     } catch (generateError: unknown) {
       setError(generateError instanceof Error ? generateError.message : 'Failed to generate AI');
     } finally {
@@ -293,7 +307,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
       if (!response.ok) throw new Error(payload.error || 'Failed to send email');
       setSuccess(mode === 'test' ? `Test email sent to ${payload.to}.` : 'Email sent successfully.');
       setActiveTab('history');
-      await loadLead();
+      await loadLead({ silent: true });
     } catch (sendError: unknown) {
       setError(sendError instanceof Error ? sendError.message : 'Failed to send email');
     } finally {
@@ -318,7 +332,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
 
       if (updateError) throw updateError;
       setSuccess('This lead has poor data. AI skipped to save credits.');
-      await loadLead();
+      await loadLead({ silent: true });
     } catch (skipError: unknown) {
       setError(skipError instanceof Error ? skipError.message : 'Failed to skip AI');
     } finally {
@@ -356,11 +370,11 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
         {error && <div className="mb-6 rounded-lg border border-rose-500/20 bg-rose-500/10 p-3 text-xs text-rose-300">{error}</div>}
         {success && <div className="mb-6 rounded-lg border border-emerald-500/20 bg-emerald-500/10 p-3 text-xs text-emerald-300">{success}</div>}
 
-        {loading || !lead ? (
+        {isInitialLoading ? (
           <div className="flex h-64 items-center justify-center">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
           </div>
-        ) : (
+        ) : lead ? (
           <div className="space-y-6">
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-2">
               <div className="flex flex-wrap gap-2">
@@ -564,12 +578,17 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                     </div>
                     <div>
                       <label className="mb-1 block text-xs font-semibold uppercase text-zinc-500">Body</label>
-                      <textarea value={form.manual_email_body} onChange={(e) => setForm((current) => ({ ...current, manual_email_body: e.target.value }))} rows={12} className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm" />
+                      <RichTextEditor
+                        value={form.manual_email_body}
+                        onChange={(value) => setForm((current) => ({ ...current, manual_email_body: value }))}
+                        placeholder="Write a polished email. Use the toolbar to bold text, add lists, or insert links."
+                        className="mt-1"
+                      />
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <button onClick={handleSaveLead} disabled={saving} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2 text-sm font-semibold text-zinc-200 disabled:opacity-50"><Save className="h-4 w-4" /> Save Draft</button>
                       <button onClick={() => navigator.clipboard.writeText(leadContextPrompt)} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2 text-sm font-semibold text-zinc-200"><Copy className="h-4 w-4" /> Copy Lead Context for AI</button>
-                      <button onClick={() => navigator.clipboard.writeText(form.manual_email_body || '')} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2 text-sm font-semibold text-zinc-200"><Copy className="h-4 w-4" /> Copy Email Body</button>
+                      <button onClick={() => navigator.clipboard.writeText(manualEmailBodyText || '')} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2 text-sm font-semibold text-zinc-200"><Copy className="h-4 w-4" /> Copy Plain Text</button>
                     </div>
                   </div>
                 </div>
@@ -580,43 +599,65 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
               <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-6">
                 <div className="mb-4 flex items-center justify-between border-b border-zinc-800 pb-3">
                   <h3 className="text-base font-bold text-white">Email History</h3>
-                  <span className="text-xs text-zinc-500">{lead.sent_emails?.length || 0} emails</span>
+                  <div className="flex items-center gap-3">
+                    {refreshing && (
+                      <span className="inline-flex items-center gap-2 rounded-full border border-violet-500/20 bg-violet-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-violet-300">
+                        <span className="h-2 w-2 animate-spin rounded-full border border-violet-300 border-t-transparent" />
+                        Refreshing
+                      </span>
+                    )}
+                    <span className="text-xs text-zinc-500">{lead.sent_emails?.length || 0} emails</span>
+                  </div>
                 </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead className="border-b border-zinc-800 text-xs uppercase text-zinc-500">
-                      <tr>
-                        <th className="px-3 py-2">Sent At</th>
-                        <th className="px-3 py-2">Type</th>
-                        <th className="px-3 py-2">Sender</th>
-                        <th className="px-3 py-2">Recipient</th>
-                        <th className="px-3 py-2">Subject</th>
-                        <th className="px-3 py-2">Status</th>
-                        <th className="px-3 py-2">Provider</th>
-                        <th className="px-3 py-2">Signals</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-800">
-                      {(lead.sent_emails || []).map((email) => (
-                        <tr key={email.id} className="cursor-pointer hover:bg-zinc-900/30" onClick={() => setSelectedEmail(email)}>
-                          <td className="px-3 py-3 text-zinc-300">{formatDate(email.sent_at)}</td>
-                          <td className="px-3 py-3 text-zinc-300">{getLeadStatusLabel(email.email_type)}</td>
-                          <td className="px-3 py-3 text-zinc-300">{email.sender_email}</td>
-                          <td className="px-3 py-3 text-zinc-300">{email.recipient_email}</td>
-                          <td className="px-3 py-3 text-zinc-100">{email.subject}</td>
-                          <td className="px-3 py-3"><StatusBadge status={email.status} /></td>
-                          <td className="px-3 py-3 text-zinc-300">{email.provider}</td>
-                          <td className="px-3 py-3 text-xs text-zinc-400">
-                            {email.opened_at ? 'Opened ' : ''}
-                            {email.clicked_at ? 'Clicked ' : ''}
-                            {email.replied_at ? 'Replied ' : ''}
-                            {email.bounced_at ? 'Bounced' : ''}
-                          </td>
+                {refreshing && (
+                  <div className="mb-4 rounded-lg border border-zinc-800 bg-zinc-950/50 p-4 text-sm text-zinc-400">
+                    Refreshing email history...
+                  </div>
+                )}
+                {(lead.sent_emails || []).length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-zinc-800 bg-zinc-950/40 p-8 text-center">
+                    <div className="text-sm font-semibold text-zinc-200">No sent emails yet</div>
+                    <p className="mt-2 text-sm text-zinc-500">
+                      Send a manual email or run a campaign step and the sent messages will appear here.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm">
+                      <thead className="border-b border-zinc-800 text-xs uppercase text-zinc-500">
+                        <tr>
+                          <th className="px-3 py-2">Sent At</th>
+                          <th className="px-3 py-2">Type</th>
+                          <th className="px-3 py-2">Sender</th>
+                          <th className="px-3 py-2">Recipient</th>
+                          <th className="px-3 py-2">Subject</th>
+                          <th className="px-3 py-2">Status</th>
+                          <th className="px-3 py-2">Provider</th>
+                          <th className="px-3 py-2">Signals</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-800">
+                        {(lead.sent_emails || []).map((email) => (
+                          <tr key={email.id} className="cursor-pointer hover:bg-zinc-900/30" onClick={() => setSelectedEmail(email)}>
+                            <td className="px-3 py-3 text-zinc-300">{formatDate(email.sent_at)}</td>
+                            <td className="px-3 py-3 text-zinc-300">{getLeadStatusLabel(email.email_type)}</td>
+                            <td className="px-3 py-3 text-zinc-300">{email.sender_email}</td>
+                            <td className="px-3 py-3 text-zinc-300">{email.recipient_email}</td>
+                            <td className="px-3 py-3 text-zinc-100">{email.subject}</td>
+                            <td className="px-3 py-3"><StatusBadge status={email.status} /></td>
+                            <td className="px-3 py-3 text-zinc-300">{email.provider}</td>
+                            <td className="px-3 py-3 text-xs text-zinc-400">
+                              {email.opened_at ? 'Opened ' : ''}
+                              {email.clicked_at ? 'Clicked ' : ''}
+                              {email.replied_at ? 'Replied ' : ''}
+                              {email.bounced_at ? 'Bounced' : ''}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
               </div>
             )}
 
@@ -645,24 +686,35 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
               </div>
             )}
           </div>
+        ) : (
+          <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 p-6 text-sm text-rose-200">
+            <div className="font-semibold text-rose-100">Lead could not be loaded</div>
+            <p className="mt-2 text-rose-200/80">{error || 'Please go back and try again.'}</p>
+          </div>
         )}
 
         {selectedEmail && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
-            <div className="max-h-[85vh] w-full max-w-3xl overflow-auto rounded-2xl border border-zinc-800 bg-zinc-950 p-6">
-              <div className="mb-4 flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-bold text-white">{selectedEmail.subject}</h3>
-                  <p className="text-sm text-zinc-400">{selectedEmail.sender_email} to {selectedEmail.recipient_email}</p>
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-6">
+              <div className="max-h-[85vh] w-full max-w-3xl overflow-auto rounded-2xl border border-zinc-800 bg-zinc-950 p-6">
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold text-white">{selectedEmail.subject}</h3>
+                    <p className="text-sm text-zinc-400">{selectedEmail.sender_email} to {selectedEmail.recipient_email}</p>
+                  </div>
+                  <button onClick={() => setSelectedEmail(null)} className="rounded-lg border border-zinc-800 p-2 text-zinc-400 hover:text-white">
+                    <X className="h-4 w-4" />
+                  </button>
                 </div>
-                <button onClick={() => setSelectedEmail(null)} className="rounded-lg border border-zinc-800 p-2 text-zinc-400 hover:text-white">
-                  <X className="h-4 w-4" />
-                </button>
+                {selectedEmail.body_html ? (
+                  <div className="rounded-lg border border-zinc-800 bg-white p-5 text-sm text-zinc-900">
+                    <div dangerouslySetInnerHTML={{ __html: selectedEmail.body_html }} />
+                  </div>
+                ) : (
+                  <pre className="whitespace-pre-wrap rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-100">{selectedEmail.body_text || htmlToPlainText(selectedEmail.body_html || '') || 'No body available.'}</pre>
+                )}
               </div>
-              <pre className="whitespace-pre-wrap rounded-lg border border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-100">{selectedEmail.body_text || selectedEmail.body_html || 'No body available.'}</pre>
             </div>
-          </div>
-        )}
+          )}
       </main>
     </div>
   );

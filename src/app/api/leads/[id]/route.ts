@@ -3,6 +3,7 @@ import { createClient } from '@/utils/supabase/server';
 import { createServiceClient } from '@/utils/supabase/service';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
 import { calculateLeadQuality } from '@/lib/leads/library';
+import { htmlToPlainText } from '@/lib/email/html';
 import { isMissingTableError } from '@/lib/supabase/schema-errors';
 
 export async function GET(
@@ -65,13 +66,14 @@ export async function GET(
     }
   }
 
+  const serviceSupabase = createServiceClient();
   const [sentEmailsResponse, auditLogsResponse] = await Promise.all([
-    supabase
+    serviceSupabase
       .from('sent_emails')
       .select('*')
       .eq('lead_id', id)
       .order('sent_at', { ascending: false }),
-    supabase
+    serviceSupabase
       .from('audit_logs')
       .select('*')
       .eq('lead_id', id)
@@ -84,7 +86,10 @@ export async function GET(
       ...data,
       lead_lists: leadList,
       campaigns: campaign,
-      sent_emails: sentEmailsResponse.data || [],
+      sent_emails: (sentEmailsResponse.data || []).map((email) => ({
+        ...email,
+        body_text: email.body_text || htmlToPlainText(email.body_html || ''),
+      })),
     },
     auditLogs: auditLogsResponse.data || [],
   });
@@ -171,7 +176,6 @@ export async function PATCH(
         tech_stack: payload.tech_stack || null,
         pain_points: payload.pain_points || null,
         solution: payload.solution || null,
-        recommended_offer: payload.recommended_offer || null,
         solution_score: payload.solution_score !== undefined && payload.solution_score !== null && payload.solution_score !== '' ? Number(payload.solution_score) : null,
         solution_fit_score: payload.solution_fit_score !== undefined && payload.solution_fit_score !== null && payload.solution_fit_score !== '' ? Number(payload.solution_fit_score) : null,
         lead_source: payload.lead_source || null,

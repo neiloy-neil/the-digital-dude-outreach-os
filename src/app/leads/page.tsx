@@ -3,11 +3,14 @@
 export const dynamic = 'force-dynamic';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Sidebar from '@/components/Sidebar';
 import StatusBadge from '@/components/leads/StatusBadge';
 import { createClient } from '@/utils/supabase/client';
 import Link from 'next/link';
-import { Plus, Search } from 'lucide-react';
+import { Search, ArrowUpRight, Sparkles, Filter, MailPlus } from 'lucide-react';
+import AppShell from '@/components/reachmira/AppShell';
+import PageHeader from '@/components/reachmira/PageHeader';
+import EmptyState from '@/components/reachmira/EmptyState';
+import QualityScoreBadge from '@/components/reachmira/QualityScoreBadge';
 
 type LeadRow = {
   id: string;
@@ -118,149 +121,210 @@ export default function LeadsPage() {
   };
 
   return (
-    <div className="flex min-h-screen bg-zinc-950 text-zinc-100">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto p-8">
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h2 className="text-3xl font-extrabold tracking-tight text-white">Lead Library</h2>
-            <p className="mt-1 text-sm text-zinc-400">Filter by status, outreach stage, and email history before you open a lead.</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Link href="/lead-lists" className="rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-2 text-sm font-semibold text-zinc-200">Lead Lists</Link>
-            <Link href="/leads/new" className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-2 text-sm font-semibold text-zinc-200">
-              <Plus className="h-4 w-4" /> Add Manual Lead
+    <AppShell>
+      <PageHeader
+        eyebrow="Lead library"
+        title="Lead Library"
+        subtitle="Organize, personalize, and contact every lead from one workspace."
+        actions={
+          <>
+            <Link href="/lead-lists" className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 hover:bg-zinc-50">
+              <ArrowUpRight className="h-4 w-4" />
+              Lead Lists
             </Link>
-            <Link href="/leads/import" className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-violet-600 to-blue-600 px-4 py-2 text-sm font-semibold text-white">
-              <Plus className="h-4 w-4" /> Import Leads
+            <Link href="/leads/new" className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 hover:bg-violet-50 hover:text-violet-700">
+              <MailPlus className="h-4 w-4" />
+              Add Manual Lead
             </Link>
+            <Link href="/leads/import" className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700">
+              <Sparkles className="h-4 w-4" />
+              Import Leads
+            </Link>
+          </>
+        }
+      />
+
+      {error && <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
+
+      <section className="rounded-3xl border border-[var(--border)] bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+        <div className="grid gap-3 xl:grid-cols-4">
+          <div className="flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3">
+            <Search className="h-4 w-4 text-zinc-400" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search leads..." className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-400" />
           </div>
+          <select value={leadListFilter} onChange={(e) => setLeadListFilter(e.target.value)} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-700">
+            <option value="all">All Lead Lists</option>
+            {leadLists.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}
+          </select>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-700">
+            <option value="all">All Statuses</option>
+            {['new', 'imported', 'data_reviewed', 'ai_generated', 'manual_email_draft', 'email_approved', 'mail_sent', 'manual_email_sent', 'follow_up_1_sent', 'follow_up_2_sent', 'follow_up_3_sent', 'replied', 'interested', 'not_interested', 'demo_scheduled', 'proposal_sent', 'won', 'lost', 'bounced', 'unsubscribed', 'do_not_contact', 'excluded'].map((status) => <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>)}
+          </select>
+          <button onClick={loadData} className="inline-flex items-center justify-center gap-2 rounded-2xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white hover:bg-zinc-800">
+            <Filter className="h-4 w-4" />
+            Apply Filters
+          </button>
         </div>
 
-        {error && <div className="mb-6 rounded-lg border border-rose-500/20 bg-rose-500/10 p-3 text-xs text-rose-400">{error}</div>}
-
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4 space-y-4">
-          <div className="grid gap-3 xl:grid-cols-4">
-            <div className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
-              <Search className="h-4 w-4 text-zinc-500" />
-              <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search leads..." className="w-full bg-transparent text-sm outline-none" />
-            </div>
-            <select value={leadListFilter} onChange={(e) => setLeadListFilter(e.target.value)} className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm">
-              <option value="all">All Lead Lists</option>
-              {leadLists.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}
-            </select>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm">
-              <option value="all">All Statuses</option>
-              {['new', 'imported', 'data_reviewed', 'ai_generated', 'manual_email_draft', 'email_approved', 'mail_sent', 'manual_email_sent', 'follow_up_1_sent', 'follow_up_2_sent', 'follow_up_3_sent', 'replied', 'interested', 'not_interested', 'demo_scheduled', 'proposal_sent', 'won', 'lost', 'bounced', 'unsubscribed', 'do_not_contact', 'excluded'].map((status) => <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>)}
-            </select>
-            <button onClick={loadData} className="rounded-lg bg-zinc-100 px-4 py-2 text-sm font-semibold text-zinc-950">Apply Filters</button>
-          </div>
-
-          <div className="grid gap-3 xl:grid-cols-5">
-            <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm">
-              <option value="all">All Priorities</option>
-              <option value="low">Low</option>
-              <option value="normal">Normal</option>
-              <option value="medium">Medium</option>
-              <option value="high">High</option>
-            </select>
-            <select value={qualityFilter} onChange={(e) => setQualityFilter(e.target.value)} className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm">
-              <option value="all">All Data Quality</option>
-              <option value="poor">Poor</option>
-              <option value="fair">Fair</option>
-              <option value="good">Good</option>
-              <option value="excellent">Excellent</option>
-            </select>
-            <select value={emailTypeFilter} onChange={(e) => setEmailTypeFilter(e.target.value)} className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm">
-              <option value="all">Any Last Email Type</option>
-              <option value="first_email">First Email</option>
-              <option value="follow_up_1">Follow-up 1</option>
-              <option value="follow_up_2">Follow-up 2</option>
-              <option value="follow_up_3">Follow-up 3</option>
-              <option value="custom_email">Custom Email</option>
-              <option value="proposal_email">Proposal</option>
-            </select>
-            <select value={repliedFilter} onChange={(e) => setRepliedFilter(e.target.value)} className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm">
-              <option value="all">Reply State</option>
-              <option value="yes">Replied</option>
-              <option value="no">Not Replied</option>
-            </select>
-            <select value={followUpStageFilter} onChange={(e) => setFollowUpStageFilter(e.target.value)} className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm">
-              <option value="all">Follow-up Stage</option>
-              <option value="0">None</option>
-              <option value="1">Stage 1</option>
-              <option value="2">Stage 2</option>
-              <option value="3">Stage 3</option>
-            </select>
-          </div>
-
-          <div className="grid gap-3 xl:grid-cols-3">
-            <select value={contactGuardFilter} onChange={(e) => setContactGuardFilter(e.target.value)} className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm">
-              <option value="all">Contact Safety</option>
-              <option value="do_not_contact">Do Not Contact</option>
-              <option value="bounced">Bounced</option>
-              <option value="unsubscribed">Unsubscribed</option>
-            </select>
-            <select value={campaignId} onChange={(e) => setCampaignId(e.target.value)} className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm">
-              {campaigns.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
-            </select>
-            <div className="text-xs text-zinc-500 self-center">{filteredLeads.length} visible leads</div>
-          </div>
-
-          {selected.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2 border-t border-zinc-800 pt-4">
-              <span className="text-xs font-semibold text-zinc-400">{selected.length} selected</span>
-              <button onClick={() => runBulkAction('mark_interested')} className="rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-400">Mark Interested</button>
-              <button onClick={() => runBulkAction('mark_not_interested')} className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-300">Mark Not Interested</button>
-              <button onClick={() => runBulkAction('mark_do_not_contact')} className="rounded-lg border border-rose-500/20 bg-rose-500/10 px-3 py-2 text-xs font-semibold text-rose-300">Mark Do Not Contact</button>
-              <button onClick={() => runBulkAction('mark_excluded')} className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-300">Mark Excluded</button>
-              <button onClick={() => runBulkAction('add_to_campaign')} className="rounded-lg border border-violet-500/20 bg-violet-500/10 px-3 py-2 text-xs font-semibold text-violet-300">Add to Campaign</button>
-            </div>
-          )}
+        <div className="mt-3 grid gap-3 xl:grid-cols-5">
+          <select value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value)} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-700">
+            <option value="all">All Priorities</option>
+            <option value="low">Low</option>
+            <option value="normal">Normal</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+          <select value={qualityFilter} onChange={(e) => setQualityFilter(e.target.value)} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-700">
+            <option value="all">All Data Quality</option>
+            <option value="poor">Poor</option>
+            <option value="fair">Fair</option>
+            <option value="good">Good</option>
+            <option value="excellent">Excellent</option>
+          </select>
+          <select value={emailTypeFilter} onChange={(e) => setEmailTypeFilter(e.target.value)} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-700">
+            <option value="all">Any Last Email Type</option>
+            <option value="first_email">First Email</option>
+            <option value="follow_up_1">Follow-up 1</option>
+            <option value="follow_up_2">Follow-up 2</option>
+            <option value="follow_up_3">Follow-up 3</option>
+            <option value="custom_email">Custom Email</option>
+            <option value="proposal_email">Proposal</option>
+          </select>
+          <select value={repliedFilter} onChange={(e) => setRepliedFilter(e.target.value)} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-700">
+            <option value="all">Reply State</option>
+            <option value="yes">Replied</option>
+            <option value="no">Not Replied</option>
+          </select>
+          <select value={followUpStageFilter} onChange={(e) => setFollowUpStageFilter(e.target.value)} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-700">
+            <option value="all">Follow-up Stage</option>
+            <option value="0">None</option>
+            <option value="1">Stage 1</option>
+            <option value="2">Stage 2</option>
+            <option value="3">Stage 3</option>
+          </select>
         </div>
 
-        <div className="mt-6 rounded-xl border border-zinc-800 bg-zinc-900/20 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm">
-              <thead className="border-b border-zinc-800 bg-zinc-900/40 text-xs uppercase text-zinc-500">
-                <tr>
-                  <th className="px-4 py-3 w-10" />
-                  <th className="px-4 py-3">Lead</th>
-                  <th className="px-4 py-3">Company</th>
-                  <th className="px-4 py-3">List</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Last Email Type</th>
-                  <th className="px-4 py-3">Last Contacted</th>
-                  <th className="px-4 py-3">Open</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-zinc-800">
-                {loading ? (
-                  <tr><td colSpan={8} className="py-10 text-center text-zinc-500">Loading leads...</td></tr>
-                ) : filteredLeads.length === 0 ? (
-                  <tr><td colSpan={8} className="py-10 text-center text-zinc-500">No leads match your filters.</td></tr>
-                ) : filteredLeads.map((lead) => (
-                  <tr key={lead.id}>
-                    <td className="px-4 py-3"><input type="checkbox" checked={selected.includes(lead.id)} onChange={() => toggleSelected(lead.id)} /></td>
-                    <td className="px-4 py-3">
-                      <div className="font-semibold text-white">{lead.decision_maker_name || `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Prospect'}</div>
-                      <div className="text-xs text-zinc-500">{lead.email}</div>
-                    </td>
-                    <td className="px-4 py-3 text-zinc-300">{lead.company_name || lead.company || '-'}</td>
-                    <td className="px-4 py-3 text-zinc-400">{lead.lead_lists?.name || '-'}</td>
-                    <td className="px-4 py-3"><StatusBadge status={lead.status} /></td>
-                    <td className="px-4 py-3 text-zinc-300">{lead.sent_emails?.[0]?.email_type?.replace(/_/g, ' ') || '-'}</td>
-                    <td className="px-4 py-3 text-zinc-300">{lead.last_email_sent_at ? new Date(lead.last_email_sent_at).toLocaleDateString() : '-'}</td>
-                    <td className="px-4 py-3">
-                      <Link href={`/leads/${lead.id}`} className="font-semibold text-violet-400 hover:text-violet-300">Open</Link>
-                    </td>
+        <div className="mt-3 grid gap-3 xl:grid-cols-3">
+          <select value={contactGuardFilter} onChange={(e) => setContactGuardFilter(e.target.value)} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-700">
+            <option value="all">Contact Safety</option>
+            <option value="do_not_contact">Do Not Contact</option>
+            <option value="bounced">Bounced</option>
+            <option value="unsubscribed">Unsubscribed</option>
+          </select>
+          <select value={campaignId} onChange={(e) => setCampaignId(e.target.value)} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-700">
+            {campaigns.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
+          </select>
+          <div className="self-center text-sm text-zinc-500">{filteredLeads.length} visible leads</div>
+        </div>
+
+        {selected.length > 0 && (
+          <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]/60 p-3">
+            <span className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-400">{selected.length} selected</span>
+            <button onClick={() => runBulkAction('mark_interested')} className="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">Mark Interested</button>
+            <button onClick={() => runBulkAction('mark_not_interested')} className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">Mark Not Interested</button>
+            <button onClick={() => runBulkAction('mark_do_not_contact')} className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">Mark Do Not Contact</button>
+            <button onClick={() => runBulkAction('mark_excluded')} className="rounded-xl bg-zinc-100 px-3 py-2 text-xs font-semibold text-zinc-700">Mark Excluded</button>
+            <button onClick={() => runBulkAction('add_to_campaign')} className="rounded-xl bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700">Add to Campaign</button>
+          </div>
+        )}
+      </section>
+
+      <section className="mt-6 rounded-3xl border border-[var(--border)] bg-white shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+        {loading ? (
+          <div className="flex h-64 items-center justify-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
+          </div>
+        ) : filteredLeads.length === 0 ? (
+          <EmptyState
+            icon={Users}
+            title="Your lead library is empty"
+            description="Import a CSV or Google Sheet to start personalizing outreach."
+            actionLabel="Import Leads"
+            actionHref="/leads/import"
+            actionIcon={Sparkles}
+          />
+        ) : (
+          <>
+            <div className="hidden overflow-x-auto lg:block">
+              <table className="w-full text-left text-sm">
+                <thead className="sticky top-0 z-10 border-b border-[var(--border)] bg-white text-xs uppercase tracking-[0.18em] text-zinc-400">
+                  <tr>
+                    <th className="w-10 px-4 py-4" />
+                    <th className="px-4 py-4">Company</th>
+                    <th className="px-4 py-4">Contact</th>
+                    <th className="px-4 py-4">Email</th>
+                    <th className="px-4 py-4">Industry</th>
+                    <th className="px-4 py-4">Pain Point</th>
+                    <th className="px-4 py-4">Priority</th>
+                    <th className="px-4 py-4">Data Quality</th>
+                    <th className="px-4 py-4">Status</th>
+                    <th className="px-4 py-4">AI Status</th>
+                    <th className="px-4 py-4">Last Contacted</th>
+                    <th className="px-4 py-4">Next Follow-up</th>
+                    <th className="px-4 py-4 text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </main>
-    </div>
+                </thead>
+                <tbody className="divide-y divide-[var(--border)]">
+                  {filteredLeads.map((lead) => (
+                    <tr key={lead.id} className="transition hover:bg-violet-50/50">
+                      <td className="px-4 py-4">
+                        <input type="checkbox" checked={selected.includes(lead.id)} onChange={() => toggleSelected(lead.id)} className="h-4 w-4 rounded border-zinc-300 text-violet-600 focus:ring-violet-500" />
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="font-semibold text-zinc-950">{lead.company_name || lead.company || '-'}</div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <div className="font-medium text-zinc-900">{lead.decision_maker_name || `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Prospect'}</div>
+                      </td>
+                      <td className="px-4 py-4 text-zinc-600">{lead.email}</td>
+                      <td className="px-4 py-4 text-zinc-600">{lead.lead_lists?.name || '-'}</td>
+                      <td className="px-4 py-4 text-zinc-600">{lead.sent_emails?.[0]?.email_type?.replace(/_/g, ' ') || lead.sent_emails?.[0]?.email_type || '-'}</td>
+                      <td className="px-4 py-4 text-zinc-600">{lead.priority || '-'}</td>
+                      <td className="px-4 py-4"><QualityScoreBadge score={lead.data_quality_label === 'excellent' ? 95 : lead.data_quality_label === 'good' ? 75 : lead.data_quality_label === 'fair' ? 55 : 35} label={lead.data_quality_label || 'Data quality'} /></td>
+                      <td className="px-4 py-4"><StatusBadge status={lead.status} /></td>
+                      <td className="px-4 py-4 text-zinc-600">{lead.manual_personalization_status || '-'}</td>
+                      <td className="px-4 py-4 text-zinc-600">{lead.last_email_sent_at ? new Date(lead.last_email_sent_at).toLocaleDateString() : '-'}</td>
+                      <td className="px-4 py-4 text-zinc-600">{lead.next_follow_up_date ? new Date(lead.next_follow_up_date).toLocaleDateString() : '-'}</td>
+                      <td className="px-4 py-4 text-right">
+                        <Link href={`/leads/${lead.id}`} className="inline-flex items-center gap-1 font-semibold text-violet-700 hover:text-violet-800">
+                          View <ArrowUpRight className="h-4 w-4" />
+                        </Link>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="grid gap-4 p-4 lg:hidden">
+              {filteredLeads.map((lead) => (
+                <div key={lead.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]/60 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold text-zinc-950">{lead.company_name || lead.company || '-'}</div>
+                      <div className="text-sm text-zinc-500">{lead.decision_maker_name || `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Prospect'}</div>
+                    </div>
+                    <input type="checkbox" checked={selected.includes(lead.id)} onChange={() => toggleSelected(lead.id)} className="mt-1 h-4 w-4 rounded border-zinc-300 text-violet-600" />
+                  </div>
+                  <div className="mt-3 grid gap-2 text-sm text-zinc-600">
+                    <div><span className="font-medium text-zinc-900">Email:</span> {lead.email}</div>
+                    <div><span className="font-medium text-zinc-900">Status:</span> <StatusBadge status={lead.status} /></div>
+                    <div><span className="font-medium text-zinc-900">Quality:</span> <QualityScoreBadge score={lead.data_quality_label === 'excellent' ? 95 : lead.data_quality_label === 'good' ? 75 : lead.data_quality_label === 'fair' ? 55 : 35} label={lead.data_quality_label || 'Data quality'} /></div>
+                  </div>
+                  <div className="mt-4 flex items-center justify-between">
+                    <Link href={`/leads/${lead.id}`} className="inline-flex items-center gap-2 rounded-xl bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white">
+                      View lead
+                    </Link>
+                    <Link href={`/leads/${lead.id}`} className="text-sm font-semibold text-violet-700">
+                      Open
+                    </Link>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+    </AppShell>
   );
 }

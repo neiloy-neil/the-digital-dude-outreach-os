@@ -113,7 +113,7 @@ export async function GET(request: Request) {
       ? (useListScopedServiceRead ? serviceSupabase : supabase).from('lead_lists').select('id, name').in('id', leadListIds)
       : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
     leadIds.length > 0
-      ? (useListScopedServiceRead ? serviceSupabase : supabase)
+      ? serviceSupabase
           .from('sent_emails')
           .select('lead_id, sent_at, email_type, status, replied_at, bounced_at')
           .in('lead_id', leadIds)
