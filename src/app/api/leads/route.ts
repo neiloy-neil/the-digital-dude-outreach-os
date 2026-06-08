@@ -1,0 +1,285 @@
+import { NextResponse } from 'next/server';
+import { createClient } from '@/utils/supabase/server';
+import { createServiceClient } from '@/utils/supabase/service';
+import { createAuditLog } from '@/lib/audit/create-audit-log';
+import { calculateLeadQuality } from '@/lib/leads/library';
+import { getFollowUpStage, isBlockedLeadStatus, isRepliedStatus } from '@/lib/leads/status';
+import { isMissingTableError } from '@/lib/supabase/schema-errors';
+
+export async function GET(request: Request) {
+  const supabase = await createClient();
+  const serviceSupabase = createServiceClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const url = new URL(request.url);
+  const search = url.searchParams.get('search')?.trim().toLowerCase() || '';
+  const status = url.searchParams.get('status');
+  const priority = url.searchParams.get('priority');
+  const leadListId = url.searchParams.get('leadListId');
+  const lastEmailType = url.searchParams.get('lastEmailType');
+  const replied = url.searchParams.get('replied');
+  const followUpStage = url.searchParams.get('followUpStage');
+  const doNotContact = url.searchParams.get('doNotContact');
+  const bounced = url.searchParams.get('bounced');
+  const unsubscribed = url.searchParams.get('unsubscribed');
+  const lastContactedFrom = url.searchParams.get('lastContactedFrom');
+  const lastContactedTo = url.searchParams.get('lastContactedTo');
+  const useListScopedServiceRead = Boolean(leadListId);
+
+  if (useListScopedServiceRead) {
+    const { data: list, error: listError } = await serviceSupabase
+      .from('lead_lists')
+      .select('id, user_id')
+      .eq('id', leadListId)
+      .maybeSingle();
+
+    if (listError && isMissingTableError(listError, 'lead_lists')) {
+      return NextResponse.json(
+        { error: 'Lead lists are not available in this database yet. Apply the migration first.' },
+        { status: 503 }
+      );
+    }
+
+    if (!list || list.user_id !== user.id) {
+      return NextResponse.json({ error: 'Lead list not found' }, { status: 404 });
+    }
+  }
+
+  let query = (useListScopedServiceRead ? serviceSupabase : supabase)
+    .from('leads')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(250);
+
+  if (leadListId) {
+    query = query.eq('lead_list_id', leadListId);
+  }
+
+  if (status && status !== 'all') {
+    query = query.eq('status', status);
+  }
+
+  if (priority && priority !== 'all') {
+    query = query.eq('priority', priority);
+  }
+
+  if (lastContactedFrom) {
+    query = query.gte('last_email_sent_at', lastContactedFrom);
+  }
+
+  if (lastContactedTo) {
+    query = query.lte('last_email_sent_at', lastContactedTo);
+  }
+
+  const { data, error } = await query;
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  const rawLeads = data || [];
+  const filtered = search
+    ? rawLeads.filter((lead) => {
+        const haystack = [
+          lead.email,
+          lead.first_name,
+          lead.last_name,
+          lead.company_name,
+          lead.company,
+          lead.website,
+          lead.industry,
+          lead.city,
+          lead.country,
+          lead.tags,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        return haystack.includes(search);
+      })
+    : rawLeads;
+
+  const leadListIds = Array.from(new Set(filtered.map((lead) => lead.lead_list_id).filter(Boolean)));
+  const leadIds = filtered.map((lead) => lead.id);
+
+  const [leadListsResponse, sentEmailsResponse] = await Promise.all([
+    leadListIds.length > 0
+      ? (useListScopedServiceRead ? serviceSupabase : supabase).from('lead_lists').select('id, name').in('id', leadListIds)
+      : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
+    leadIds.length > 0
+      ? (useListScopedServiceRead ? serviceSupabase : supabase)
+          .from('sent_emails')
+          .select('lead_id, sent_at, email_type, status, replied_at, bounced_at')
+          .in('lead_id', leadIds)
+          .order('sent_at', { ascending: false })
+      : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
+  ]);
+
+  const leadListMap = new Map((leadListsResponse.data || []).map((list) => [list.id, list]));
+  const sentEmailMap = new Map<string, Array<Record<string, unknown>>>();
+  for (const email of sentEmailsResponse.data || []) {
+    const key = String(email.lead_id);
+    const current = sentEmailMap.get(key) || [];
+    current.push(email);
+    sentEmailMap.set(key, current);
+  }
+
+  const enriched = filtered.filter((lead) => {
+    const sentEmails = sentEmailMap.get(String(lead.id)) || [];
+    const lastSentEmail = sentEmails[0];
+
+    if (lastEmailType && lastEmailType !== 'all' && lastSentEmail?.email_type !== lastEmailType) {
+      return false;
+    }
+
+    if (replied === 'yes' && !isRepliedStatus(lead.status)) {
+      return false;
+    }
+
+    if (replied === 'no' && isRepliedStatus(lead.status)) {
+      return false;
+    }
+
+    if (followUpStage && followUpStage !== 'all' && String(getFollowUpStage(lead.status)) !== followUpStage) {
+      return false;
+    }
+
+    if (doNotContact === 'yes' && !isBlockedLeadStatus(lead.status)) {
+      return false;
+    }
+
+    if (bounced === 'yes' && lead.status !== 'bounced') {
+      return false;
+    }
+
+    if (unsubscribed === 'yes' && lead.status !== 'unsubscribed') {
+      return false;
+    }
+
+    return true;
+  });
+
+  return NextResponse.json({
+    leads: enriched.map((lead) => ({
+      ...lead,
+      lead_lists: lead.lead_list_id ? leadListMap.get(lead.lead_list_id) || null : null,
+      sent_emails: sentEmailMap.get(String(lead.id)) || [],
+    })),
+  });
+}
+
+export async function POST(request: Request) {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  try {
+    const payload = await request.json();
+    const listId = payload.lead_list_id || null;
+
+    if (listId) {
+      const { data: list, error: listError } = await supabase
+        .from('lead_lists')
+        .select('id')
+        .eq('id', listId)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (listError && isMissingTableError(listError, 'lead_lists')) {
+        return NextResponse.json(
+          { error: 'Lead lists are not available in this database yet. Apply the global lead library migration first.' },
+          { status: 503 }
+        );
+      }
+
+      if (!list) {
+        return NextResponse.json({ error: 'Lead list not found' }, { status: 404 });
+      }
+    }
+
+    const quality = calculateLeadQuality(payload);
+    const email = String(payload.email || '').trim().toLowerCase();
+    if (!email) {
+      return NextResponse.json({ error: 'Email is required' }, { status: 400 });
+    }
+
+    const { data, error } = await supabase
+      .from('leads')
+      .insert({
+        user_id: user.id,
+        lead_list_id: listId,
+        is_global: true,
+        owner_type: 'library',
+        campaign_id: payload.campaign_id || null,
+        email,
+        first_name: payload.first_name || null,
+        last_name: payload.last_name || null,
+        company: payload.company_name || payload.company || null,
+        company_name: payload.company_name || payload.company || null,
+        website: payload.website || null,
+        industry: payload.industry || null,
+        sub_industry: payload.sub_industry || null,
+        country: payload.country || null,
+        city: payload.city || null,
+        company_size: payload.company_size || null,
+        estimated_revenue: payload.estimated_revenue || null,
+        decision_maker_name: payload.decision_maker_name || null,
+        decision_maker_title: payload.decision_maker_title || null,
+        email_verified: Boolean(payload.email_verified),
+        linkedin_url: payload.linkedin_url || null,
+        tech_stack: payload.tech_stack || null,
+        pain_points: payload.pain_points || null,
+        solution: payload.solution || null,
+        solution_score: payload.solution_score !== undefined && payload.solution_score !== null && payload.solution_score !== '' ? Number(payload.solution_score) : null,
+        solution_fit_score: payload.solution_fit_score !== undefined && payload.solution_fit_score !== null && payload.solution_fit_score !== '' ? Number(payload.solution_fit_score) : null,
+        lead_source: payload.lead_source || null,
+        qc_by: payload.qc_by || null,
+        outreach_channel: payload.outreach_channel || null,
+        outreach_status: payload.outreach_status || null,
+        priority: payload.priority || null,
+        assigned_to: payload.assigned_to || null,
+        tags: payload.tags || null,
+        notes: payload.notes || null,
+        follow_up_note: payload.follow_up_note || null,
+        lead_owner: payload.lead_owner || null,
+        deal_size: payload.deal_size ? Number(payload.deal_size) : null,
+        pipeline_stage: payload.pipeline_stage || 'New',
+        raw_data: payload.raw_data || {},
+        data_quality_score: quality.score,
+        data_quality_label: quality.label,
+        status: payload.status || 'new',
+        ai_status: 'pending',
+        manual_personalization_status: 'not_started',
+      })
+      .select('*')
+      .single();
+
+    if (error) throw error;
+
+    await createAuditLog({
+      userId: user.id,
+      leadId: data.id,
+      campaignId: payload.campaign_id || null,
+      action: 'lead_imported',
+      message: `Lead created: ${email}`,
+      metadata: { lead_list_id: listId, email },
+    });
+
+    return NextResponse.json({ success: true, lead: data });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Error creating lead';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
