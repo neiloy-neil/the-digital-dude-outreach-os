@@ -27,10 +27,16 @@ export async function POST(request: Request) {
         last_name,
         company,
         email,
+        user_id,
         campaign_id,
+        lead_list_id,
         campaigns (
           id,
           name,
+          user_id
+        ),
+        lead_lists (
+          id,
           user_id
         )
       `)
@@ -48,7 +54,14 @@ export async function POST(request: Request) {
       ? targetLead.campaigns[0]
       : (targetLead.campaigns as { id: string; name: string; user_id: string });
     const campaignId = targetLead.campaign_id;
-    const userId = campaign.user_id;
+    const leadList = Array.isArray(targetLead.lead_lists)
+      ? targetLead.lead_lists[0]
+      : (targetLead.lead_lists as { id: string; user_id: string } | null);
+    const userId = targetLead.user_id || campaign?.user_id || leadList?.user_id;
+
+    if (!userId) {
+      return NextResponse.json({ success: true, message: 'No owning user found for lead.' });
+    }
 
     // 2. Update Lead Status to 'replied'
     await supabase
@@ -62,28 +75,32 @@ export async function POST(request: Request) {
       .eq('lead_id', targetLead.id)
       .is('replied_at', null);
 
-    // 3. Cancel all pending outbox entries for this lead
-    await supabase
-      .from('outbox')
-      .update({ status: 'cancelled', error_message: 'Lead replied' })
-      .eq('lead_id', targetLead.id)
-      .eq('status', 'pending');
+    // 3. Cancel all pending outbox entries for this lead when it belongs to a campaign
+    if (campaignId) {
+      await supabase
+        .from('outbox')
+        .update({ status: 'cancelled', error_message: 'Lead replied' })
+        .eq('lead_id', targetLead.id)
+        .eq('status', 'pending');
+    }
 
-    // 4. Log Reply Activity
-    await supabase.from('activity_logs').insert({
-      campaign_id: campaignId,
-      lead_id: targetLead.id,
-      event_type: 'replied',
-      payload: {
-        subject,
-        snippet: bodyText.substring(0, 300),
-        recipient,
-      },
-    });
+    // 4. Log Reply Activity for compatibility when a campaign exists
+    if (campaignId) {
+      await supabase.from('activity_logs').insert({
+        campaign_id: campaignId,
+        lead_id: targetLead.id,
+        event_type: 'replied',
+        payload: {
+          subject,
+          snippet: bodyText.substring(0, 300),
+          recipient,
+        },
+      });
+    }
 
     await createAuditLog({
       userId,
-      campaignId,
+      campaignId: campaignId || null,
       leadId: targetLead.id,
       action: 'reply_received',
       message: `Reply received from ${sender}`,
@@ -106,7 +123,7 @@ export async function POST(request: Request) {
       const companyStr = targetLead.company ? ` at *${targetLead.company}*` : '';
       const telegramMessage = 
 `🔔 *New Lead Reply Detected!*
-📬 Campaign: *${campaign.name}*
+📬 Campaign: *${campaign?.name || 'ReachMira outreach'}*
 👤 From: *${name}* (${targetLead.email})${companyStr}
 
 💬 *Subject*: ${subject}

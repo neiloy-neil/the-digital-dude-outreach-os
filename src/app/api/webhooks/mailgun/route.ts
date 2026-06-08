@@ -32,7 +32,15 @@ export async function POST(request: Request) {
     // 1. Fetch user's profile to get their Mailgun API key for signature verification
     const { data: campaign } = await supabase
       .from('campaigns')
-      .select('user_id')
+      .select(`
+        id,
+        user_id,
+        email_account_id,
+        email_accounts (
+          id,
+          config
+        )
+      `)
       .eq('id', campaignId)
       .single();
 
@@ -40,21 +48,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 });
     }
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('mailgun_api_key')
-      .eq('id', campaign.user_id)
-      .single();
+    const emailAccount = Array.isArray(campaign.email_accounts)
+      ? campaign.email_accounts[0]
+      : campaign.email_accounts;
+    const signingKey = emailAccount?.config && typeof emailAccount.config === 'object'
+      ? (emailAccount.config as Record<string, unknown>).webhook_signing_key
+      : null;
 
-    if (!profile || !profile.mailgun_api_key) {
-      return NextResponse.json({ error: 'Mailgun configurations missing for this sender' }, { status: 400 });
+    if (!emailAccount || !signingKey || typeof signingKey !== 'string') {
+      return NextResponse.json({ error: 'Mailgun webhook signing key is missing for this sender' }, { status: 400 });
     }
 
     // 2. Verify Signature (Skip only in local development environment to facilitate local curls)
     const isDev = process.env.NODE_ENV === 'development';
+    if (!isDev && !signatureInfo) {
+      return NextResponse.json({ error: 'Missing webhook signature' }, { status: 401 });
+    }
+
     if (!isDev && signatureInfo) {
       const isValid = await verifyMailgunSignature(
-        profile.mailgun_api_key,
+        signingKey,
         signatureInfo.timestamp,
         signatureInfo.token,
         signatureInfo.signature
@@ -77,28 +90,43 @@ export async function POST(request: Request) {
       payload: { mailgun_event_id: eventData.id, timestamp: eventData.timestamp },
     });
 
+    const updateSentEmailRow = async (updatePayload: Record<string, unknown>) => {
+      if (providerMessageId) {
+        const { data: matchedRows } = await supabase
+          .from('sent_emails')
+          .select('id')
+          .eq('provider_message_id', providerMessageId)
+          .limit(1);
+
+        if (matchedRows && matchedRows.length > 0) {
+          await supabase.from('sent_emails').update(updatePayload).eq('id', matchedRows[0].id);
+          return;
+        }
+      }
+
+      const { data: fallbackRows } = await supabase
+        .from('sent_emails')
+        .select('id')
+        .eq('lead_id', leadId)
+        .eq('campaign_id', campaignId)
+        .order('sent_at', { ascending: false })
+        .limit(1);
+
+      if (fallbackRows && fallbackRows.length > 0) {
+        await supabase.from('sent_emails').update(updatePayload).eq('id', fallbackRows[0].id);
+      }
+    };
+
     if (eventType === 'delivered') {
-      await supabase
-        .from('sent_emails')
-        .update({ delivered_at: new Date().toISOString(), status: 'delivered' })
-        .eq(providerMessageId ? 'provider_message_id' : 'lead_id', providerMessageId || leadId);
+      await updateSentEmailRow({ delivered_at: new Date().toISOString(), status: 'delivered' });
     } else if (eventType === 'opened') {
-      await supabase
-        .from('sent_emails')
-        .update({ opened_at: new Date().toISOString(), status: 'opened' })
-        .eq(providerMessageId ? 'provider_message_id' : 'lead_id', providerMessageId || leadId);
+      await updateSentEmailRow({ opened_at: new Date().toISOString(), status: 'opened' });
     } else if (eventType === 'clicked') {
-      await supabase
-        .from('sent_emails')
-        .update({ clicked_at: new Date().toISOString(), status: 'clicked' })
-        .eq(providerMessageId ? 'provider_message_id' : 'lead_id', providerMessageId || leadId);
+      await updateSentEmailRow({ clicked_at: new Date().toISOString(), status: 'clicked' });
     } else if (eventType === 'failed' && eventData.severity === 'permanent') {
       // Bounce event
       await supabase.from('leads').update({ status: 'bounced' }).eq('id', leadId);
-      await supabase
-        .from('sent_emails')
-        .update({ bounced_at: new Date().toISOString(), status: 'bounced' })
-        .eq(providerMessageId ? 'provider_message_id' : 'lead_id', providerMessageId || leadId);
+      await updateSentEmailRow({ bounced_at: new Date().toISOString(), status: 'bounced' });
       
       // Cancel all pending outbox entries for this lead
       await supabase.from('outbox').update({ status: 'cancelled', error_message: 'Lead bounced' }).eq('lead_id', leadId).eq('status', 'pending');
@@ -121,10 +149,7 @@ export async function POST(request: Request) {
 
     } else if (eventType === 'complained') {
       await supabase.from('leads').update({ status: 'do_not_contact' }).eq('id', leadId);
-      await supabase
-        .from('sent_emails')
-        .update({ bounced_at: new Date().toISOString(), status: 'complained' })
-        .eq(providerMessageId ? 'provider_message_id' : 'lead_id', providerMessageId || leadId);
+      await updateSentEmailRow({ bounced_at: new Date().toISOString(), status: 'complained' });
       
       // Cancel all pending outbox entries for this lead
       await supabase.from('outbox').update({ status: 'cancelled', error_message: 'Lead complained' }).eq('lead_id', leadId).eq('status', 'pending');
@@ -148,10 +173,7 @@ export async function POST(request: Request) {
     } else if (eventType === 'unsubscribed') {
       // Unsubscribed via Mailgun header
       await supabase.from('leads').update({ status: 'unsubscribed' }).eq('id', leadId);
-      await supabase
-        .from('sent_emails')
-        .update({ status: 'unsubscribed' })
-        .eq(providerMessageId ? 'provider_message_id' : 'lead_id', providerMessageId || leadId);
+      await updateSentEmailRow({ status: 'unsubscribed' });
       
       // Cancel all pending outbox entries for this lead
       await supabase.from('outbox').update({ status: 'cancelled', error_message: 'Lead unsubscribed' }).eq('lead_id', leadId).eq('status', 'pending');

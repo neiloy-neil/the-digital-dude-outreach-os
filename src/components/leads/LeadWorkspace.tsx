@@ -256,6 +256,35 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
     }
   };
 
+  const handleApproveManualEmail = async () => {
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const response = await fetch(`/api/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...form,
+          manual_email_approved: true,
+          manual_personalization_status: 'approved',
+          status: form.manual_email_subject || manualEmailBodyText ? 'email_approved' : form.status,
+          company_name: form.company_name || form.company,
+          company: form.company || form.company_name,
+          last_manual_email_account_id: selectedEmailAccountId || null,
+        }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error || 'Failed to approve manual email');
+      setSuccess('Manual email approved.');
+      await loadLead({ silent: true });
+    } catch (approveError: unknown) {
+      setError(approveError instanceof Error ? approveError.message : 'Failed to approve manual email');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleGenerateAi = async (requestedDepth?: 'none' | 'basic' | 'standard' | 'deep', requestedMode?: string) => {
     if (requestedDepth === 'deep') {
       const confirmed = window.confirm('This will use a Deep AI request. You have only 20/day.');
@@ -452,7 +481,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                       <div className="flex items-start justify-between gap-4"><span className="text-zinc-500">Company</span><span className="text-right text-zinc-200">{lead.company_name || lead.company || '-'}</span></div>
                       <div className="flex items-start justify-between gap-4"><span className="text-zinc-500">Email</span><span className="text-right text-zinc-200">{lead.email}</span></div>
                       <div className="flex items-start justify-between gap-4"><span className="text-zinc-500">Website</span>{lead.website ? <a href={normalizeWebsite(lead.website)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-violet-400 hover:text-violet-300">Visit <ExternalLink className="h-3.5 w-3.5" /></a> : <span>-</span>}</div>
-                      <div className="flex items-start justify-between gap-4"><span className="text-zinc-500">Last Contacted</span><span className="text-right text-zinc-200">{formatDate(lead.last_email_sent_at || lead.last_contacted)}</span></div>
+                      <div className="flex items-start justify-between gap-4"><span className="text-zinc-500">Last Contacted</span><span className="text-right text-zinc-200">{formatDate(lead.last_email_sent_at || lead.last_contacted_at || lead.last_contacted)}</span></div>
                     </div>
                   </div>
 
@@ -587,6 +616,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <button onClick={handleSaveLead} disabled={saving} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2 text-sm font-semibold text-zinc-200 disabled:opacity-50"><Save className="h-4 w-4" /> Save Draft</button>
+                      <button onClick={handleApproveManualEmail} disabled={saving} className="inline-flex items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-4 py-2 text-sm font-semibold text-teal-700 disabled:opacity-50"><CheckCircle2 className="h-4 w-4" /> Approve Draft</button>
                       <button onClick={() => navigator.clipboard.writeText(leadContextPrompt)} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2 text-sm font-semibold text-zinc-200"><Copy className="h-4 w-4" /> Copy Lead Context for AI</button>
                       <button onClick={() => navigator.clipboard.writeText(manualEmailBodyText || '')} className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-2 text-sm font-semibold text-zinc-200"><Copy className="h-4 w-4" /> Copy Plain Text</button>
                     </div>

@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Sidebar from '@/components/Sidebar';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -11,6 +11,14 @@ import { ArrowLeft, Upload, FileSpreadsheet, CheckCircle, AlertCircle, Database 
 import { LEAD_DESTINATION_FIELDS, autoMapHeaders } from '@/lib/leads/library';
 
 export default function LeadImportPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-white text-zinc-900 p-8">Loading import wizard...</div>}>
+      <LeadImportPageInner />
+    </Suspense>
+  );
+}
+
+function LeadImportPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [leadLists, setLeadLists] = useState<any[]>([]);

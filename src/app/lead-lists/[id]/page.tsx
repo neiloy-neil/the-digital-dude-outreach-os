@@ -2,55 +2,85 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useMemo, useState, use } from 'react';
-import Sidebar from '@/components/Sidebar';
-import { createClient } from '@/utils/supabase/client';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Plus, Search, Send, ExternalLink } from 'lucide-react';
+import { useParams } from 'next/navigation';
+import { ArrowLeft, Plus, Search, Send, ExternalLink, Users } from 'lucide-react';
+import { createClient } from '@/utils/supabase/client';
+import AppShell from '@/components/reachmira/AppShell';
+import PageHeader from '@/components/reachmira/PageHeader';
+import EmptyState from '@/components/reachmira/EmptyState';
 
-interface PageProps {
-  params: Promise<{ id: string }>;
-}
+type LeadListRow = {
+  id: string;
+  name: string;
+  description?: string | null;
+  source?: string | null;
+};
 
-export default function LeadListDetailPage({ params }: PageProps) {
-  const { id } = use(params);
+type LeadRow = {
+  id: string;
+  decision_maker_name?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  company_name?: string | null;
+  company?: string | null;
+  email: string;
+  data_quality_label?: string | null;
+};
+
+type CampaignRow = {
+  id: string;
+  name: string;
+};
+
+export default function LeadListDetailPage() {
+  const params = useParams();
+  const id = String(params.id || '');
   const supabase = createClient();
   const [loading, setLoading] = useState(true);
-  const [list, setList] = useState<any>(null);
-  const [leads, setLeads] = useState<any[]>([]);
-  const [campaigns, setCampaigns] = useState<any[]>([]);
+  const [list, setList] = useState<LeadListRow | null>(null);
+  const [leadCount, setLeadCount] = useState(0);
+  const [leads, setLeads] = useState<LeadRow[]>([]);
+  const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [campaignId, setCampaignId] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
+    setLoading(true);
     try {
-      const [{ data: listData }, { data: leadData }, { data: campaignData }] = await Promise.all([
-        fetch(`/api/lead-lists/${id}`).then(async (res) => (await res.json()) as { leadList?: any; error?: string }),
-        fetch(`/api/leads?leadListId=${id}`).then(async (res) => (await res.json()) as { leads?: any[]; error?: string }),
-        supabase.from('campaigns').select('id, name').order('created_at', { ascending: false }),
+      const [listResponse, leadResponse, campaignResponse] = await Promise.all([
+        fetch(`/api/lead-lists/${id}`).then(async (res) => (await res.json()) as { leadList?: LeadListRow; leadCount?: number; error?: string }),
+        fetch(`/api/leads?leadListId=${id}`).then(async (res) => (await res.json()) as { leads?: LeadRow[]; error?: string }),
+        supabase.from('campaigns').select('id,name').order('created_at', { ascending: false }),
       ]);
-      setList(listData?.leadList || null);
-      setLeads(Array.isArray(leadData?.leads) ? leadData.leads : []);
-      setCampaigns(campaignData || []);
-      setCampaignId(campaignData?.[0]?.id || '');
-    } catch (err: any) {
-      setError(err.message || 'Failed to load lead list');
+
+      setList(listResponse.leadList || null);
+      setLeadCount(listResponse.leadCount || 0);
+      setLeads(Array.isArray(leadResponse.leads) ? leadResponse.leads : []);
+      setCampaigns((campaignResponse.data || []) as CampaignRow[]);
+      setCampaignId(campaignResponse.data?.[0]?.id || '');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load lead list');
     } finally {
       setLoading(false);
     }
-  };
+  }, [id, supabase]);
 
   useEffect(() => {
-    loadData();
-  }, [id]);
+    if (!id) return;
+    void (async () => {
+      await loadData();
+    })();
+  }, [id, loadData]);
 
   const filteredLeads = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return leads;
     return leads.filter((lead) =>
-      [lead.email, lead.company_name, lead.company, lead.decision_maker_name, lead.website, lead.tags]
+      [lead.email, lead.company_name, lead.company, lead.decision_maker_name]
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
@@ -59,7 +89,7 @@ export default function LeadListDetailPage({ params }: PageProps) {
   }, [search, leads]);
 
   const toggleSelected = (leadId: string) => {
-    setSelected((prev) => (prev.includes(leadId) ? prev.filter((id) => id !== leadId) : [...prev, leadId]));
+    setSelected((prev) => (prev.includes(leadId) ? prev.filter((item) => item !== leadId) : [...prev, leadId]));
   };
 
   const handleAddSelectedToCampaign = async () => {
@@ -76,90 +106,107 @@ export default function LeadListDetailPage({ params }: PageProps) {
   };
 
   return (
-    <div className="flex min-h-screen bg-zinc-950 text-zinc-100">
-      <Sidebar />
-      <main className="flex-1 p-8 overflow-y-auto">
-        <div className="flex items-center gap-3 mb-8">
-          <Link href="/lead-lists" className="p-2 rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-400">
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-          <div>
-            <h2 className="text-3xl font-extrabold text-white tracking-tight">{list?.name || 'Lead List'}</h2>
-            <p className="text-sm text-zinc-400 mt-1">{list?.description || 'Global lead library list'}</p>
-          </div>
+    <AppShell>
+      <PageHeader
+        eyebrow="Lead list"
+        title={list?.name || 'Lead List'}
+        subtitle={list?.description || 'Global lead library list'}
+        actions={
+          <>
+            <Link href="/lead-lists" className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 hover:bg-zinc-50">
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </Link>
+            <Link href={`/leads/import?listId=${id}`} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700">
+              <Plus className="h-4 w-4" />
+              Import Leads
+            </Link>
+            <Link href="/leads/new" className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 hover:bg-violet-50 hover:text-violet-700">
+              Add Manual Lead
+            </Link>
+          </>
+        }
+      />
+
+      {error && <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
+
+      {loading ? (
+        <div className="flex h-64 items-center justify-center rounded-3xl border border-[var(--border)] bg-white">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
         </div>
-
-        {error && <div className="mb-6 rounded-lg border border-rose-500/20 bg-rose-500/10 p-3 text-xs text-rose-400">{error}</div>}
-
-        {loading ? (
-          <div className="flex h-64 items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
-          </div>
-        ) : (
-          <div className="space-y-6">
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div>
-                  <div className="text-xs uppercase text-zinc-500">Leads</div>
-                  <div className="text-2xl font-bold text-white">{leads.length}</div>
-                </div>
-                <div>
-                  <div className="text-xs uppercase text-zinc-500">Source</div>
-                  <div className="text-sm text-zinc-300">{list?.source || 'Manual'}</div>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <Link href={`/leads/import?listId=${id}`} className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-violet-600 to-blue-600 px-4 py-2 text-sm font-semibold text-white">
-                  <Plus className="h-4 w-4" /> Import Leads
-                </Link>
-                <Link href="/leads/new" className="inline-flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900 px-4 py-2 text-sm font-semibold text-zinc-200">
-                  Add Manual Lead
-                </Link>
-              </div>
+      ) : (
+        <div className="space-y-6">
+          <div className="grid gap-4 md:grid-cols-3">
+            <div className="rounded-3xl border border-[var(--border)] bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+              <div className="text-xs uppercase tracking-[0.22em] text-zinc-400">Leads</div>
+              <div className="mt-2 text-3xl font-semibold text-zinc-950">{leadCount}</div>
             </div>
+            <div className="rounded-3xl border border-[var(--border)] bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+              <div className="text-xs uppercase tracking-[0.22em] text-zinc-400">Source</div>
+              <div className="mt-2 text-sm text-zinc-600">{list?.source || 'Manual'}</div>
+            </div>
+            <div className="rounded-3xl border border-[var(--border)] bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+              <div className="text-xs uppercase tracking-[0.22em] text-zinc-400">Campaigns</div>
+              <div className="mt-2 text-sm text-zinc-600">{campaigns.length} available</div>
+            </div>
+          </div>
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <div className="flex items-center gap-2 w-full md:max-w-md rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2">
-                <Search className="h-4 w-4 text-zinc-500" />
-                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search leads..." className="w-full bg-transparent text-sm text-zinc-100 outline-none" />
+          <div className="rounded-3xl border border-[var(--border)] bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3">
+                <Search className="h-4 w-4 text-zinc-400" />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search leads..." className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-400" />
               </div>
+
               <div className="flex items-center gap-2">
-                <select value={campaignId} onChange={(e) => setCampaignId(e.target.value)} className="rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm">
+                <select value={campaignId} onChange={(e) => setCampaignId(e.target.value)} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-700">
                   {campaigns.map((campaign) => (
                     <option key={campaign.id} value={campaign.id}>{campaign.name}</option>
                   ))}
                 </select>
-                <button disabled={!campaignId || selected.length === 0} onClick={handleAddSelectedToCampaign} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-                  <Send className="h-4 w-4" /> Add Selected
+                <button disabled={!campaignId || selected.length === 0} onClick={handleAddSelectedToCampaign} className="inline-flex items-center gap-2 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50">
+                  <Send className="h-4 w-4" />
+                  Add Selected
                 </button>
               </div>
             </div>
+          </div>
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 overflow-hidden">
+          {filteredLeads.length === 0 ? (
+            <EmptyState
+              icon={Users}
+              title="No leads in this list yet"
+              description="Import leads into this list or add a manual lead to start building outreach."
+              actionLabel="Import Leads"
+              actionHref={`/leads/import?listId=${id}`}
+              actionIcon={Plus}
+            />
+          ) : (
+            <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-white shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm">
-                  <thead className="border-b border-zinc-800 bg-zinc-900/40 text-xs uppercase text-zinc-500">
+                  <thead className="border-b border-[var(--border)] bg-[var(--surface-muted)] text-xs uppercase tracking-[0.18em] text-zinc-400">
                     <tr>
-                      <th className="px-4 py-3 w-10"> </th>
-                      <th className="px-4 py-3">Name</th>
-                      <th className="px-4 py-3">Company</th>
-                      <th className="px-4 py-3">Email</th>
-                      <th className="px-4 py-3">Readiness</th>
-                      <th className="px-4 py-3 text-right">Open</th>
+                      <th className="w-10 px-4 py-4" />
+                      <th className="px-4 py-4">Name</th>
+                      <th className="px-4 py-4">Company</th>
+                      <th className="px-4 py-4">Email</th>
+                      <th className="px-4 py-4">Readiness</th>
+                      <th className="px-4 py-4 text-right">Open</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-zinc-800">
+                  <tbody className="divide-y divide-[var(--border)]">
                     {filteredLeads.map((lead) => (
-                      <tr key={lead.id} className={selected.includes(lead.id) ? 'bg-zinc-900/30' : ''}>
-                        <td className="px-4 py-3">
-                          <input type="checkbox" checked={selected.includes(lead.id)} onChange={() => toggleSelected(lead.id)} />
+                      <tr key={lead.id} className={selected.includes(lead.id) ? 'bg-violet-50/50' : 'hover:bg-violet-50/30'}>
+                        <td className="px-4 py-4">
+                          <input type="checkbox" checked={selected.includes(lead.id)} onChange={() => toggleSelected(lead.id)} className="h-4 w-4 rounded border-zinc-300 text-violet-600 focus:ring-violet-500" />
                         </td>
-                        <td className="px-4 py-3 text-white">{lead.decision_maker_name || `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Prospect'}</td>
-                        <td className="px-4 py-3 text-zinc-300">{lead.company_name || lead.company || '-'}</td>
-                        <td className="px-4 py-3 text-zinc-400">{lead.email}</td>
-                        <td className="px-4 py-3 text-xs text-violet-400">{lead.data_quality_label || 'poor'}</td>
-                        <td className="px-4 py-3 text-right">
-                          <Link href={`/leads/${lead.id}`} className="inline-flex items-center gap-1 text-violet-400 hover:text-violet-300 text-sm font-semibold">
+                        <td className="px-4 py-4 text-zinc-900">{lead.decision_maker_name || `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Prospect'}</td>
+                        <td className="px-4 py-4 text-zinc-600">{lead.company_name || lead.company || '-'}</td>
+                        <td className="px-4 py-4 text-zinc-600">{lead.email}</td>
+                        <td className="px-4 py-4 text-violet-700">{lead.data_quality_label || 'poor'}</td>
+                        <td className="px-4 py-4 text-right">
+                          <Link href={`/leads/${lead.id}`} className="inline-flex items-center gap-1 font-semibold text-violet-700 hover:text-violet-800">
                             View <ExternalLink className="h-4 w-4" />
                           </Link>
                         </td>
@@ -169,9 +216,9 @@ export default function LeadListDetailPage({ params }: PageProps) {
                 </table>
               </div>
             </div>
-          </div>
-        )}
-      </main>
-    </div>
+          )}
+        </div>
+      )}
+    </AppShell>
   );
 }

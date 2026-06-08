@@ -1,4 +1,4 @@
--- Setup Database Schema for The Digital Dude Outreach OS
+-- Setup Database Schema for ReachMira
 
 -- Enable extension for uuid generation
 create extension if not exists "uuid-ossp";

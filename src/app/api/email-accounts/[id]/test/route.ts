@@ -34,21 +34,21 @@ export async function POST(
       return NextResponse.json({ error: 'Email account not found' }, { status: 404 });
     }
 
-    const subject = '🔔 Outreach OS - Test Connection Email';
+    const subject = '🔔 ReachMira - Test Connection Email';
     const html = `
       <div style="font-family: sans-serif; padding: 20px; color: #333;">
-        <h2>Outreach OS Test Connection</h2>
+        <h2>ReachMira Test Connection</h2>
         <p>Hello,</p>
-        <p>This is a test email sent from <strong>The Digital Dude Outreach OS</strong> to verify your outbound mail delivery settings.</p>
+        <p>This is a test email sent from <strong>ReachMira</strong> to verify your outbound mail delivery settings.</p>
         <p>If you are reading this, your connection to <strong>${account.email_address}</strong> via <strong>${account.provider.toUpperCase()}</strong> was verified successfully! 🚀</p>
         <br />
-        <p>Best regards,<br/>The Digital Dude Outreach OS Team</p>
+        <p>Best regards,<br/>ReachMira Team</p>
       </div>
     `;
 
     const result = await sendEmail(account.provider, account.config, {
       to: targetEmail,
-      fromName: account.sender_name || 'Outreach OS Test',
+      fromName: account.sender_name || 'ReachMira Test',
       fromEmail: account.email_address,
       subject,
       html,

@@ -1,6 +1,6 @@
-# The Digital Dude Outreach OS
+# ReachMira
 
-A cold outreach outreach MVP inspired by Instantly and Smartlead. It supports deep individual lead personalization via Gemini, a per-lead approval review queue, Google Sheets and CSV import with dynamic column mapping, SMTP/Mailgun dispatching, IMAP reply detection, and audit-backed campaign activity tracking.
+A modern outreach CRM for importing leads, writing personalized emails, sending through SMTP or Mailgun, and tracking every reply, bounce, unsubscribe, and follow-up.
 
 ---
 

@@ -47,6 +47,10 @@ where
   or provider_message_id is null
   or coalesce(raw_provider_response, '{}'::jsonb) = '{}'::jsonb;
 
+delete from public.sent_emails
+where user_id is null
+   or recipient_email is null;
+
 alter table public.sent_emails
   alter column user_id set not null,
   alter column recipient_email set not null,

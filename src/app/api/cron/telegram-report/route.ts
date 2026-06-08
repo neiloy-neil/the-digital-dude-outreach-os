@@ -89,7 +89,7 @@ export async function GET(request: Request) {
 
       // Construct Telegram report message
       const message = 
-`🤖 *Digital Dude Outreach OS Report*
+`🤖 *ReachMira Report*
 📅 Last 24 Hours Metrics
 
 📈 *Campaigns Status*

@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import StatusBadge from '@/components/leads/StatusBadge';
 import { createClient } from '@/utils/supabase/client';
 import Link from 'next/link';
-import { Search, ArrowUpRight, Sparkles, Filter, MailPlus } from 'lucide-react';
+import { Search, ArrowUpRight, Sparkles, Filter, MailPlus, Users } from 'lucide-react';
 import AppShell from '@/components/reachmira/AppShell';
 import PageHeader from '@/components/reachmira/PageHeader';
 import EmptyState from '@/components/reachmira/EmptyState';
@@ -20,13 +20,18 @@ type LeadRow = {
   decision_maker_name?: string | null;
   company_name?: string | null;
   company?: string | null;
+  industry?: string | null;
+  pain_points?: string | null;
   lead_list_id?: string | null;
   lead_lists?: { name?: string | null } | null;
   status?: string | null;
   priority?: string | null;
   data_quality_label?: string | null;
   last_email_sent_at?: string | null;
-  sent_emails?: Array<{ email_type?: string | null }>;
+  next_follow_up_at?: string | null;
+  next_follow_up_date?: string | null;
+  ai_status?: string | null;
+  manual_personalization_status?: string | null;
 };
 
 type CampaignOption = {
@@ -277,14 +282,14 @@ export default function LeadsPage() {
                         <div className="font-medium text-zinc-900">{lead.decision_maker_name || `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Prospect'}</div>
                       </td>
                       <td className="px-4 py-4 text-zinc-600">{lead.email}</td>
-                      <td className="px-4 py-4 text-zinc-600">{lead.lead_lists?.name || '-'}</td>
-                      <td className="px-4 py-4 text-zinc-600">{lead.sent_emails?.[0]?.email_type?.replace(/_/g, ' ') || lead.sent_emails?.[0]?.email_type || '-'}</td>
+                      <td className="px-4 py-4 text-zinc-600">{lead.industry || lead.lead_lists?.name || '-'}</td>
+                      <td className="px-4 py-4 text-zinc-600">{lead.pain_points || '-'}</td>
                       <td className="px-4 py-4 text-zinc-600">{lead.priority || '-'}</td>
                       <td className="px-4 py-4"><QualityScoreBadge score={lead.data_quality_label === 'excellent' ? 95 : lead.data_quality_label === 'good' ? 75 : lead.data_quality_label === 'fair' ? 55 : 35} label={lead.data_quality_label || 'Data quality'} /></td>
                       <td className="px-4 py-4"><StatusBadge status={lead.status} /></td>
-                      <td className="px-4 py-4 text-zinc-600">{lead.manual_personalization_status || '-'}</td>
+                      <td className="px-4 py-4 text-zinc-600">{lead.ai_status || lead.manual_personalization_status || '-'}</td>
                       <td className="px-4 py-4 text-zinc-600">{lead.last_email_sent_at ? new Date(lead.last_email_sent_at).toLocaleDateString() : '-'}</td>
-                      <td className="px-4 py-4 text-zinc-600">{lead.next_follow_up_date ? new Date(lead.next_follow_up_date).toLocaleDateString() : '-'}</td>
+                      <td className="px-4 py-4 text-zinc-600">{lead.next_follow_up_at ? new Date(lead.next_follow_up_at).toLocaleDateString() : lead.next_follow_up_date ? new Date(lead.next_follow_up_date).toLocaleDateString() : '-'}</td>
                       <td className="px-4 py-4 text-right">
                         <Link href={`/leads/${lead.id}`} className="inline-flex items-center gap-1 font-semibold text-violet-700 hover:text-violet-800">
                           View <ArrowUpRight className="h-4 w-4" />

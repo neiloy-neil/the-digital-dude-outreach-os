@@ -3,13 +3,23 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useMemo, useState } from 'react';
-import Sidebar from '@/components/Sidebar';
 import Link from 'next/link';
-import { Plus, FolderOpen, Trash2, ArrowRight, Sparkles } from 'lucide-react';
+import { FolderOpen, Plus, ArrowRight, Sparkles, Trash2 } from 'lucide-react';
+import AppShell from '@/components/reachmira/AppShell';
+import PageHeader from '@/components/reachmira/PageHeader';
+import EmptyState from '@/components/reachmira/EmptyState';
+
+type LeadListRow = {
+  id: string;
+  name: string;
+  description?: string | null;
+  source?: string | null;
+  created_at?: string;
+};
 
 export default function LeadListsPage() {
   const [loading, setLoading] = useState(true);
-  const [lists, setLists] = useState<any[]>([]);
+  const [lists, setLists] = useState<LeadListRow[]>([]);
   const [leadCounts, setLeadCounts] = useState<Record<string, number>>({});
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -18,27 +28,29 @@ export default function LeadListsPage() {
   const [saving, setSaving] = useState(false);
 
   const loadData = async () => {
+    setLoading(true);
     try {
       const response = await fetch('/api/lead-lists');
       const data = await response.json();
       if (!response.ok) {
         setLists([]);
         setLeadCounts({});
-        setError(data.error || 'Failed to load lead lists');
-        return;
+        throw new Error(data.error || 'Failed to load lead lists');
       }
 
-      setLists(data.leadLists || []);
-      setLeadCounts({});
-    } catch (err: any) {
-      setError(err.message || 'Failed to load lead lists');
+      setLists((data.leadLists || []) as LeadListRow[]);
+      setLeadCounts((data.leadCounts || {}) as Record<string, number>);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load lead lists');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
+    void (async () => {
+      await loadData();
+    })();
   }, []);
 
   const totalLeads = useMemo(
@@ -62,8 +74,8 @@ export default function LeadListsPage() {
       setDescription('');
       setSource('');
       await loadData();
-    } catch (err: any) {
-      setError(err.message || 'Failed to create lead list');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create lead list');
     } finally {
       setSaving(false);
     }
@@ -76,91 +88,104 @@ export default function LeadListsPage() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to delete lead list');
       await loadData();
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete lead list');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to delete lead list');
     }
   };
 
   return (
-    <div className="flex min-h-screen bg-zinc-950 text-zinc-100">
-      <Sidebar />
-      <main className="flex-1 p-8 overflow-y-auto">
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h2 className="text-3xl font-extrabold text-white tracking-tight">Lead Lists</h2>
-            <p className="text-sm text-zinc-400 mt-1">Organize global leads into reusable lists before campaigns.</p>
-          </div>
-          <Link href="/leads/import" className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gradient-to-r from-violet-600 to-blue-600 text-white text-sm font-semibold">
-            <Sparkles className="h-4 w-4" /> Import Leads
+    <AppShell>
+      <PageHeader
+        eyebrow="Lead lists"
+        title="Lead Lists"
+        subtitle="Organize global leads into reusable lists before campaigns."
+        actions={
+          <Link href="/leads/import" className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700">
+            <Sparkles className="h-4 w-4" />
+            Import Leads
           </Link>
-        </div>
+        }
+      />
 
-        {error && (
-          <div className="mb-6 rounded-lg bg-rose-500/10 p-3 text-xs text-rose-400 border border-rose-500/20">
-            {error}
+      {error && <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
+
+      <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
+        <form onSubmit={handleCreate} className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+          <div className="flex items-center gap-2 text-sm font-semibold text-zinc-900">
+            <Plus className="h-4 w-4 text-violet-600" />
+            Create lead list
           </div>
-        )}
+          <p className="mt-2 text-sm leading-6 text-zinc-500">Group imported or manually added leads for easier campaign targeting.</p>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-          <form onSubmit={handleCreate} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-6 space-y-4">
-            <div className="flex items-center gap-2 text-white font-semibold">
-              <Plus className="h-5 w-5 text-violet-400" /> Create Lead List
+          <div className="mt-5 space-y-4">
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Name</label>
+              <input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none focus:border-violet-300 focus:bg-white" placeholder="UK Real Estate Leads" />
             </div>
             <div>
-              <label className="block text-xs text-zinc-400 font-semibold uppercase">Name</label>
-              <input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 py-2 px-3 text-sm" placeholder="UK Real Estate Leads" />
+              <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Description</label>
+              <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} className="mt-1 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none focus:border-violet-300 focus:bg-white" placeholder="Leads from LinkedIn manual research" />
             </div>
             <div>
-              <label className="block text-xs text-zinc-400 font-semibold uppercase">Description</label>
-              <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 py-2 px-3 text-sm" placeholder="Leads from LinkedIn manual research" />
+              <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Source</label>
+              <input value={source} onChange={(e) => setSource(e.target.value)} className="mt-1 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none focus:border-violet-300 focus:bg-white" placeholder="CSV / Google Sheets / Manual" />
             </div>
-            <div>
-              <label className="block text-xs text-zinc-400 font-semibold uppercase">Source</label>
-              <input value={source} onChange={(e) => setSource(e.target.value)} className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 py-2 px-3 text-sm" placeholder="CSV / Google Sheets / Manual" />
-            </div>
-            <button disabled={saving || !name.trim()} className="w-full rounded-lg bg-gradient-to-r from-violet-600 to-blue-600 py-2.5 text-sm font-semibold text-white disabled:opacity-50">
-              {saving ? 'Creating...' : 'Create Lead List'}
-            </button>
-          </form>
+          </div>
 
-          <div className="lg:col-span-2 space-y-4">
-            {loading ? (
-              <div className="flex h-48 items-center justify-center">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
-              </div>
-            ) : lists.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-zinc-800 p-10 text-center text-zinc-500">
-                <FolderOpen className="mx-auto mb-3 h-10 w-10 text-zinc-700" />
-                No lead lists yet. Create one to start organizing your library.
-              </div>
-            ) : (
-              lists.map((list) => (
-                <div key={list.id} className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-5 flex items-center justify-between gap-4">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-white text-lg">{list.name}</h3>
-                      <span className="rounded-full border border-violet-500/20 bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold text-violet-400">
-                        {leadCounts[list.id] || 0} leads
-                      </span>
+          <button disabled={saving || !name.trim()} className="mt-5 inline-flex w-full items-center justify-center rounded-2xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:opacity-50">
+            {saving ? 'Creating...' : 'Create Lead List'}
+          </button>
+
+          <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-xs text-zinc-500">
+            Total leads across all lists: <span className="font-semibold text-zinc-900">{totalLeads}</span>
+          </div>
+        </form>
+
+        <div className="space-y-4">
+          {loading ? (
+            <div className="flex h-64 items-center justify-center rounded-3xl border border-[var(--border)] bg-white">
+              <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
+            </div>
+          ) : lists.length === 0 ? (
+            <EmptyState
+              icon={FolderOpen}
+              title="No lead lists yet"
+              description="Create a list to organize imported leads, then open it to add more leads or move them into campaigns."
+              actionLabel="Import Leads"
+              actionHref="/leads/import"
+              actionIcon={Sparkles}
+            />
+          ) : (
+            <div className="grid gap-4">
+              {lists.map((list) => (
+                <div key={list.id} className="rounded-3xl border border-[var(--border)] bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-lg font-semibold text-zinc-950">{list.name}</h3>
+                        <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-semibold text-violet-700">
+                          {leadCounts[list.id] || 0} leads
+                        </span>
+                      </div>
+                      <p className="mt-2 text-sm leading-6 text-zinc-500">{list.description || 'No description provided.'}</p>
+                      <p className="mt-1 text-xs text-zinc-400">Source: {list.source || 'Manual'}</p>
                     </div>
-                    <p className="mt-1 text-sm text-zinc-400">{list.description || 'No description provided.'}</p>
-                    <p className="mt-1 text-[11px] text-zinc-500">Source: {list.source || 'Manual'}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Link href={`/lead-lists/${list.id}`} className="inline-flex items-center gap-1 rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm font-semibold text-zinc-200">
-                      Open <ArrowRight className="h-4 w-4" />
-                    </Link>
-                    <button onClick={() => handleDelete(list.id)} className="rounded-lg border border-zinc-800 p-2 text-zinc-500 hover:text-rose-400">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+
+                    <div className="flex items-center gap-2">
+                      <Link href={`/lead-lists/${list.id}`} className="inline-flex items-center gap-1 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 hover:bg-violet-50 hover:text-violet-700">
+                        Open <ArrowRight className="h-4 w-4" />
+                      </Link>
+                      <button onClick={() => handleDelete(list.id)} className="inline-flex items-center justify-center rounded-xl border border-[var(--border)] bg-white p-2.5 text-zinc-500 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
-              ))
-            )}
-            <div className="text-xs text-zinc-500">Total leads across lists: {totalLeads}</div>
-          </div>
+              ))}
+            </div>
+          )}
         </div>
-      </main>
-    </div>
+      </div>
+    </AppShell>
   );
 }

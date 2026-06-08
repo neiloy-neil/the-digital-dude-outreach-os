@@ -52,7 +52,12 @@ export async function POST(request: Request) {
 
       await supabase
         .from('leads')
-        .update({ updated_at: new Date().toISOString() })
+        .update({
+          campaign_id: campaignId,
+          owner_type: 'campaign',
+          is_global: false,
+          updated_at: new Date().toISOString(),
+        })
         .in('id', leadIds);
     }
 
@@ -65,7 +70,7 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({ success: true, added: attachments.length });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message || 'Error adding leads to campaign' }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json({ error: err instanceof Error ? err.message : 'Error adding leads to campaign' }, { status: 500 });
   }
 }

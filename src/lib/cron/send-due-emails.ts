@@ -5,6 +5,7 @@ import { claimLeadsForEmailSending, getAvailableSendCapacity, getCampaignDailySe
 import { sendEmail } from '@/lib/mailers/send-email';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
 import { getStatusForEmailType, type EmailType } from '@/lib/leads/status';
+import { getSuppressionForEmail } from '@/lib/suppressions';
 import type { EmailProviderType } from '@/types/email-provider';
 
 type CronResult = {
@@ -45,6 +46,7 @@ type QueueLead = {
   ai_personalization?: string | null;
   unsubscribe_token: string;
   current_step?: number | null;
+  emails_sent_count?: number | null;
   ai_status?: string | null;
   approval_status?: string | null;
   ai_subject?: string | null;
@@ -195,7 +197,10 @@ export async function sendDueEmails() {
       let body = '';
 
       if (isFirstEmail) {
-        const aiApproved = lead.ai_status === 'approved' || lead.approval_status === 'approved';
+        const aiApproved =
+          lead.ai_status === 'approved' ||
+          lead.approval_status === 'approved' ||
+          Boolean((lead as { manual_email_approved?: boolean }).manual_email_approved);
         const aiSubject = lead.ai_subject || lead.personalized_subject || '';
         const aiBody = lead.ai_email_body || lead.personalized_body || '';
         const hasAiCopy = Boolean(aiSubject && aiBody);
@@ -228,6 +233,13 @@ export async function sendDueEmails() {
       const unsubscribeUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/unsubscribe?token=${lead.unsubscribe_token}`;
       const html = buildEmailHtml(body, unsubscribeUrl);
       const replyTo = emailAccount.email_address;
+      const suppression = await getSuppressionForEmail(campaign.user_id, lead.email);
+
+      if (suppression) {
+        skipped++;
+        reasons.push(`Lead ${lead.email}: suppressed (${suppression.reason || 'suppressed'})`);
+        continue;
+      }
 
       const sendResult = await sendEmail(emailAccount.provider, emailAccount.config || {}, {
         to: lead.email,
@@ -299,6 +311,11 @@ export async function sendDueEmails() {
           current_step: nextStepNumber,
           last_email_sent_at: nowIso,
           next_email_at: nextEmailAt,
+          next_follow_up_at: nextEmailAt,
+          last_email_type: emailType,
+          last_contacted_at: nowIso,
+          emails_sent_count: Number(lead.emails_sent_count || 0) + 1,
+          reply_status: 'no_reply',
           updated_at: nowIso,
         })
         .eq('id', lead.id);

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
+import { createServiceClient } from '@/utils/supabase/service';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
 import { isMissingTableError } from '@/lib/supabase/schema-errors';
 
@@ -32,7 +33,13 @@ export async function GET(
     return NextResponse.json({ error: 'Lead list not found' }, { status: 404 });
   }
 
-  return NextResponse.json({ leadList: data });
+  const serviceSupabase = createServiceClient();
+  const { count: leadCount } = await serviceSupabase
+    .from('leads')
+    .select('*', { count: 'exact', head: true })
+    .eq('lead_list_id', id);
+
+  return NextResponse.json({ leadList: data, leadCount: leadCount || 0 });
 }
 
 export async function PATCH(

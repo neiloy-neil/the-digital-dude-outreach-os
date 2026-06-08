@@ -31,6 +31,7 @@ type LeadRow = {
   id: string;
   status?: string | null;
   priority?: string | null;
+  next_follow_up_at?: string | null;
   next_follow_up_date?: string | null;
   manual_personalization_status?: string | null;
   pain_points?: string | null;
@@ -125,8 +126,9 @@ export default function Dashboard() {
     const bounces = sentEmails.filter((email) => Boolean(email.bounced_at) || email.status === 'bounced').length;
     const bounceRate = sentEmails.length > 0 ? Math.round((bounces / sentEmails.length) * 100) : 0;
     const followUpsDue = leads.filter((lead) => {
-      if (!lead.next_follow_up_date) return false;
-      return lead.next_follow_up_date <= nowIso;
+      const nextFollowUp = lead.next_follow_up_at || lead.next_follow_up_date;
+      if (!nextFollowUp) return false;
+      return nextFollowUp <= nowIso;
     }).length;
 
     return {

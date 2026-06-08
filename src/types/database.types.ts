@@ -109,6 +109,11 @@ export interface Lead {
   lead_owner?: string | null;
   deal_size?: number | null;
   pipeline_stage?: 'New' | 'Contacted' | 'Replied' | 'Interested' | 'Demo Scheduled' | 'Proposal Sent' | 'Negotiation' | 'Won' | 'Lost' | 'Not Fit';
+  emails_sent_count?: number | null;
+  last_email_type?: string | null;
+  last_contacted_at?: string | null;
+  next_follow_up_at?: string | null;
+  reply_status?: string | null;
   personalization_strategy?: string | null;
   personalized_subject?: string | null;
   personalized_body?: string | null;
@@ -353,4 +358,17 @@ export interface AuditLog {
   message?: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
+}
+
+export interface EmailTemplateLibrary {
+  id: string;
+  user_id: string;
+  name: string;
+  category?: string | null;
+  subject: string;
+  body: string;
+  offer_type?: string | null;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
 }

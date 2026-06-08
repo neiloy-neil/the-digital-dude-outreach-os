@@ -49,7 +49,7 @@ export default function Sidebar() {
     const fetchUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
-        router.push('/');
+        router.push('/login');
         return;
       }
 
@@ -74,7 +74,7 @@ export default function Sidebar() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    router.push('/');
+    router.push('/login');
     router.refresh();
   };
 

@@ -101,8 +101,8 @@ export async function claimLeadsForEmailSending(campaignId: string, limit: numbe
     .select('*')
     .eq('campaign_id', campaignId)
     .not('status', 'in', `(${excludedStatuses.join(',')})`)
-    .lte('next_email_at', now)
-    .order('next_email_at', { ascending: true })
+    .or(`next_email_at.is.null,next_email_at.lte.${now}`)
+    .order('next_email_at', { ascending: true, nullsFirst: true })
     .limit(limit);
 
   if (error) {

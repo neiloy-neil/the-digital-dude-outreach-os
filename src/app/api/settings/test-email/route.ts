@@ -36,15 +36,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Please configure either SMTP or Mailgun settings first' }, { status: 400 });
     }
 
-    const subject = '🔔 Outreach OS - Test Connection Email';
+    const subject = '🔔 ReachMira - Test Connection Email';
     const body = `Hi there,
 
-This is a test email sent from your outreach system ("The Digital Dude Outreach OS") to verify your mail delivery credentials connection.
+This is a test email sent from ReachMira to verify your mail delivery credentials connection.
 
 If you received this, your outbound sending setup is working correctly! 🚀
 
 Best,
-The Digital Dude Outreach OS Team`;
+ReachMira Team`;
 
     if (hasSMTP) {
       const result = await sendSMTPEmail({
@@ -52,7 +52,7 @@ The Digital Dude Outreach OS Team`;
         port: smtpPort ? Number(smtpPort) : 465,
         user: smtpUser,
         pass: smtpPass,
-        fromName: mailgunFromName || 'Outreach OS Test',
+        fromName: mailgunFromName || 'ReachMira Test',
         fromEmail: smtpUser,
         to: targetEmail,
         subject,
@@ -67,7 +67,7 @@ The Digital Dude Outreach OS Team`;
       const result = await sendOutreachEmail({
         apiKey: mailgunApiKey,
         domain: mailgunDomain,
-        fromName: mailgunFromName || 'Outreach OS Test',
+        fromName: mailgunFromName || 'ReachMira Test',
         fromEmail: mailgunFromEmail,
         to: targetEmail,
         subject,

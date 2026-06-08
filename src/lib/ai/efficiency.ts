@@ -147,7 +147,7 @@ function normalizeAiMode(mode?: AiMode | null): AiMode {
   return mode;
 }
 
-function normalizeModelName(value?: string | null, fallback: AiModelName): AiModelName {
+function normalizeModelName(value?: string | null, fallback: AiModelName = AI_DEFAULT_MODEL): AiModelName {
   return value === AI_DEEP_MODEL ? AI_DEEP_MODEL : fallback;
 }
 

@@ -73,6 +73,16 @@ function parseJsonResponse(responseText: string): Record<string, unknown> {
   }
 }
 
+function extractStringValue(value: unknown): string {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return '';
+}
+
 function startOfDayIso() {
   const now = new Date();
   now.setHours(0, 0, 0, 0);
@@ -381,9 +391,15 @@ export async function POST(request: Request) {
           const responseText = response.text || '{}';
           const parsed = parseJsonResponse(responseText);
           personalizationResult = {
-            strategy: parsed.outreach_strategy || parsed.strategy || localFallback.outreach_strategy,
-            subject: parsed.subject || localFallback.subject,
-            body: parsed.email_body || parsed.body || localFallback.email_body,
+            strategy:
+              extractStringValue(parsed.outreach_strategy) ||
+              extractStringValue(parsed.strategy) ||
+              localFallback.outreach_strategy,
+            subject: extractStringValue(parsed.subject) || localFallback.subject,
+            body:
+              extractStringValue(parsed.email_body) ||
+              extractStringValue(parsed.body) ||
+              localFallback.email_body,
             skipped: false,
             reason: '',
             model: selectedModel,
@@ -412,6 +428,7 @@ export async function POST(request: Request) {
           processing_error: null,
           updated_at: new Date().toISOString(),
         };
+        const usageNotes: string | null = skipped ? skipReasonText : 'AI generated successfully.';
 
         const { error: updateError } = await supabase.from('leads').update(updatePayload).eq('id', lead.id);
         if (updateError) {
@@ -437,7 +454,7 @@ export async function POST(request: Request) {
           tokens_completion: completionTokens,
           tokens_total: totalTokens,
           estimated_cost: estimateAiCost(totalTokens),
-          usage_notes: updatePayload.ai_usage_notes,
+          usage_notes: usageNotes,
         });
 
         if (companyCacheId === null && shouldUseTemplateFallback) {

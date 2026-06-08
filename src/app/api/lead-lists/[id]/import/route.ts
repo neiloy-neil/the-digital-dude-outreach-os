@@ -135,7 +135,6 @@ export async function POST(
         status: 'imported',
         ai_status: 'pending',
         manual_personalization_status: 'not_started',
-        is_global: true,
       });
     }
 

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
+import { createServiceClient } from '@/utils/supabase/service';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
 import { isMissingTableError } from '@/lib/supabase/schema-errors';
 
@@ -27,7 +28,27 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ leadLists: data || [] });
+  const leadLists = data || [];
+  const serviceSupabase = createServiceClient();
+  const leadListIds = leadLists.map((list) => list.id);
+
+  const { data: leadCounts } = leadListIds.length > 0
+    ? await serviceSupabase
+        .from('leads')
+        .select('lead_list_id')
+        .in('lead_list_id', leadListIds)
+    : { data: [] as Array<{ lead_list_id: string | null }> };
+
+  const counts = new Map<string, number>();
+  for (const row of leadCounts || []) {
+    if (!row.lead_list_id) continue;
+    counts.set(row.lead_list_id, (counts.get(row.lead_list_id) || 0) + 1);
+  }
+
+  return NextResponse.json({
+    leadLists,
+    leadCounts: Object.fromEntries(counts.entries()),
+  });
 }
 
 export async function POST(request: Request) {

@@ -14,13 +14,13 @@ export async function sendEmail(
 ): Promise<SendEmailResult> {
   switch (provider) {
     case 'smtp':
-      return sendSMTPEmail(config as Parameters<typeof sendSMTPEmail>[0], payload);
+      return sendSMTPEmail(config as unknown as Parameters<typeof sendSMTPEmail>[0], payload);
     case 'mailgun':
-      return sendMailgunEmail(config as Parameters<typeof sendMailgunEmail>[0], payload);
+      return sendMailgunEmail(config as unknown as Parameters<typeof sendMailgunEmail>[0], payload);
     case 'resend':
-      return sendResendEmail(config as Parameters<typeof sendResendEmail>[0], payload);
+      return sendResendEmail(config as unknown as Parameters<typeof sendResendEmail>[0], payload);
     case 'amazon_ses':
-      return sendAmazonSESEmail(config as Parameters<typeof sendAmazonSESEmail>[0], payload);
+      return sendAmazonSESEmail(config as unknown as Parameters<typeof sendAmazonSESEmail>[0], payload);
     default:
       return {
         success: false,

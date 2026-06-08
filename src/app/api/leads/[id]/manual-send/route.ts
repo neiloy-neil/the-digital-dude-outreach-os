@@ -6,6 +6,7 @@ import { createAuditLog } from '@/lib/audit/create-audit-log';
 import { buildEmailMessageBodies } from '@/lib/email/html';
 import { getStatusForEmailType, isBlockedLeadStatus, type EmailType } from '@/lib/leads/status';
 import { isMissingTableError } from '@/lib/supabase/schema-errors';
+import { getSuppressionForEmail } from '@/lib/suppressions';
 import type { EmailProviderType } from '@/types/email-provider';
 
 function isSupportedProvider(provider: string): provider is EmailProviderType {
@@ -56,8 +57,37 @@ export async function POST(
       }
     }
 
+    const { data: campaign } = lead.campaign_id
+      ? await supabase
+          .from('campaigns')
+          .select('id, user_id, require_approval_before_send')
+          .eq('id', lead.campaign_id)
+          .maybeSingle()
+      : { data: null };
+
     if (isBlockedLeadStatus(lead.status)) {
       return NextResponse.json({ error: 'This lead is blocked from sending' }, { status: 400 });
+    }
+
+    const recipientEmail = String(targetEmail || lead.email || '').trim().toLowerCase();
+    const suppression = await getSuppressionForEmail(user.id, recipientEmail);
+    if (suppression) {
+      return NextResponse.json(
+        { error: `This email is suppressed: ${suppression.reason || 'suppressed'}` },
+        { status: 400 }
+      );
+    }
+
+    if (mode !== 'test') {
+      const manualApproved = Boolean(lead.manual_email_approved);
+      const campaignRequiresApproval = campaign ? campaign.require_approval_before_send !== false : true;
+
+      if (campaignRequiresApproval && !manualApproved) {
+        return NextResponse.json(
+          { error: 'Approve this manual email before sending.' },
+          { status: 400 }
+        );
+      }
     }
 
     const accountId = emailAccountId || lead.last_manual_email_account_id || null;
@@ -98,7 +128,7 @@ export async function POST(
 
     const unsubscribeUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/unsubscribe?token=${lead.unsubscribe_token}`;
     const { html, text } = buildEmailMessageBodies(baseBody, unsubscribeUrl);
-    const to = mode === 'test' ? targetEmail || user.email || lead.email : targetEmail || lead.email;
+    const to = mode === 'test' ? targetEmail || user.email || lead.email : recipientEmail || lead.email;
 
     if (!to || !String(to).includes('@')) {
       return NextResponse.json({ error: 'Recipient email is required' }, { status: 400 });
@@ -130,6 +160,20 @@ export async function POST(
     if (mode !== 'test') {
       const nextStatus = getStatusForEmailType(emailType as EmailType);
       const nowIso = new Date().toISOString();
+      const followUpDelayDays: Record<EmailType, number | null> = {
+        first_email: 3,
+        follow_up_1: 4,
+        follow_up_2: 5,
+        follow_up_3: 7,
+        custom_email: 3,
+        proposal_email: 5,
+        demo_follow_up: 7,
+        reply_follow_up: null,
+      };
+      const nextFollowUpDays = followUpDelayDays[emailType as EmailType] ?? null;
+      const nextFollowUpAt = nextFollowUpDays
+        ? new Date(Date.now() + nextFollowUpDays * 24 * 60 * 60 * 1000).toISOString()
+        : null;
       const updatePayload = {
         status: nextStatus,
         manual_email_approved: true,
@@ -137,6 +181,11 @@ export async function POST(
         last_manual_email_account_id: emailAccount.id,
         manual_personalization_status: 'sent',
         last_email_sent_at: nowIso,
+        emails_sent_count: Number(lead.emails_sent_count || 0) + 1,
+        last_email_type: emailType,
+        last_contacted_at: nowIso,
+        next_follow_up_at: nextFollowUpAt,
+        reply_status: 'no_reply',
         manual_email_subject: emailSubject,
         manual_email_body: html,
         updated_at: nowIso,

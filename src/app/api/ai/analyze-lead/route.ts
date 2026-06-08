@@ -574,6 +574,7 @@ export async function POST(request: Request) {
     });
   } catch (error: unknown) {
     console.error('Lead analysis route crash:', error);
+    const errorMessage = error instanceof Error ? error.message : 'AI analysis failed';
 
     try {
       const { leadId } = await request.clone().json();
@@ -582,13 +583,13 @@ export async function POST(request: Request) {
           .from('leads')
           .update({
             ai_status: 'failed',
-            processing_error: error.message || 'AI analysis failed',
+            processing_error: errorMessage,
             updated_at: new Date().toISOString(),
           })
           .eq('id', leadId);
       }
     } catch {}
 
-    return NextResponse.json({ error: error.message || 'Server error during lead analysis' }, { status: 500 });
+    return NextResponse.json({ error: errorMessage || 'Server error during lead analysis' }, { status: 500 });
   }
 }
