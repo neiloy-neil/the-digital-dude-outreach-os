@@ -28,6 +28,15 @@ function isSupportedProvider(provider: string): provider is EmailProviderType {
   return ['smtp', 'mailgun', 'resend', 'amazon_ses'].includes(provider);
 }
 
+function isMissingColumnError(error: { message?: string; code?: string } | null | undefined) {
+  const message = String(error?.message || '').toLowerCase();
+  return (
+    error?.code === '42703' ||
+    message.includes('does not exist') ||
+    message.includes('undefined column')
+  );
+}
+
 type QueueLead = {
   id: string;
   email: string;
@@ -279,7 +288,7 @@ export async function sendDueEmails() {
       const emailType = (nextStepNumber <= 1 ? 'first_email' : `follow_up_${Math.min(nextStepNumber - 1, 3)}`) as EmailType;
       const nowIso = new Date().toISOString();
 
-      await supabase.from('sent_emails').insert({
+      const modernSentEmailRow = {
         user_id: campaign.user_id,
         campaign_id: campaign.id,
         lead_id: lead.id,
@@ -302,23 +311,85 @@ export async function sendDueEmails() {
           ...((sendResult.raw && typeof sendResult.raw === 'object') ? sendResult.raw as Record<string, unknown> : {}),
           step_number: nextStepNumber,
         },
-      });
+      };
 
-      await supabase
+      const { error: insertError } = await supabase.from('sent_emails').insert(modernSentEmailRow);
+      if (insertError) {
+        if (isMissingColumnError(insertError)) {
+          const legacyRow = {
+            campaign_id: campaign.id,
+            lead_id: lead.id,
+            email_account_id: emailAccount.id,
+            sequence_id: sequence.id,
+            provider: emailAccount.provider,
+            message_id: sendResult.messageId || null,
+            subject,
+            status: 'sent',
+            sent_at: nowIso,
+            metadata: {
+              source: 'cron_send_due_emails',
+              campaign_name: campaign.name,
+              email_type: emailType,
+              step_number: nextStepNumber,
+              recipient_email: lead.email,
+              sender_email: emailAccount.email_address,
+              sender_name: emailAccount.sender_name || campaign.sender_name || null,
+              body_html: html,
+              body_text: body,
+              raw_provider_response:
+                sendResult.raw && typeof sendResult.raw === 'object'
+                  ? (sendResult.raw as Record<string, unknown>)
+                  : {},
+            },
+          };
+
+          const { error: legacyInsertError } = await supabase.from('sent_emails').insert(legacyRow);
+          if (legacyInsertError) {
+            throw legacyInsertError;
+          }
+        } else {
+          throw insertError;
+        }
+      }
+
+      const leadUpdatePayload = {
+        status: getStatusForEmailType(emailType),
+        current_step: nextStepNumber,
+        last_email_sent_at: nowIso,
+        next_email_at: nextEmailAt,
+        next_follow_up_at: nextEmailAt,
+        last_email_type: emailType,
+        last_contacted_at: nowIso,
+        emails_sent_count: Number(lead.emails_sent_count || 0) + 1,
+        reply_status: 'no_reply',
+        updated_at: nowIso,
+      };
+
+      const { error: leadUpdateError } = await supabase
         .from('leads')
-        .update({
+        .update(leadUpdatePayload)
+        .eq('id', lead.id);
+
+      if (leadUpdateError && isMissingColumnError(leadUpdateError)) {
+        const legacyLeadUpdatePayload = {
           status: getStatusForEmailType(emailType),
           current_step: nextStepNumber,
           last_email_sent_at: nowIso,
           next_email_at: nextEmailAt,
-          next_follow_up_at: nextEmailAt,
-          last_email_type: emailType,
-          last_contacted_at: nowIso,
-          emails_sent_count: Number(lead.emails_sent_count || 0) + 1,
-          reply_status: 'no_reply',
           updated_at: nowIso,
-        })
-        .eq('id', lead.id);
+        };
+
+        const { error: legacyLeadUpdateError } = await supabase
+          .from('leads')
+          .update(legacyLeadUpdatePayload)
+          .eq('id', lead.id);
+
+        if (legacyLeadUpdateError) {
+          throw legacyLeadUpdateError;
+        }
+      } else if (leadUpdateError) {
+        throw leadUpdateError;
+      }
 
       await incrementDailySentCount(emailAccount.id, 1);
 

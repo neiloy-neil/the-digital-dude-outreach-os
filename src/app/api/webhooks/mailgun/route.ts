@@ -3,6 +3,11 @@ import { createServiceClient } from '@/utils/supabase/service';
 import { verifyMailgunSignature } from '@/utils/mailgun';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
 
+function isMissingColumnError(error: { message?: string; code?: string } | null | undefined) {
+  const message = String(error?.message || '').toLowerCase();
+  return error?.code === '42703' || message.includes('does not exist') || message.includes('undefined column');
+}
+
 export async function POST(request: Request) {
   const supabase = createServiceClient();
 
@@ -92,15 +97,20 @@ export async function POST(request: Request) {
 
     const updateSentEmailRow = async (updatePayload: Record<string, unknown>) => {
       if (providerMessageId) {
-        const { data: matchedRows } = await supabase
-          .from('sent_emails')
-          .select('id')
-          .eq('provider_message_id', providerMessageId)
-          .limit(1);
+        try {
+          const { data: matchedRows, error: matchError } = await supabase
+            .from('sent_emails')
+            .select('id')
+            .eq('provider_message_id', providerMessageId)
+            .limit(1);
 
-        if (matchedRows && matchedRows.length > 0) {
-          await supabase.from('sent_emails').update(updatePayload).eq('id', matchedRows[0].id);
-          return;
+          if (!matchError && matchedRows && matchedRows.length > 0) {
+            const { error: updateError } = await supabase.from('sent_emails').update(updatePayload).eq('id', matchedRows[0].id);
+            if (!updateError) return;
+            if (!isMissingColumnError(updateError)) throw updateError;
+          }
+        } catch {
+          // Fall back to lead-based matching below.
         }
       }
 
@@ -113,7 +123,26 @@ export async function POST(request: Request) {
         .limit(1);
 
       if (fallbackRows && fallbackRows.length > 0) {
-        await supabase.from('sent_emails').update(updatePayload).eq('id', fallbackRows[0].id);
+        const { error: updateError } = await supabase.from('sent_emails').update(updatePayload).eq('id', fallbackRows[0].id);
+        if (!updateError) return;
+        if (!isMissingColumnError(updateError)) throw updateError;
+
+        const { error: legacyUpdateError } = await supabase
+          .from('sent_emails')
+          .update({
+            status: String(updatePayload.status || 'sent'),
+            metadata: {
+              event_type: eventType,
+              mailgun_event_id: eventData.id,
+              timestamp: eventData.timestamp,
+              ...updatePayload,
+            },
+          })
+          .eq('id', fallbackRows[0].id);
+
+        if (legacyUpdateError) {
+          throw legacyUpdateError;
+        }
       }
     };
 

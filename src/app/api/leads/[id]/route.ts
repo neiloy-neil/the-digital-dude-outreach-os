@@ -86,10 +86,17 @@ export async function GET(
       ...data,
       lead_lists: leadList,
       campaigns: campaign,
-      sent_emails: (sentEmailsResponse.data || []).map((email) => ({
-        ...email,
-        body_text: email.body_text || htmlToPlainText(email.body_html || ''),
-      })),
+      sent_emails: (sentEmailsResponse.data || []).map((email) => {
+        const metadata = (email.metadata && typeof email.metadata === 'object' ? email.metadata : {}) as Record<string, unknown>;
+        return {
+          ...email,
+          subject: String(email.subject || metadata.subject || ''),
+          sender_email: String(email.sender_email || metadata.sender_email || '') || null,
+          recipient_email: String(email.recipient_email || metadata.recipient_email || metadata.to || data.email || '') || null,
+          email_type: String(email.email_type || metadata.email_type || 'custom_email'),
+          body_text: email.body_text || htmlToPlainText(String(email.body_html || metadata.body_html || '')),
+        };
+      }),
     },
     auditLogs: auditLogsResponse.data || [],
   });

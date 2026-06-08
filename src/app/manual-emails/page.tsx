@@ -28,12 +28,13 @@ type DraftRow = {
 
 type SentEmailRow = {
   id: string;
-  subject: string;
-  recipient_email: string;
-  sender_email: string;
+  subject?: string | null;
+  recipient_email?: string | null;
+  sender_email?: string | null;
   sent_at: string;
-  status: string;
+  status?: string | null;
   email_type?: string | null;
+  metadata?: Record<string, unknown> | null;
 };
 
 export default function ManualEmailsPage() {
@@ -55,7 +56,7 @@ export default function ManualEmailsPage() {
             .limit(50),
           supabase
             .from('sent_emails')
-            .select('id,subject,recipient_email,sender_email,sent_at,status,email_type')
+            .select('*')
             .order('sent_at', { ascending: false })
             .limit(50),
         ]);
@@ -63,7 +64,20 @@ export default function ManualEmailsPage() {
         if (draftError) throw draftError;
         if (sentError) throw sentError;
         setDrafts((draftData || []) as DraftRow[]);
-        setSentEmails((sentData || []) as SentEmailRow[]);
+        setSentEmails(
+          (sentData || []).map((row: Record<string, unknown>) => {
+            const metadata = (row.metadata && typeof row.metadata === 'object' ? row.metadata : {}) as Record<string, unknown>;
+            return {
+              ...row,
+              subject: String(row.subject || ''),
+              recipient_email: String(row.recipient_email || metadata.recipient_email || metadata.to || '') || null,
+              sender_email: String(row.sender_email || metadata.sender_email || '') || null,
+              status: String(row.status || 'sent'),
+              email_type: String(row.email_type || metadata.email_type || 'custom_email'),
+              metadata,
+            } as SentEmailRow;
+          })
+        );
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to load manual emails');
       } finally {
@@ -184,13 +198,15 @@ export default function ManualEmailsPage() {
                   <div key={email.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]/60 p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <div className="font-semibold text-zinc-950">{email.subject}</div>
-                        <div className="mt-1 text-sm text-zinc-500">{email.sender_email} → {email.recipient_email}</div>
+                        <div className="font-semibold text-zinc-950">{email.subject || '(No subject)'}</div>
+                        <div className="mt-1 text-sm text-zinc-500">
+                          {email.sender_email || 'Unknown sender'} → {email.recipient_email || 'Unknown recipient'}
+                        </div>
                       </div>
-                      <StatusBadge status={email.status} />
+                      <StatusBadge status={email.status || 'sent'} />
                     </div>
                     <div className="mt-3 text-sm text-zinc-500">
-                      {getLeadStatusLabel(email.email_type)} · {new Date(email.sent_at).toLocaleString()}
+                      {getLeadStatusLabel(email.email_type || 'custom_email')} · {new Date(email.sent_at).toLocaleString()}
                     </div>
                   </div>
                 ))}

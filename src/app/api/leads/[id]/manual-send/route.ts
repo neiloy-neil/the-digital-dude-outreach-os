@@ -13,6 +13,16 @@ function isSupportedProvider(provider: string): provider is EmailProviderType {
   return ['smtp', 'mailgun', 'resend', 'amazon_ses'].includes(provider);
 }
 
+function isMissingColumnError(error: { message?: string; code?: string } | null | undefined) {
+  const message = String(error?.message || '').toLowerCase();
+  return (
+    error?.code === '42703' ||
+    message.includes('does not exist') ||
+    message.includes('undefined column') ||
+    message.includes('column') && message.includes('does not exist')
+  );
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -192,9 +202,34 @@ export async function POST(
       };
 
       const { error: updateError } = await serviceSupabase.from('leads').update(updatePayload).eq('id', lead.id);
-      if (updateError) throw updateError;
+      if (updateError) {
+        if (isMissingColumnError(updateError)) {
+          const legacyUpdatePayload = {
+            status: nextStatus,
+            manual_email_approved: true,
+            manual_email_sent_at: nowIso,
+            last_manual_email_account_id: emailAccount.id,
+            manual_personalization_status: 'sent',
+            last_email_sent_at: nowIso,
+            manual_email_subject: emailSubject,
+            manual_email_body: html,
+            updated_at: nowIso,
+          };
 
-      await serviceSupabase.from('sent_emails').insert({
+          const { error: legacyUpdateError } = await serviceSupabase
+            .from('leads')
+            .update(legacyUpdatePayload)
+            .eq('id', lead.id);
+
+          if (legacyUpdateError) {
+            throw legacyUpdateError;
+          }
+        } else {
+          throw updateError;
+        }
+      }
+
+      const modernSentEmailRow = {
         user_id: user.id,
         campaign_id: lead.campaign_id || null,
         lead_id: lead.id,
@@ -218,7 +253,46 @@ export async function POST(
           to,
           ...(result.raw && typeof result.raw === 'object' ? (result.raw as Record<string, unknown>) : {}),
         },
-      });
+      };
+
+      const { error: insertError } = await serviceSupabase.from('sent_emails').insert(modernSentEmailRow);
+      if (insertError) {
+        if (isMissingColumnError(insertError)) {
+          const legacyRow = {
+            campaign_id: lead.campaign_id || null,
+            lead_id: lead.id,
+            email_account_id: emailAccount.id,
+            sequence_id: null,
+            provider: emailAccount.provider,
+            message_id: result.messageId || null,
+            subject: emailSubject,
+            status: 'sent',
+            sent_at: nowIso,
+            metadata: {
+              source: 'manual_send',
+              mode,
+              email_type: emailType,
+              to,
+              sender_email: emailAccount.email_address,
+              sender_name: emailAccount.sender_name || null,
+              body_html: html,
+              body_text: text,
+              step_number: typeof stepNumber === 'number' ? stepNumber : null,
+              raw_provider_response:
+                result.raw && typeof result.raw === 'object'
+                  ? (result.raw as Record<string, unknown>)
+                  : {},
+            },
+          };
+
+          const { error: legacyInsertError } = await serviceSupabase.from('sent_emails').insert(legacyRow);
+          if (legacyInsertError) {
+            throw legacyInsertError;
+          }
+        } else {
+          throw insertError;
+        }
+      }
 
       await createAuditLog({
         userId: user.id,

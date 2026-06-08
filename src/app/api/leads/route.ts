@@ -114,7 +114,7 @@ export async function GET(request: Request) {
     leadIds.length > 0
       ? serviceSupabase
           .from('sent_emails')
-          .select('lead_id, sent_at, email_type, status, replied_at, bounced_at')
+          .select('*')
           .in('lead_id', leadIds)
           .order('sent_at', { ascending: false })
       : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
@@ -123,9 +123,18 @@ export async function GET(request: Request) {
   const leadListMap = new Map((leadListsResponse.data || []).map((list) => [list.id, list]));
   const sentEmailMap = new Map<string, Array<Record<string, unknown>>>();
   for (const email of sentEmailsResponse.data || []) {
+    const metadata = (email.metadata && typeof email.metadata === 'object' ? email.metadata : {}) as Record<string, unknown>;
+    const normalizedEmail = {
+      ...email,
+      email_type:
+        String(email.email_type || metadata.email_type || metadata.v_email_type || 'custom_email'),
+      status: String(email.status || 'sent'),
+      replied_at: (email.replied_at as string | null | undefined) ?? null,
+      bounced_at: (email.bounced_at as string | null | undefined) ?? null,
+    };
     const key = String(email.lead_id);
     const current = sentEmailMap.get(key) || [];
-    current.push(email);
+    current.push(normalizedEmail);
     sentEmailMap.set(key, current);
   }
 

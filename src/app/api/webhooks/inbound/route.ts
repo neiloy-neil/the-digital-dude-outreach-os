@@ -3,6 +3,11 @@ import { createServiceClient } from '@/utils/supabase/service';
 import { sendTelegramReport } from '@/utils/telegram';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
 
+function isMissingColumnError(error: { message?: string; code?: string } | null | undefined) {
+  const message = String(error?.message || '').toLowerCase();
+  return error?.code === '42703' || message.includes('does not exist') || message.includes('undefined column');
+}
+
 export async function POST(request: Request) {
   const supabase = createServiceClient();
 
@@ -69,11 +74,36 @@ export async function POST(request: Request) {
       .update({ status: 'replied', updated_at: new Date().toISOString() })
       .eq('id', targetLead.id);
 
-    await supabase
+    const repliedAt = new Date().toISOString();
+    const { error: replyUpdateError } = await supabase
       .from('sent_emails')
-      .update({ replied_at: new Date().toISOString(), status: 'replied' })
+      .update({ replied_at: repliedAt, status: 'replied' })
       .eq('lead_id', targetLead.id)
       .is('replied_at', null);
+
+    if (replyUpdateError) {
+      if (!isMissingColumnError(replyUpdateError)) {
+        throw replyUpdateError;
+      }
+
+      const { error: legacyReplyUpdateError } = await supabase
+        .from('sent_emails')
+        .update({
+          status: 'replied',
+          metadata: {
+            event_type: 'replied',
+            replied_at: repliedAt,
+            recipient,
+            subject,
+            body_snippet: bodyText.substring(0, 300),
+          },
+        })
+        .eq('lead_id', targetLead.id);
+
+      if (legacyReplyUpdateError) {
+        throw legacyReplyUpdateError;
+      }
+    }
 
     // 3. Cancel all pending outbox entries for this lead when it belongs to a campaign
     if (campaignId) {
