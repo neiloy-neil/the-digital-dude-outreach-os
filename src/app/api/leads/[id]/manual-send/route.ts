@@ -6,6 +6,7 @@ import { createAuditLog } from '@/lib/audit/create-audit-log';
 import { buildEmailMessageBodies } from '@/lib/email/html';
 import { appendEmailSignature } from '@/lib/email/signature';
 import { checkEmailQuality, hasBlockingEmailQualityIssue } from '@/lib/email/check-email-quality';
+import { verifyEmailLocally, type EmailVerificationStatus } from '@/lib/email-verification/local-verify';
 import { getStatusForEmailType, isBlockedLeadStatus, type EmailType } from '@/lib/leads/status';
 import { isMissingTableError } from '@/lib/supabase/schema-errors';
 import { getAvailableSendCapacity, incrementDailySentCount } from '@/lib/queue/queue';
@@ -38,6 +39,40 @@ function applySenderPlaceholders(text: string, sender: { name?: string | null; e
     .replace(/\{\{from_email\}\}/g, senderEmail);
 }
 
+const BLOCKED_VERIFICATION_STATUSES = new Set<EmailVerificationStatus>([
+  'invalid',
+  'disposable',
+  'suppressed',
+]);
+
+const WARNING_VERIFICATION_STATUSES = new Set<EmailVerificationStatus>([
+  'role_based',
+  'risky',
+  'unknown',
+  'not_checked',
+  'failed',
+]);
+
+const VERIFICATION_STATUS_LABELS: Record<EmailVerificationStatus, string> = {
+  not_checked: 'not checked',
+  valid: 'valid',
+  risky: 'risky',
+  invalid: 'invalid',
+  role_based: 'role-based',
+  disposable: 'disposable',
+  suppressed: 'suppressed',
+  unknown: 'unknown',
+  failed: 'failed',
+};
+
+function normalizeVerificationStatus(value?: string | null): EmailVerificationStatus {
+  const candidate = String(value || 'not_checked').trim().toLowerCase() as EmailVerificationStatus;
+  if (candidate in VERIFICATION_STATUS_LABELS) {
+    return candidate;
+  }
+  return 'not_checked';
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -55,7 +90,17 @@ export async function POST(
   }
 
   try {
-    const { mode = 'send_now', targetEmail, emailAccountId, subject, body: bodyInput, emailType = 'custom_email', stepNumber, includeSignature = true } = await request.json();
+    const {
+      mode = 'send_now',
+      targetEmail,
+      emailAccountId,
+      subject,
+      body: bodyInput,
+      emailType = 'custom_email',
+      stepNumber,
+      includeSignature = true,
+      confirmVerificationRisk = false,
+    } = await request.json();
     const { data: lead, error: leadError } = await supabase.from('leads').select('*').eq('id', id).maybeSingle();
 
     if (leadError || !lead) {
@@ -115,6 +160,64 @@ export async function POST(
         { error: `This email is suppressed: ${suppression.reason || 'suppressed'}` },
         { status: 400 }
       );
+    }
+
+    if (mode !== 'test') {
+      const normalizedLeadEmail = String(lead.email || '').trim().toLowerCase();
+      const recipientMatchesLead = Boolean(recipientEmail) && recipientEmail === normalizedLeadEmail;
+      const verificationResult = recipientMatchesLead
+        ? null
+        : await verifyEmailLocally({
+            email: recipientEmail,
+            userId: user.id,
+            checkMx: false,
+          });
+      const verificationStatus = recipientMatchesLead
+        ? normalizeVerificationStatus(lead.email_verification_status)
+        : verificationResult?.status || 'failed';
+      const verificationReason = recipientMatchesLead
+        ? String(lead.email_verification_reason || '').trim() || (verificationStatus === 'not_checked' ? 'Email has not been checked yet.' : 'Email verification requires review.')
+        : verificationResult?.reason || 'Email verification failed.';
+
+      if (BLOCKED_VERIFICATION_STATUSES.has(verificationStatus)) {
+        await createAuditLog({
+          userId: user.id,
+          leadId: lead.id,
+          campaignId: lead.campaign_id || null,
+          action: 'send_blocked_invalid_email',
+          message: `Blocked manual email to ${recipientEmail}`,
+          metadata: {
+            email: recipientEmail,
+            verification_status: verificationStatus,
+            verification_reason: verificationReason,
+            recipient_matches_lead: recipientMatchesLead,
+          },
+        });
+
+        return NextResponse.json(
+          {
+            error: `Cannot send to a ${VERIFICATION_STATUS_LABELS[verificationStatus]} email. ${verificationReason}`,
+            verificationStatus,
+            verificationReason,
+          },
+          { status: 400 }
+        );
+      }
+
+      if (WARNING_VERIFICATION_STATUSES.has(verificationStatus) && !confirmVerificationRisk) {
+        return NextResponse.json(
+          {
+            error: `Email verification warning: ${VERIFICATION_STATUS_LABELS[verificationStatus]}.`,
+            requiresConfirmation: true,
+            warning: {
+              status: verificationStatus,
+              reason: verificationReason,
+              message: `This email is marked ${VERIFICATION_STATUS_LABELS[verificationStatus]}. ${verificationReason} Send anyway?`,
+            },
+          },
+          { status: 409 }
+        );
+      }
     }
 
     if (mode !== 'test') {

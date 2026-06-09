@@ -312,15 +312,15 @@ Buttons:
 - [x] Validate selected email account
 - [x] Block bounced/unsubscribed/do_not_contact/excluded leads
 - [x] Check suppression list
-- [ ] Block invalid/disposable/suppressed emails
-- [ ] Warn for role_based/risky/unknown/not_checked emails
+- [x] Block invalid/disposable/suppressed emails
+- [x] Warn for role_based/risky/unknown/not_checked emails
 - [x] Add unsubscribe link if missing
 - [x] Send using universal `sendEmail()`
 - [x] Insert row into `sent_emails`
 - [x] Update lead status based on email type
 - [x] Update follow-up tracking fields
 - [x] Create audit log: `email_sent`
-- [ ] Create audit log: `send_blocked_invalid_email`
+- [x] Create audit log: `send_blocked_invalid_email`
 - [x] Show success/error toast
 
 ### 3.7 Email quality checker

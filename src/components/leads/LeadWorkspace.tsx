@@ -71,6 +71,32 @@ const TABS: Array<{ id: TabId; label: string; icon: typeof Database }> = [
   { id: 'raw-data', label: 'Raw Data', icon: Database },
 ];
 
+const BLOCKED_EMAIL_VERIFICATION_STATUSES = new Set([
+  'invalid',
+  'disposable',
+  'suppressed',
+]);
+
+const WARNING_EMAIL_VERIFICATION_STATUSES = new Set([
+  'role_based',
+  'risky',
+  'unknown',
+  'not_checked',
+  'failed',
+]);
+
+const EMAIL_VERIFICATION_LABELS: Record<string, string> = {
+  valid: 'valid',
+  risky: 'risky',
+  invalid: 'invalid',
+  role_based: 'role-based',
+  disposable: 'disposable',
+  suppressed: 'suppressed',
+  not_checked: 'not checked',
+  unknown: 'unknown',
+  failed: 'failed',
+};
+
 type Props = {
   leadId: string;
   title: string;
@@ -415,15 +441,43 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
       }),
     [form.manual_email_body, form.manual_email_subject, lead, manualEmailBodyText]
   );
+  const emailVerificationStatus = String(lead?.email_verification_status || 'not_checked').trim().toLowerCase();
+  const emailVerificationIssues = useMemo(() => {
+    if (!lead?.email) return [];
+
+    const reason = String(lead.email_verification_reason || '').trim();
+    const statusLabel = EMAIL_VERIFICATION_LABELS[emailVerificationStatus] || 'not checked';
+
+    if (BLOCKED_EMAIL_VERIFICATION_STATUSES.has(emailVerificationStatus)) {
+      return [
+        {
+          severity: 'error' as const,
+          message: `Lead email is marked ${statusLabel}. ${reason || 'ReachMira will block sending to this address.'}`,
+        },
+      ];
+    }
+
+    if (WARNING_EMAIL_VERIFICATION_STATUSES.has(emailVerificationStatus)) {
+      return [
+        {
+          severity: 'warning' as const,
+          message: `Lead email is marked ${statusLabel}. ${reason || 'ReachMira will ask for confirmation before sending.'}`,
+        },
+      ];
+    }
+
+    return [];
+  }, [emailVerificationStatus, lead?.email, lead?.email_verification_reason]);
   const sendChecklist = useMemo(
     () => [
       { label: 'Subject added', ok: Boolean(form.manual_email_subject.trim()) },
       { label: 'Body added', ok: Boolean(manualEmailBodyText.trim()) },
       { label: 'Email approved', ok: Boolean(form.manual_email_approved) },
       { label: 'Lead is sendable', ok: !['unsubscribed', 'bounced', 'do_not_contact'].includes(String(lead?.status || '')) },
+      { label: 'Email verification cleared', ok: emailVerificationIssues.length === 0 },
       { label: 'No blocking quality issues', ok: !hasBlockingEmailQualityIssue(emailQualityIssues) },
     ],
-    [emailQualityIssues, form.manual_email_approved, form.manual_email_subject, manualEmailBodyText, lead?.status]
+    [emailQualityIssues, emailVerificationIssues.length, form.manual_email_approved, form.manual_email_subject, manualEmailBodyText, lead?.status]
   );
   const isInitialLoading = loading && !lead;
 
@@ -637,20 +691,46 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
     setError(null);
     setSuccess(null);
     try {
-      const response = await fetch(`/api/leads/${leadId}/manual-send`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          mode,
-          targetEmail,
-          emailAccountId: selectedEmailAccountId || null,
-          subject: form.manual_email_subject,
-          body: form.manual_email_body,
-          emailType: manualEmailType,
-          includeSignature,
-        }),
-      });
-      const payload = (await response.json()) as { error?: string; to?: string };
+      const sendRequest = async (confirmVerificationRisk = false) =>
+        fetch(`/api/leads/${leadId}/manual-send`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            mode,
+            targetEmail,
+            emailAccountId: selectedEmailAccountId || null,
+            subject: form.manual_email_subject,
+            body: form.manual_email_body,
+            emailType: manualEmailType,
+            includeSignature,
+            confirmVerificationRisk,
+          }),
+        });
+
+      let response = await sendRequest(false);
+      let payload = (await response.json()) as {
+        error?: string;
+        to?: string;
+        requiresConfirmation?: boolean;
+        warning?: { message?: string };
+      };
+
+      if (mode === 'send_now' && response.status === 409 && payload.requiresConfirmation) {
+        const confirmedRisk = window.confirm(payload.warning?.message || payload.error || 'This email has a verification warning. Send anyway?');
+        if (!confirmedRisk) {
+          setSuccess('Send canceled.');
+          return;
+        }
+
+        response = await sendRequest(true);
+        payload = (await response.json()) as {
+          error?: string;
+          to?: string;
+          requiresConfirmation?: boolean;
+          warning?: { message?: string };
+        };
+      }
+
       if (!response.ok) throw new Error(payload.error || 'Failed to send email');
       setSuccess(mode === 'test' ? `Test email sent to ${payload.to}.` : 'Email sent successfully.');
       setActiveTab('history');
@@ -1263,6 +1343,20 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                             {emailQualityIssues.map((issue) => (
                               <div key={`${issue.severity}-${issue.message}`}>
                                 <span className="font-semibold">{issue.severity === 'error' ? 'Fix' : 'Check'}:</span> {issue.message}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {emailVerificationIssues.length > 0 && (
+                        <div className={`rounded-2xl p-4 ${emailVerificationIssues.some((issue) => issue.severity === 'error') ? 'border border-rose-200 bg-rose-50' : 'border border-amber-200 bg-amber-50'}`}>
+                          <div className={`mb-2 flex items-center gap-2 text-sm font-semibold ${emailVerificationIssues.some((issue) => issue.severity === 'error') ? 'text-rose-900' : 'text-amber-900'}`}>
+                            <AlertTriangle className="h-4 w-4" /> Email verification notes
+                          </div>
+                          <div className={`space-y-1 text-sm ${emailVerificationIssues.some((issue) => issue.severity === 'error') ? 'text-rose-800' : 'text-amber-800'}`}>
+                            {emailVerificationIssues.map((issue) => (
+                              <div key={`${issue.severity}-${issue.message}`}>
+                                <span className="font-semibold">{issue.severity === 'error' ? 'Blocked:' : 'Warning:'}</span> {issue.message}
                               </div>
                             ))}
                           </div>
