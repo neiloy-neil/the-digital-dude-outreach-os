@@ -448,26 +448,26 @@ When email type is follow-up:
 
 ### 4.5 Deep verification after import
 
-- [ ] Create API route: `POST /api/leads/verify-bulk`
-- [ ] Require auth
-- [ ] Limit to 25 leads per request
-- [ ] Accept:
-- [ ] `lead_ids: string[]`
-- [ ] `checkMx: boolean`
-- [ ] Run local verification with MX enabled when requested
-- [ ] Update verification fields
-- [ ] Return summary:
-- [ ] total
-- [ ] valid
-- [ ] risky
-- [ ] invalid
-- [ ] role_based
-- [ ] disposable
-- [ ] suppressed
-- [ ] unknown
-- [ ] failed
-- [ ] Add audit log: `email_verified`
-- [ ] Add audit log: `email_verification_failed`
+- [x] Create API route: `POST /api/leads/verify-bulk`
+- [x] Require auth
+- [x] Limit to 25 leads per request
+- [x] Accept:
+- [x] `lead_ids: string[]`
+- [x] `checkMx: boolean`
+- [x] Run local verification with MX enabled when requested
+- [x] Update verification fields
+- [x] Return summary:
+- [x] total
+- [x] valid
+- [x] risky
+- [x] invalid
+- [x] role_based
+- [x] disposable
+- [x] suppressed
+- [x] unknown
+- [x] failed
+- [x] Add audit log: `email_verified`
+- [x] Add audit log: `email_verification_failed`
 
 ## Acceptance Criteria
 
@@ -570,7 +570,7 @@ Make importing and managing leads simple and reliable.
 - [x] duplicates skipped
 - [x] Keep verification free-tier friendly
 - [x] Do not run MX checks during imports by default
-- [ ] Let user trigger deep verification manually
+- [x] Let user trigger deep verification manually
 
 ### 5.3 Lead Library table
 
@@ -630,8 +630,8 @@ Add filters:
 - [x] Add tag
 - [x] Change priority
 - [x] Export selected
-- [ ] Verify selected emails
-- [ ] Deep verify selected emails
+- [x] Verify selected emails
+- [x] Deep verify selected emails
 - [ ] Mark as contacted
 - [ ] Assign to list
 
@@ -645,7 +645,7 @@ Add filters:
 - [x] Lead Library feels like a usable mini CRM
 - [x] Imported leads show email verification status
 - [x] User can filter leads by email status
-- [ ] User can bulk verify selected leads
+- [x] User can bulk verify selected leads
 - [ ] Invalid/suppressed/disposable emails are visible before outreach
 
 ---

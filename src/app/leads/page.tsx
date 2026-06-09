@@ -161,12 +161,34 @@ function LeadsPageContent() {
       add_to_campaign: 'add to campaign',
       add_tag: 'add tag',
       change_priority: 'change priority',
+      verify_selected: 'verify emails',
+      deep_verify_selected: 'deep verify emails',
     };
     const label = actionLabels[action] || action.replace(/_/g, ' ');
     const confirmed = window.confirm(`Apply "${label}" to ${selected.length} selected lead${selected.length === 1 ? '' : 's'}?`);
     if (!confirmed) return;
 
     setError(null);
+
+    if (action === 'verify_selected' || action === 'deep_verify_selected') {
+      const response = await fetch('/api/leads/verify-bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_ids: selected,
+          checkMx: action === 'deep_verify_selected',
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) {
+        setError(payload.error || 'Bulk verification failed');
+        return;
+      }
+      setSelected([]);
+      await loadData();
+      return;
+    }
+
     const response = await fetch('/api/leads/bulk', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -402,8 +424,8 @@ function LeadsPageContent() {
             <button onClick={() => runBulkAction('mark_do_not_contact')} className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">Mark Do Not Contact</button>
             <button onClick={() => runBulkAction('mark_excluded')} className="rounded-xl bg-zinc-100 px-3 py-2 text-xs font-semibold text-zinc-700">Mark Excluded</button>
             <button onClick={() => runBulkAction('add_to_campaign')} className="rounded-xl bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700">Add to Campaign</button>
-            <button disabled title="Bulk verify lands in the next slice." className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-zinc-400 ring-1 ring-[var(--border)] disabled:cursor-not-allowed">Verify Emails</button>
-            <button disabled title="Deep verify lands in the next slice." className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-zinc-400 ring-1 ring-[var(--border)] disabled:cursor-not-allowed">Deep Verify</button>
+            <button onClick={() => runBulkAction('verify_selected')} className="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700">Verify Emails</button>
+            <button onClick={() => runBulkAction('deep_verify_selected')} className="rounded-xl bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-700">Deep Verify</button>
             <div className="flex items-center gap-2 rounded-xl bg-white px-2 py-1 ring-1 ring-[var(--border)]">
               <input value={bulkTag} onChange={(e) => setBulkTag(e.target.value)} placeholder="Tag" className="w-28 bg-transparent px-2 py-1 text-xs outline-none placeholder:text-zinc-400" />
               <button onClick={() => runBulkAction('add_tag', { tag: bulkTag })} className="rounded-lg bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-700">Add Tag</button>
