@@ -586,7 +586,7 @@ Columns:
 - [x] Data Quality
 - [x] Status
 - [x] AI Status
-- [ ] Email Status
+- [x] Email Status
 - [x] Last Contacted
 - [x] Next Follow-up
 - [x] Actions
@@ -609,11 +609,11 @@ Add filters:
 - [x] Bounced
 - [x] Unsubscribed
 - [x] Do Not Contact
-- [ ] Email Status
-- [ ] Valid emails
-- [ ] Risky emails
-- [ ] Invalid emails
-- [ ] Not checked emails
+- [x] Email Status
+- [x] Valid emails
+- [x] Risky emails
+- [x] Invalid emails
+- [x] Not checked emails
 - [ ] Ready to Send
 - [ ] Missing Solution Angle
 - [ ] Needs Personalization
@@ -643,8 +643,8 @@ Add filters:
 - [x] User can filter and search leads
 - [x] User can take bulk actions
 - [x] Lead Library feels like a usable mini CRM
-- [ ] Imported leads show email verification status
-- [ ] User can filter leads by email status
+- [x] Imported leads show email verification status
+- [x] User can filter leads by email status
 - [ ] User can bulk verify selected leads
 - [ ] Invalid/suppressed/disposable emails are visible before outreach
 

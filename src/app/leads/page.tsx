@@ -3,6 +3,7 @@
 export const dynamic = 'force-dynamic';
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react';
+import EmailVerificationBadge from '@/components/leads/EmailVerificationBadge';
 import StatusBadge from '@/components/leads/StatusBadge';
 import { createClient } from '@/utils/supabase/client';
 import Link from 'next/link';
@@ -39,6 +40,8 @@ type LeadRow = {
   emails_sent_count?: number | null;
   ai_status?: string | null;
   manual_personalization_status?: string | null;
+  email_verification_status?: string | null;
+  email_verification_reason?: string | null;
 };
 
 type CampaignOption = {
@@ -63,6 +66,7 @@ function LeadsPageContent() {
   const [statusFilter, setStatusFilter] = useState(() => searchParams.get('status') || 'all');
   const [priorityFilter, setPriorityFilter] = useState(() => searchParams.get('priority') || 'all');
   const [aiStatusFilter, setAiStatusFilter] = useState(() => searchParams.get('aiStatus') || 'all');
+  const [emailStatusFilter, setEmailStatusFilter] = useState(() => searchParams.get('emailStatus') || 'all');
   const [qualityFilter, setQualityFilter] = useState('all');
   const [leadListFilter, setLeadListFilter] = useState('all');
   const [industryFilter, setIndustryFilter] = useState(() => searchParams.get('industry') || '');
@@ -93,6 +97,7 @@ function LeadsPageContent() {
       if (statusFilter !== 'all') params.set('status', statusFilter);
       if (priorityFilter !== 'all') params.set('priority', priorityFilter);
       if (aiStatusFilter !== 'all') params.set('aiStatus', aiStatusFilter);
+      if (emailStatusFilter !== 'all') params.set('emailStatus', emailStatusFilter);
       if (leadListFilter !== 'all') params.set('leadListId', leadListFilter);
       if (industryFilter) params.set('industry', industryFilter);
       if (countryFilter) params.set('country', countryFilter);
@@ -124,7 +129,7 @@ function LeadsPageContent() {
     } finally {
       setLoading(false);
     }
-  }, [aiStatusFilter, contactGuardFilter, countryFilter, emailTypeFilter, followUpDueFilter, industryFilter, lastContactedFrom, lastContactedTo, leadListFilter, missingPainFilter, notContactedFilter, priorityFilter, repliedFilter, search, statusFilter, supabase, followUpStageFilter, tagFilter]);
+  }, [aiStatusFilter, contactGuardFilter, countryFilter, emailStatusFilter, emailTypeFilter, followUpDueFilter, industryFilter, lastContactedFrom, lastContactedTo, leadListFilter, missingPainFilter, notContactedFilter, priorityFilter, repliedFilter, search, statusFilter, supabase, followUpStageFilter, tagFilter]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -185,6 +190,7 @@ function LeadsPageContent() {
       'Contact',
       'Email',
       'Industry',
+      'Email Status',
       'Country',
       'Pain Point',
       'Priority',
@@ -201,6 +207,7 @@ function LeadsPageContent() {
         lead.decision_maker_name || `${lead.first_name || ''} ${lead.last_name || ''}`.trim(),
         lead.email,
         lead.industry || '',
+        lead.email_verification_status || 'not_checked',
         lead.country || '',
         lead.pain_points || '',
         lead.priority || '',
@@ -286,6 +293,18 @@ function LeadsPageContent() {
             <option value="skipped">Skipped</option>
             <option value="failed">Failed</option>
           </select>
+          <select value={emailStatusFilter} onChange={(e) => setEmailStatusFilter(e.target.value)} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-700">
+            <option value="all">All Email Statuses</option>
+            <option value="valid">Valid</option>
+            <option value="risky">Risky</option>
+            <option value="invalid">Invalid</option>
+            <option value="role_based">Role-based</option>
+            <option value="disposable">Disposable</option>
+            <option value="suppressed">Suppressed</option>
+            <option value="unknown">Unknown</option>
+            <option value="not_checked">Not Checked</option>
+            <option value="failed">Failed</option>
+          </select>
           <select value={qualityFilter} onChange={(e) => setQualityFilter(e.target.value)} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-700">
             <option value="all">All Data Quality</option>
             <option value="poor">Poor</option>
@@ -316,7 +335,7 @@ function LeadsPageContent() {
           </select>
         </div>
 
-        <div className="mt-3 grid gap-3 xl:grid-cols-5">
+        <div className="mt-3 grid gap-3 xl:grid-cols-6">
           <input value={industryFilter} onChange={(e) => setIndustryFilter(e.target.value)} placeholder="Industry filter" className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-700 outline-none placeholder:text-zinc-400" />
           <input value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)} placeholder="Country filter" className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-700 outline-none placeholder:text-zinc-400" />
           <input value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} placeholder="Tag filter" className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-700 outline-none placeholder:text-zinc-400" />
@@ -383,6 +402,8 @@ function LeadsPageContent() {
             <button onClick={() => runBulkAction('mark_do_not_contact')} className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">Mark Do Not Contact</button>
             <button onClick={() => runBulkAction('mark_excluded')} className="rounded-xl bg-zinc-100 px-3 py-2 text-xs font-semibold text-zinc-700">Mark Excluded</button>
             <button onClick={() => runBulkAction('add_to_campaign')} className="rounded-xl bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700">Add to Campaign</button>
+            <button disabled title="Bulk verify lands in the next slice." className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-zinc-400 ring-1 ring-[var(--border)] disabled:cursor-not-allowed">Verify Emails</button>
+            <button disabled title="Deep verify lands in the next slice." className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-zinc-400 ring-1 ring-[var(--border)] disabled:cursor-not-allowed">Deep Verify</button>
             <div className="flex items-center gap-2 rounded-xl bg-white px-2 py-1 ring-1 ring-[var(--border)]">
               <input value={bulkTag} onChange={(e) => setBulkTag(e.target.value)} placeholder="Tag" className="w-28 bg-transparent px-2 py-1 text-xs outline-none placeholder:text-zinc-400" />
               <button onClick={() => runBulkAction('add_tag', { tag: bulkTag })} className="rounded-lg bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-700">Add Tag</button>
@@ -420,13 +441,14 @@ function LeadsPageContent() {
         ) : (
           <>
             <div className="hidden overflow-x-auto lg:block">
-              <table className="min-w-[1500px] w-full text-left text-sm">
+              <table className="min-w-[1620px] w-full text-left text-sm">
                 <thead className="sticky top-0 z-10 border-b border-[var(--border)] bg-white text-xs uppercase tracking-[0.18em] text-zinc-400">
                   <tr>
                     <th className="w-10 px-4 py-4" />
                     <th className="px-4 py-4">Company</th>
                     <th className="px-4 py-4">Contact</th>
                     <th className="px-4 py-4">Email</th>
+                    <th className="px-4 py-4">Email Status</th>
                     <th className="px-4 py-4">Industry</th>
                     <th className="px-4 py-4">Pain Point</th>
                     <th className="px-4 py-4">Priority</th>
@@ -458,6 +480,9 @@ function LeadsPageContent() {
                       </td>
                       <td className="px-4 py-4 text-zinc-600">
                         <div className="truncate">{lead.email}</div>
+                      </td>
+                      <td className="px-4 py-4">
+                        <EmailVerificationBadge status={lead.email_verification_status} />
                       </td>
                       <td className="px-4 py-4 text-zinc-600">
                         <div className="truncate">{lead.industry || lead.lead_lists?.name || '-'}</div>
@@ -496,6 +521,7 @@ function LeadsPageContent() {
                   </div>
                   <div className="mt-3 grid gap-2 text-sm text-zinc-600">
                     <div><span className="font-medium text-zinc-900">Email:</span> {lead.email}</div>
+                    <div className="flex flex-wrap items-center gap-2"><span className="font-medium text-zinc-900">Email Status:</span> <EmailVerificationBadge status={lead.email_verification_status} /></div>
                     <div><span className="font-medium text-zinc-900">Industry:</span> {lead.industry || '-'}</div>
                     <div><span className="font-medium text-zinc-900">Pain:</span> {lead.pain_points || '-'}</div>
                     <div><span className="font-medium text-zinc-900">AI:</span> {lead.ai_status || '-'}</div>

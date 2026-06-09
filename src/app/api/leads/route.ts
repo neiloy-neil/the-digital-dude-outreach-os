@@ -23,6 +23,7 @@ export async function GET(request: Request) {
   const status = url.searchParams.get('status');
   const priority = url.searchParams.get('priority');
   const aiStatus = url.searchParams.get('aiStatus');
+  const emailStatus = url.searchParams.get('emailStatus');
   const industry = url.searchParams.get('industry')?.trim();
   const country = url.searchParams.get('country')?.trim();
   const tags = url.searchParams.get('tags')?.trim();
@@ -78,6 +79,10 @@ export async function GET(request: Request) {
 
   if (aiStatus && aiStatus !== 'all') {
     query = query.eq('ai_status', aiStatus);
+  }
+
+  if (emailStatus && emailStatus !== 'all') {
+    query = query.eq('email_verification_status', emailStatus);
   }
 
   if (industry) {
