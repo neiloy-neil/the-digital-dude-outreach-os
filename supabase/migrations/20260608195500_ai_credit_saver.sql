@@ -20,6 +20,7 @@ create table if not exists public.ai_settings (
 
 alter table public.ai_settings enable row level security;
 
+drop policy if exists "Users can manage own ai settings" on public.ai_settings;
 create policy "Users can manage own ai settings" on public.ai_settings
   for all using (auth.uid() = user_id);
 

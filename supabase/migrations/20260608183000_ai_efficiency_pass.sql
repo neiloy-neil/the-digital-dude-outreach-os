@@ -50,6 +50,7 @@ create table if not exists public.ai_usage_logs (
 
 alter table public.ai_usage_logs enable row level security;
 
+drop policy if exists "Users can view own AI usage logs" on public.ai_usage_logs;
 create policy "Users can view own AI usage logs" on public.ai_usage_logs
   for select using (auth.uid() = user_id);
 
@@ -81,6 +82,7 @@ create table if not exists public.company_enrichment_cache (
 
 alter table public.company_enrichment_cache enable row level security;
 
+drop policy if exists "Users can manage own company enrichment cache" on public.company_enrichment_cache;
 create policy "Users can manage own company enrichment cache" on public.company_enrichment_cache
   for all using (auth.uid() = user_id);
 

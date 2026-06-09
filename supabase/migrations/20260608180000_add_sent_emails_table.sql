@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS public.sent_emails (
 
 ALTER TABLE public.sent_emails ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view their sent emails" ON public.sent_emails;
 CREATE POLICY "Users can view their sent emails" ON public.sent_emails
   FOR SELECT USING (
     EXISTS (

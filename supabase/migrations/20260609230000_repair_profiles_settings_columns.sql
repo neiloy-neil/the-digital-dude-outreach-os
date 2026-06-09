@@ -1,0 +1,32 @@
+-- Repair profile schema drift for settings pages.
+-- Safe to run on projects that already have these columns.
+
+alter table public.profiles
+  add column if not exists telegram_chat_id text,
+  add column if not exists telegram_bot_token text,
+  add column if not exists gemini_api_key text,
+  add column if not exists mailgun_api_key text,
+  add column if not exists mailgun_domain text,
+  add column if not exists mailgun_from_email text,
+  add column if not exists mailgun_from_name text,
+  add column if not exists smtp_host text,
+  add column if not exists smtp_port integer,
+  add column if not exists smtp_user text,
+  add column if not exists smtp_pass text,
+  add column if not exists imap_host text,
+  add column if not exists imap_port integer default 993,
+  add column if not exists imap_user text,
+  add column if not exists imap_pass text,
+  add column if not exists daily_ai_call_limit integer default 75,
+  add column if not exists monthly_ai_call_limit integer default 1500,
+  add column if not exists max_bulk_ai_batch_size integer default 5,
+  add column if not exists min_data_quality_for_ai integer default 45,
+  add column if not exists full_ai_min_solution_score integer default 65,
+  add column if not exists stop_ai_when_limit_reached boolean default true,
+  add column if not exists outreach_company_name text,
+  add column if not exists outreach_company_website text,
+  add column if not exists outreach_company_description text,
+  add column if not exists outreach_offers_services text,
+  add column if not exists outreach_value_proposition text,
+  add column if not exists outreach_target_customers text,
+  add column if not exists outreach_proof_points text;

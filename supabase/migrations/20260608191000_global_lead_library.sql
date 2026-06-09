@@ -12,6 +12,7 @@ create table if not exists public.lead_lists (
 
 alter table public.lead_lists enable row level security;
 
+drop policy if exists "Users can manage own lead lists" on public.lead_lists;
 create policy "Users can manage own lead lists" on public.lead_lists
   for all using (auth.uid() = user_id);
 
@@ -37,6 +38,7 @@ alter table public.leads
   add constraint leads_campaign_id_fkey foreign key (campaign_id) references public.campaigns(id) on delete cascade;
 
 drop policy if exists "Users can manage leads of own campaigns" on public.leads;
+drop policy if exists "Users can manage library leads" on public.leads;
 create policy "Users can manage library leads" on public.leads
   for all using (
     auth.uid() = user_id
@@ -68,6 +70,7 @@ create table if not exists public.lead_campaigns (
 
 alter table public.lead_campaigns enable row level security;
 
+drop policy if exists "Users can manage own lead campaign attachments" on public.lead_campaigns;
 create policy "Users can manage own lead campaign attachments" on public.lead_campaigns
   for all using (auth.uid() = user_id);
 
