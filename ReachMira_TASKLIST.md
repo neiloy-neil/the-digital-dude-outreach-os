@@ -148,6 +148,9 @@ Make the lead detail page the main workspace where users understand the lead and
 - [x] Show website link
 - [x] Show contact name
 - [x] Show email
+- [ ] Show email verification badge
+- [ ] Show verification reason
+- [ ] Show verified date
 - [x] Show status badge
 - [x] Show priority badge
 - [x] Show data quality score
@@ -155,6 +158,7 @@ Make the lead detail page the main workspace where users understand the lead and
 - [x] Show next follow-up date
 - [x] Add actions:
   - [x] Edit Lead
+  - [ ] Verify Email
   - [x] Write Manual Email
   - [x] Add to Campaign
   - [x] Mark Do Not Contact
@@ -308,12 +312,15 @@ Buttons:
 - [x] Validate selected email account
 - [x] Block bounced/unsubscribed/do_not_contact/excluded leads
 - [x] Check suppression list
+- [ ] Block invalid/disposable/suppressed emails
+- [ ] Warn for role_based/risky/unknown/not_checked emails
 - [x] Add unsubscribe link if missing
 - [x] Send using universal `sendEmail()`
 - [x] Insert row into `sent_emails`
 - [x] Update lead status based on email type
 - [x] Update follow-up tracking fields
 - [x] Create audit log: `email_sent`
+- [ ] Create audit log: `send_blocked_invalid_email`
 - [x] Show success/error toast
 
 ### 3.7 Email quality checker
@@ -439,6 +446,29 @@ When email type is follow-up:
 - [x] Add Copy Previous Email Context button
 - [x] Add Copy Follow-up Prompt button
 
+### 4.5 Deep verification after import
+
+- [ ] Create API route: `POST /api/leads/verify-bulk`
+- [ ] Require auth
+- [ ] Limit to 25 leads per request
+- [ ] Accept:
+- [ ] `lead_ids: string[]`
+- [ ] `checkMx: boolean`
+- [ ] Run local verification with MX enabled when requested
+- [ ] Update verification fields
+- [ ] Return summary:
+- [ ] total
+- [ ] valid
+- [ ] risky
+- [ ] invalid
+- [ ] role_based
+- [ ] disposable
+- [ ] suppressed
+- [ ] unknown
+- [ ] failed
+- [ ] Add audit log: `email_verified`
+- [ ] Add audit log: `email_verification_failed`
+
 ## Acceptance Criteria
 
 - [x] Every sent email is visible in history
@@ -489,6 +519,59 @@ Make importing and managing leads simple and reliable.
 - [x] Show private sheet error clearly
 - [x] Reuse column mapping flow
 
+### 5.2A Email verification during import
+
+- [x] Add lead fields:
+- [x] `email_verification_status text default 'not_checked'`
+- [x] `email_verification_score int`
+- [x] `email_verification_provider text default 'local'`
+- [x] `email_verification_reason text`
+- [x] `email_verified_at timestamp with time zone`
+- [x] `email_verification_raw jsonb`
+- [x] Create `src/lib/email-verification/local-verify.ts`
+- [x] Normalize email to lowercase
+- [x] Validate syntax
+- [x] Extract domain
+- [x] Check empty email
+- [x] Check suppression list
+- [x] Check role-based prefixes:
+- [x] `info`
+- [x] `support`
+- [x] `admin`
+- [x] `sales`
+- [x] `contact`
+- [x] `hello`
+- [x] `noreply`
+- [x] `no-reply`
+- [x] Check disposable domains:
+- [x] `mailinator.com`
+- [x] `tempmail.com`
+- [x] `10minutemail.com`
+- [x] `guerrillamail.com`
+- [x] Support optional MX check
+- [x] Return:
+- [x] `status`
+- [x] `score`
+- [x] `reason`
+- [x] `provider`
+- [x] `checks`
+- [x] Run local verification during CSV import
+- [x] Run local verification during Google Sheets import
+- [x] Save verification result into lead row
+- [x] Skip invalid emails by default
+- [x] Allow user to import invalid rows explicitly
+- [x] Show import summary:
+- [x] total rows
+- [x] imported
+- [x] invalid emails
+- [x] role-based emails
+- [x] disposable emails
+- [x] suppressed emails
+- [x] duplicates skipped
+- [x] Keep verification free-tier friendly
+- [x] Do not run MX checks during imports by default
+- [ ] Let user trigger deep verification manually
+
 ### 5.3 Lead Library table
 
 Columns:
@@ -503,6 +586,7 @@ Columns:
 - [x] Data Quality
 - [x] Status
 - [x] AI Status
+- [ ] Email Status
 - [x] Last Contacted
 - [x] Next Follow-up
 - [x] Actions
@@ -525,6 +609,16 @@ Add filters:
 - [x] Bounced
 - [x] Unsubscribed
 - [x] Do Not Contact
+- [ ] Email Status
+- [ ] Valid emails
+- [ ] Risky emails
+- [ ] Invalid emails
+- [ ] Not checked emails
+- [ ] Ready to Send
+- [ ] Missing Solution Angle
+- [ ] Needs Personalization
+- [ ] Valid emails only
+- [ ] Interested
 
 ### 5.5 Bulk actions
 
@@ -536,6 +630,10 @@ Add filters:
 - [x] Add tag
 - [x] Change priority
 - [x] Export selected
+- [ ] Verify selected emails
+- [ ] Deep verify selected emails
+- [ ] Mark as contacted
+- [ ] Assign to list
 
 ## Acceptance Criteria
 
@@ -545,6 +643,10 @@ Add filters:
 - [x] User can filter and search leads
 - [x] User can take bulk actions
 - [x] Lead Library feels like a usable mini CRM
+- [ ] Imported leads show email verification status
+- [ ] User can filter leads by email status
+- [ ] User can bulk verify selected leads
+- [ ] Invalid/suppressed/disposable emails are visible before outreach
 
 ---
 
@@ -676,6 +778,9 @@ Show real counts:
 - [x] Leads missing pain point
 - [x] Replies waiting response
 - [x] Bounced leads to review
+- [ ] Leads needing email verification
+- [ ] Leads ready to send
+- [ ] Leads missing solution angle
 
 ### 7.3 CTA links
 
@@ -699,6 +804,9 @@ Show:
 - [x] Reply received
 - [x] Lead unsubscribed
 - [x] Email bounced
+- [ ] Email verified
+- [ ] Follow-up reminder due
+- [ ] Reply outcome updated
 
 ## Acceptance Criteria
 
@@ -783,6 +891,7 @@ Variables:
 
 - [x] Insert template into manual email
 - [x] Use template in campaign sequence later
+- [ ] Link templates to offers
 
 ## Acceptance Criteria
 
@@ -833,6 +942,10 @@ Add campaign automation after manual outreach is stable.
 - [x] Use sent email history
 - [x] Use audit logs
 - [x] Add launch readiness checklist before activating automation
+- [ ] Add `allow_risky_emails` campaign setting
+- [ ] Block invalid/disposable/suppressed emails
+- [ ] Skip not_checked/unknown/risky unless `allow_risky_emails = true`
+- [ ] Add audit log: `send_skipped_email_verification`
 
 ### 9.4 Campaign analytics
 
@@ -851,6 +964,128 @@ Add campaign automation after manual outreach is stable.
 - [x] Follow-ups stop on reply/bounce/unsubscribe
 - [x] Campaign status is trackable
 - [x] Campaign analytics are useful
+
+---
+
+# Phase 9B: Strengthen Manual-First Advantage
+
+## Goal
+
+Make ReachMira more useful than a spreadsheet without becoming a heavy cold email automation tool.
+
+## Tasks
+
+### 9B.1 Outreach Readiness Status
+
+- [ ] Add computed outreach readiness status per lead
+- [ ] Add readiness states:
+- [ ] `ready_to_send`
+- [ ] `needs_email_verification`
+- [ ] `missing_pain_point`
+- [ ] `missing_solution_angle`
+- [ ] `needs_personalization`
+- [ ] `follow_up_due`
+- [ ] `already_contacted`
+- [ ] `do_not_contact`
+- [ ] Show readiness status in Lead Library
+- [ ] Show readiness status in Lead Detail page
+- [ ] Add readiness filters
+- [ ] Add readiness counts to dashboard
+
+### 9B.2 Saved Views
+
+- [ ] Add saved views for Lead Library
+- [ ] Save current filters as reusable views
+- [ ] Let user name a saved view
+- [ ] Add default saved views:
+- [ ] Valid Emails Only
+- [ ] Ready to Send
+- [ ] Follow-ups Due Today
+- [ ] High Priority Leads
+- [ ] Missing Pain Point
+- [ ] Not Contacted Yet
+- [ ] Allow deleting saved views
+- [ ] Allow setting a default saved view
+
+### 9B.3 Import Cleanup Assistant
+
+- [ ] Show import cleanup summary before final import
+- [ ] Show duplicate emails found
+- [ ] Show invalid emails found
+- [ ] Show role-based emails found
+- [ ] Show disposable emails found
+- [ ] Show missing company names
+- [ ] Show leads missing pain points
+- [ ] Add import options:
+- [ ] Import all
+- [ ] Skip duplicates
+- [ ] Skip invalid emails
+- [ ] Import only valid leads
+
+### 9B.4 Follow-up Reminder Layer
+
+- [ ] Add follow-up reminder views
+- [ ] Show due today
+- [ ] Show due tomorrow
+- [ ] Show overdue
+- [ ] Add reminder actions:
+- [ ] Snooze 1 day
+- [ ] Snooze 3 days
+- [ ] Mark done
+- [ ] Add dashboard reminder counts
+- [ ] Keep reminders manual-first, not auto-send
+
+### 9B.5 Offer Library and Offer Matching
+
+- [ ] Add offer library
+- [ ] Store reusable offer/service records
+- [ ] Add example offers:
+- [ ] Website redesign
+- [ ] Custom CRM
+- [ ] AI automation
+- [ ] SaaS MVP development
+- [ ] Landing page
+- [ ] Let user assign recommended offer to a lead
+- [ ] Use offer in templates and AI prompts later
+
+### 9B.6 Workspace Analytics Lite
+
+- [ ] Add simple workspace analytics
+- [ ] Show valid email rate
+- [ ] Show outreach readiness distribution
+- [ ] Show follow-ups due
+- [ ] Show interested leads
+- [ ] Show most used offer
+- [ ] Show best used template
+
+### 9B.7 Reply Outcome Classification
+
+- [ ] Add reply outcome labels
+- [ ] Add statuses:
+- [ ] Interested
+- [ ] Not interested
+- [ ] Asked for details
+- [ ] Demo requested
+- [ ] Proposal requested
+- [ ] Let user set reply outcome manually
+- [ ] Show reply outcome in lead timeline and filters
+
+### 9B.8 Workspace Safety Checklist
+
+- [ ] Add pre-send workspace safety checklist
+- [ ] Confirm email account connected
+- [ ] Confirm unsubscribe link enabled
+- [ ] Confirm daily limit set
+- [ ] Confirm lead not suppressed
+- [ ] Add DNS/authentication guidance note for SPF/DKIM/DMARC
+
+## Acceptance Criteria
+
+- [ ] ReachMira helps users know what to do next
+- [ ] Lead Library becomes easier to operate daily
+- [ ] Follow-ups are less likely to be forgotten
+- [ ] Saved views reduce repeated filtering work
+- [ ] Product stays manual-first and affordable
 
 ---
 
@@ -996,13 +1231,19 @@ Run after each major phase:
 - [ ] Test email account
 - [ ] Import CSV leads
 - [ ] Import Google Sheet leads
+- [ ] Import leads with valid and invalid emails
+- [ ] Confirm verification status appears in Lead Library
+- [ ] Filter by email status
 - [ ] Open lead detail page
+- [ ] Confirm verification badge/reason/date
 - [ ] Add pain point and solution angle
 - [ ] Copy context for ChatGPT
 - [ ] Paste email into manual editor
 - [ ] Save draft
 - [ ] Approve email
 - [ ] Send email
+- [ ] Verify selected emails
+- [ ] Deep verify selected emails
 - [ ] Check email history
 - [ ] Check lead status is `mail_sent`
 - [ ] Check next follow-up date
@@ -1010,8 +1251,11 @@ Run after each major phase:
 - [ ] Check status is `follow_up_1_sent`
 - [ ] Add lead to suppression list
 - [ ] Confirm send is blocked
+- [ ] Confirm invalid/disposable/suppressed emails are blocked from manual send
+- [ ] Confirm unknown/not_checked/risky emails warn before manual send
 - [ ] Test unsubscribe link
 - [ ] Test reply webhook if configured
+- [ ] Confirm campaign send skips risky/not_checked/unknown when risky emails are not allowed
 - [ ] Confirm dashboard needs-action counts update
 
 ---

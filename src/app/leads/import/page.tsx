@@ -6,7 +6,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/reachmira/AppShell';
 import PageHeader from '@/components/reachmira/PageHeader';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import Papa from 'papaparse';
 import { ArrowLeft, Upload, FileSpreadsheet, Database } from 'lucide-react';
 import { LEAD_DESTINATION_FIELDS, autoMapHeaders } from '@/lib/leads/library';
@@ -31,6 +31,9 @@ type ImportResult = {
   imported: number;
   skippedDuplicates: number;
   invalidEmails: number;
+  roleBasedEmails: number;
+  disposableEmails: number;
+  suppressedEmails: number;
   error?: string;
 };
 
@@ -43,7 +46,6 @@ export default function LeadImportPage() {
 }
 
 function LeadImportPageInner() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const [leadLists, setLeadLists] = useState<LeadListOption[]>([]);
   const [leadListId, setLeadListId] = useState('');
@@ -55,6 +57,7 @@ function LeadImportPageInner() {
   const [mappings, setMappings] = useState<Record<string, string>>({});
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importInvalidRows, setImportInvalidRows] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -175,7 +178,7 @@ function LeadImportPageInner() {
       const response = await fetch(`/api/lead-lists/${leadListId}/import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leads }),
+        body: JSON.stringify({ leads, importInvalidRows }),
       });
       const data = (await response.json()) as ImportResult;
       if (!response.ok) throw new Error(data.error || 'Failed to import leads');
@@ -183,7 +186,6 @@ function LeadImportPageInner() {
       setHeaders([]);
       setRows([]);
       setMappings({});
-      router.push(`/lead-lists/${leadListId}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to import leads');
     } finally {
@@ -218,7 +220,15 @@ function LeadImportPageInner() {
         {previewError && <div className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{previewError}</div>}
         {result && (
           <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
-            Imported {result.imported} leads. Skipped duplicates: {result.skippedDuplicates}. Invalid emails: {result.invalidEmails}.
+            <div className="font-semibold text-emerald-800">Import complete</div>
+            <div className="mt-2 grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+              <div>Imported: {result.imported}</div>
+              <div>Duplicates: {result.skippedDuplicates}</div>
+              <div>Invalid: {result.invalidEmails}</div>
+              <div>Role-based: {result.roleBasedEmails}</div>
+              <div>Disposable: {result.disposableEmails}</div>
+              <div>Suppressed: {result.suppressedEmails}</div>
+            </div>
           </div>
         )}
 
@@ -290,7 +300,15 @@ function LeadImportPageInner() {
                 ))}
               </div>
               <div className="flex items-center justify-between border-t border-[var(--border)] pt-4">
-                <div className="text-xs text-zinc-500">First 5 rows previewed above.</div>
+                <label className="inline-flex items-center gap-2 text-xs font-medium text-zinc-600">
+                  <input
+                    type="checkbox"
+                    checked={importInvalidRows}
+                    onChange={(e) => setImportInvalidRows(e.target.checked)}
+                    className="rounded border-zinc-300 text-violet-600 focus:ring-violet-500"
+                  />
+                  Import invalid emails too
+                </label>
                 <button disabled={importing} onClick={handleImport} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-600/20 transition hover:opacity-95 disabled:opacity-50">
                   {importing ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <><Database className="h-4 w-4" /> Import to List</>}
                 </button>

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
+import { buildLeadEmailVerificationFields, verifyEmailLocally } from '@/lib/email-verification/local-verify';
 import { calculateLeadQuality, dedupeLeadRows } from '@/lib/leads/library';
 import { isMissingTableError } from '@/lib/supabase/schema-errors';
 
@@ -24,7 +25,7 @@ export async function POST(
   }
 
   try {
-    const { leads } = await request.json();
+    const { leads, importInvalidRows = false } = await request.json();
     if (!Array.isArray(leads) || leads.length === 0) {
       return NextResponse.json({ error: 'No leads provided' }, { status: 400 });
     }
@@ -69,15 +70,13 @@ export async function POST(
     let imported = 0;
     let skippedDuplicates = 0;
     let invalidEmails = 0;
+    let roleBasedEmails = 0;
+    let disposableEmails = 0;
+    let suppressedEmails = 0;
     let missingCompanyNames = 0;
 
     for (const lead of normalizedRows) {
       const email = normalizeEmail(lead.email);
-      if (!email || !email.includes('@')) {
-        invalidEmails++;
-        continue;
-      }
-
       const website = normalizeEmail(lead.website).replace(/^https?:\/\//, '');
       const companyName = String(lead.company_name || lead.company || '').trim();
       if (!companyName) {
@@ -86,6 +85,21 @@ export async function POST(
 
       if (existingEmails.has(email) || (website && existingWebsites.has(website))) {
         skippedDuplicates++;
+        continue;
+      }
+
+      const verification = await verifyEmailLocally({
+        email,
+        userId: user.id,
+        checkMx: false,
+      });
+
+      if (verification.status === 'invalid') invalidEmails++;
+      if (verification.status === 'role_based') roleBasedEmails++;
+      if (verification.status === 'disposable') disposableEmails++;
+      if (verification.status === 'suppressed') suppressedEmails++;
+
+      if (verification.status === 'invalid' && !importInvalidRows) {
         continue;
       }
 
@@ -110,7 +124,6 @@ export async function POST(
         estimated_revenue: lead.estimated_revenue || null,
         decision_maker_name: lead.decision_maker_name || null,
         decision_maker_title: lead.decision_maker_title || null,
-        email_verified: Boolean(lead.email_verified),
         linkedin_url: lead.linkedin_url || null,
         tech_stack: lead.tech_stack || null,
         pain_points: lead.pain_points || null,
@@ -135,6 +148,7 @@ export async function POST(
         status: 'imported',
         ai_status: 'pending',
         manual_personalization_status: 'not_started',
+        ...buildLeadEmailVerificationFields(verification),
       });
     }
 
@@ -167,7 +181,17 @@ export async function POST(
       userId: user.id,
       action: 'lead_imported',
       message: `Imported ${imported} leads into lead list`,
-      metadata: { lead_list_id: id, imported, skippedDuplicates, invalidEmails, missingCompanyNames },
+      metadata: {
+        lead_list_id: id,
+        imported,
+        skippedDuplicates,
+        invalidEmails,
+        roleBasedEmails,
+        disposableEmails,
+        suppressedEmails,
+        missingCompanyNames,
+        importInvalidRows: Boolean(importInvalidRows),
+      },
     });
 
     return NextResponse.json({
@@ -175,6 +199,9 @@ export async function POST(
       imported,
       skippedDuplicates,
       invalidEmails,
+      roleBasedEmails,
+      disposableEmails,
+      suppressedEmails,
       missingCompanyNames,
       totalRows: leads.length,
     });

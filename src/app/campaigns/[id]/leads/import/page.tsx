@@ -79,6 +79,7 @@ export default function LeadImportPage({ params }: PageProps) {
   
   // Import Execution states
   const [importing, setImporting] = useState(false);
+  const [importInvalidRows, setImportInvalidRows] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<any | null>(null);
   const inputClass = 'mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-violet-500';
@@ -246,7 +247,7 @@ export default function LeadImportPage({ params }: PageProps) {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ leads: mappedLeads }),
+        body: JSON.stringify({ leads: mappedLeads, importInvalidRows }),
       });
 
       const data = await response.json();
@@ -300,7 +301,7 @@ export default function LeadImportPage({ params }: PageProps) {
                   <CheckCircle className="h-5 w-5" />
                   <h3>Lead Import Successful!</h3>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
+                <div className="grid grid-cols-2 gap-4 text-center md:grid-cols-4 xl:grid-cols-8">
                   <div className="rounded-2xl border border-[var(--border)] bg-white p-3">
                     <span className="block text-[10px] text-zinc-500 font-bold uppercase">Total Rows Checked</span>
                     <span className="text-xl font-extrabold text-zinc-950">{importResult.totalRows}</span>
@@ -320,6 +321,18 @@ export default function LeadImportPage({ params }: PageProps) {
                   <div className="rounded-2xl border border-[var(--border)] bg-white p-3">
                     <span className="block text-[10px] text-zinc-500 font-bold uppercase">Missing Company Name</span>
                     <span className="text-xl font-extrabold text-amber-700">{importResult.missingCompanyNames}</span>
+                  </div>
+                  <div className="rounded-2xl border border-[var(--border)] bg-white p-3">
+                    <span className="block text-[10px] text-zinc-500 font-bold uppercase">Role-based</span>
+                    <span className="text-xl font-extrabold text-zinc-800">{importResult.roleBasedEmails || 0}</span>
+                  </div>
+                  <div className="rounded-2xl border border-[var(--border)] bg-white p-3">
+                    <span className="block text-[10px] text-zinc-500 font-bold uppercase">Disposable</span>
+                    <span className="text-xl font-extrabold text-zinc-800">{importResult.disposableEmails || 0}</span>
+                  </div>
+                  <div className="rounded-2xl border border-[var(--border)] bg-white p-3">
+                    <span className="block text-[10px] text-zinc-500 font-bold uppercase">Suppressed</span>
+                    <span className="text-xl font-extrabold text-zinc-800">{importResult.suppressedEmails || 0}</span>
                   </div>
                 </div>
                 <div className="flex justify-end gap-3 pt-2">
@@ -528,9 +541,20 @@ export default function LeadImportPage({ params }: PageProps) {
                   </div>
 
                   <div className="flex items-center justify-between border-t border-[var(--border)] pt-4">
-                    <div className="flex items-center gap-1.5 text-xs text-zinc-500">
-                      <HelpCircle className="h-4.5 w-4.5 text-zinc-500" />
-                      Make sure you map <strong className="text-violet-700">Email Address</strong>.
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+                        <HelpCircle className="h-4.5 w-4.5 text-zinc-500" />
+                        Make sure you map <strong className="text-violet-700">Email Address</strong>.
+                      </div>
+                      <label className="inline-flex items-center gap-2 text-xs font-medium text-zinc-600">
+                        <input
+                          type="checkbox"
+                          checked={importInvalidRows}
+                          onChange={(e) => setImportInvalidRows(e.target.checked)}
+                          className="rounded border-zinc-300 text-violet-600 focus:ring-violet-500"
+                        />
+                        Import invalid emails too
+                      </label>
                     </div>
 
                     <button

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { calculateLeadDataQuality } from '@/utils/data-quality';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
+import { buildLeadEmailVerificationFields, verifyEmailLocally } from '@/lib/email-verification/local-verify';
 
 function toNullableNumber(value: unknown): number | null {
   if (value === undefined || value === null || value === '') return null;
@@ -24,7 +25,7 @@ export async function POST(
   }
 
   try {
-    const { leads } = await request.json();
+    const { leads, importInvalidRows = false } = await request.json();
 
     if (!leads || !Array.isArray(leads)) {
       return NextResponse.json({ error: 'leads array is required' }, { status: 400 });
@@ -55,20 +56,15 @@ export async function POST(
     let imported = 0;
     let skippedDuplicates = 0;
     let invalidEmails = 0;
+    let roleBasedEmails = 0;
+    let disposableEmails = 0;
+    let suppressedEmails = 0;
     let missingCompanyNames = 0;
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const leadsToInsert = [];
     const processedEmailsInBatch = new Set<string>();
 
     for (const lead of leads) {
       const email = String(lead.email || '').trim().toLowerCase();
-
-      // Validate Email
-      if (!email || !emailRegex.test(email)) {
-        invalidEmails++;
-        continue;
-      }
 
       // Check Duplicates in database or inside this upload batch
       if (existingEmails.has(email) || processedEmailsInBatch.has(email)) {
@@ -82,6 +78,21 @@ export async function POST(
       const companyName = lead.company_name || lead.company || '';
       if (!companyName) {
         missingCompanyNames++;
+      }
+
+      const verification = await verifyEmailLocally({
+        email,
+        userId: user.id,
+        checkMx: false,
+      });
+
+      if (verification.status === 'invalid') invalidEmails++;
+      if (verification.status === 'role_based') roleBasedEmails++;
+      if (verification.status === 'disposable') disposableEmails++;
+      if (verification.status === 'suppressed') suppressedEmails++;
+
+      if (verification.status === 'invalid' && !importInvalidRows) {
+        continue;
       }
 
       // Calculate quality metrics
@@ -107,7 +118,6 @@ export async function POST(
         estimated_revenue: lead.estimated_revenue || null,
         decision_maker_name: lead.decision_maker_name || null,
         decision_maker_title: lead.decision_maker_title || null,
-        email_verified: !!lead.email_verified,
         linkedin_url: lead.linkedin_url || null,
         tech_stack: lead.tech_stack || null,
         pain_points: lead.pain_points || null,
@@ -130,6 +140,7 @@ export async function POST(
         ai_status: 'pending',
         manual_personalization_status: 'not_started',
         approval_status: 'pending_review',
+        ...buildLeadEmailVerificationFields(verification),
       });
     }
 
@@ -165,6 +176,9 @@ export async function POST(
       imported,
       skippedDuplicates,
       invalidEmails,
+      roleBasedEmails,
+      disposableEmails,
+      suppressedEmails,
       missingCompanyNames
     });
   } catch (err: unknown) {

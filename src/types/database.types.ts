@@ -143,6 +143,22 @@ export interface Lead {
   decision_maker_name?: string | null;
   decision_maker_title?: string | null;
   email_verified: boolean;
+  email_verification_status?:
+    | 'not_checked'
+    | 'valid'
+    | 'risky'
+    | 'invalid'
+    | 'role_based'
+    | 'disposable'
+    | 'suppressed'
+    | 'unknown'
+    | 'failed'
+    | null;
+  email_verification_score?: number | null;
+  email_verification_provider?: string | null;
+  email_verification_reason?: string | null;
+  email_verified_at?: string | null;
+  email_verification_raw?: Record<string, unknown> | null;
   linkedin_url?: string | null;
   tech_stack?: string | null;
   pain_points?: string | null;
