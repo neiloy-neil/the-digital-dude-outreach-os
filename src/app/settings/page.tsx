@@ -489,7 +489,7 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
                     <label className="block text-xs font-semibold uppercase text-zinc-500">Company Name</label>
-                    <input type="text" value={outreachCompanyName} onChange={(e) => setOutreachCompanyName(e.target.value)} placeholder="The Digital Dude" className={tealInputClass} />
+                    <input type="text" value={outreachCompanyName} onChange={(e) => setOutreachCompanyName(e.target.value)} placeholder="ReachMira" className={tealInputClass} />
                   </div>
                   <div>
                     <label className="block text-xs font-semibold uppercase text-zinc-500">Website</label>

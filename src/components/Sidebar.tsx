@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
@@ -12,7 +13,6 @@ import {
   MailPlus,
   Megaphone,
   Settings,
-  Sparkles,
   Users,
 } from 'lucide-react';
 
@@ -100,13 +100,18 @@ export default function Sidebar() {
     <aside className="sticky top-0 flex h-screen w-72 shrink-0 flex-col border-r border-[var(--border)] bg-white/90 px-4 py-5 shadow-[0_20px_60px_rgba(17,24,39,0.05)] backdrop-blur">
       <div className="rounded-2xl border border-[var(--border)] bg-gradient-to-br from-violet-50 via-white to-teal-50 p-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-teal-500 text-white shadow-lg shadow-violet-500/20">
-            <Sparkles className="h-5 w-5" />
+          <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-2xl border border-white/70 bg-white shadow-lg shadow-violet-500/10">
+            <Image
+              src="/reachmira-logo.png"
+              alt="ReachMira logo"
+              width={44}
+              height={44}
+              className="h-full w-full object-cover"
+              priority
+            />
           </div>
           <div>
-            <div className="text-lg font-semibold tracking-tight text-zinc-900">
-              Reach<span className="text-violet-600">Mira</span>
-            </div>
+            <div className="text-lg font-semibold tracking-tight text-zinc-900">ReachMira</div>
             <p className="text-xs text-zinc-500">Personalized outreach, simplified.</p>
           </div>
         </div>

@@ -16,8 +16,9 @@ export const metadata: Metadata = {
   title: "ReachMira",
   description: "Personalized outreach, simplified.",
   icons: {
-    icon: "/icon.svg",
-    shortcut: "/icon.svg",
+    icon: "/reachmira-favicon.png",
+    shortcut: "/reachmira-favicon.png",
+    apple: "/reachmira-apple-icon.png",
   },
 };
 

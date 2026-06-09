@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -77,8 +78,17 @@ export default function AuthScreen({ mode = 'toggle' }: AuthScreenProps) {
           <div className="absolute inset-0 opacity-20 [background-image:linear-gradient(rgba(255,255,255,0.3)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.3)_1px,transparent_1px)] [background-size:3.5rem_3.5rem]" />
           <div className="relative z-10 flex h-full flex-col justify-between">
             <div>
-              <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/90">
-                <Sparkles className="h-3.5 w-3.5" />
+              <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/90">
+                <span className="overflow-hidden rounded-full border border-white/20 bg-white/90">
+                  <Image
+                    src="/reachmira-logo.png"
+                    alt="ReachMira logo"
+                    width={22}
+                    height={22}
+                    className="h-[22px] w-[22px] object-cover"
+                    priority
+                  />
+                </span>
                 ReachMira
               </div>
               <h1 className="mt-6 max-w-xl text-4xl font-semibold tracking-tight lg:text-5xl">
