@@ -43,29 +43,29 @@ export default function RichTextEditor({ value, onChange, placeholder, className
   };
 
   return (
-    <div className={`overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 ${className}`}>
-      <div className="flex flex-wrap items-center gap-1 border-b border-zinc-800 bg-zinc-900/60 px-2 py-2">
-        <button type="button" onMouseDown={handleMouseDown} onClick={() => runCommand('bold')} className="inline-flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs font-semibold text-zinc-200 hover:bg-zinc-900">
+    <div className={`overflow-hidden rounded-xl border border-[var(--border)] bg-white shadow-[0_10px_30px_rgba(15,23,42,0.04)] ${className}`}>
+      <div className="flex flex-wrap items-center gap-1 border-b border-[var(--border)] bg-[var(--surface-muted)] px-2 py-2">
+        <button type="button" onMouseDown={handleMouseDown} onClick={() => runCommand('bold')} className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-white px-2 py-1 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
           <Bold className="h-3.5 w-3.5" />
           Bold
         </button>
-        <button type="button" onMouseDown={handleMouseDown} onClick={() => runCommand('italic')} className="inline-flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs font-semibold text-zinc-200 hover:bg-zinc-900">
+        <button type="button" onMouseDown={handleMouseDown} onClick={() => runCommand('italic')} className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-white px-2 py-1 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
           <Italic className="h-3.5 w-3.5" />
           Italic
         </button>
-        <button type="button" onMouseDown={handleMouseDown} onClick={() => runCommand('underline')} className="inline-flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs font-semibold text-zinc-200 hover:bg-zinc-900">
+        <button type="button" onMouseDown={handleMouseDown} onClick={() => runCommand('underline')} className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-white px-2 py-1 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
           <Underline className="h-3.5 w-3.5" />
           Underline
         </button>
-        <button type="button" onMouseDown={handleMouseDown} onClick={() => runCommand('insertUnorderedList')} className="inline-flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs font-semibold text-zinc-200 hover:bg-zinc-900">
+        <button type="button" onMouseDown={handleMouseDown} onClick={() => runCommand('insertUnorderedList')} className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-white px-2 py-1 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
           <List className="h-3.5 w-3.5" />
           Bullets
         </button>
-        <button type="button" onMouseDown={handleMouseDown} onClick={() => runCommand('insertOrderedList')} className="inline-flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs font-semibold text-zinc-200 hover:bg-zinc-900">
+        <button type="button" onMouseDown={handleMouseDown} onClick={() => runCommand('insertOrderedList')} className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-white px-2 py-1 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
           <ListOrdered className="h-3.5 w-3.5" />
           Numbered
         </button>
-        <button type="button" onMouseDown={handleMouseDown} onClick={formatSelectionAsLink} className="inline-flex items-center gap-1 rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs font-semibold text-zinc-200 hover:bg-zinc-900">
+        <button type="button" onMouseDown={handleMouseDown} onClick={formatSelectionAsLink} className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-white px-2 py-1 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
           <LinkIcon className="h-3.5 w-3.5" />
           Link
         </button>
@@ -84,7 +84,7 @@ export default function RichTextEditor({ value, onChange, placeholder, className
           const text = event.clipboardData.getData('text/plain');
           runCommand('insertText', text);
         }}
-        className="min-h-[280px] px-4 py-3 text-sm leading-6 text-zinc-100 outline-none empty:before:pointer-events-none empty:before:text-zinc-500 empty:before:content-[attr(data-placeholder)]"
+        className="min-h-[280px] px-4 py-3 text-sm leading-6 text-zinc-900 outline-none empty:before:pointer-events-none empty:before:text-zinc-400 empty:before:content-[attr(data-placeholder)]"
         dangerouslySetInnerHTML={{ __html: value || '<p><br></p>' }}
       />
     </div>

@@ -5,9 +5,10 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Save, Trash2 } from 'lucide-react';
+import { Copy, Save, Trash2 } from 'lucide-react';
 import AppShell from '@/components/reachmira/AppShell';
 import PageHeader from '@/components/reachmira/PageHeader';
+import { TEMPLATE_CATEGORIES, TEMPLATE_VARIABLES } from '@/lib/templates/template-helpers';
 
 type TemplateForm = {
   name: string;
@@ -125,7 +126,10 @@ export default function EditTemplatePage() {
             </div>
             <div>
               <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Category</label>
-              <input value={form.category} onChange={(e) => setForm((current) => ({ ...current, category: e.target.value }))} className="mt-1 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:bg-white" />
+              <select value={form.category} onChange={(e) => setForm((current) => ({ ...current, category: e.target.value }))} className="mt-1 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm outline-none focus:border-violet-300 focus:bg-white">
+                <option value="">General</option>
+                {TEMPLATE_CATEGORIES.map((category) => <option key={category} value={category}>{category}</option>)}
+              </select>
             </div>
           </div>
 
@@ -143,6 +147,17 @@ export default function EditTemplatePage() {
           <div>
             <label className="block text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Body</label>
             <textarea value={form.body} onChange={(e) => setForm((current) => ({ ...current, body: e.target.value }))} rows={12} className="mt-1 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm leading-6 outline-none focus:border-violet-300 focus:bg-white" />
+          </div>
+
+          <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
+            <div className="mb-3 text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Variables</div>
+            <div className="flex flex-wrap gap-2">
+              {TEMPLATE_VARIABLES.map((variable) => (
+                <button key={variable} type="button" onClick={() => navigator.clipboard.writeText(variable)} className="inline-flex items-center gap-1 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-zinc-700 ring-1 ring-[var(--border)] hover:text-violet-700">
+                  <Copy className="h-3.5 w-3.5" /> {variable}
+                </button>
+              ))}
+            </div>
           </div>
 
           <label className="flex items-center gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-700">

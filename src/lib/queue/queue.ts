@@ -103,14 +103,33 @@ export async function claimLeadsForEmailSending(campaignId: string, limit: numbe
     .not('status', 'in', `(${excludedStatuses.join(',')})`)
     .or(`next_email_at.is.null,next_email_at.lte.${now}`)
     .order('next_email_at', { ascending: true, nullsFirst: true })
-    .limit(limit);
+    .limit(Math.max(limit * 5, limit));
 
   if (error) {
     console.error('Error fetching due leads for campaign:', error);
     return [];
   }
 
-  return leads || [];
+  return (leads || [])
+    .filter((lead) => {
+      const queuedLead = lead as Lead & {
+        current_step?: number | null;
+        emails_sent_count?: number | null;
+        next_email_at?: string | null;
+      };
+
+      if (queuedLead.next_email_at) {
+        return queuedLead.next_email_at <= now;
+      }
+
+      const currentStep = Number(queuedLead.current_step || 0);
+      const emailsSentCount = Number(queuedLead.emails_sent_count || 0);
+
+      // A null schedule is due only before the first email. After a sequence is
+      // exhausted, next_email_at is intentionally null and must not requeue.
+      return emailsSentCount <= 0 && currentStep <= 1;
+    })
+    .slice(0, limit);
 }
 
 export async function getCampaignDailySendCount(campaignId: string): Promise<number> {

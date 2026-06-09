@@ -10,7 +10,7 @@ import PageHeader from '@/components/reachmira/PageHeader';
 import MetricCard from '@/components/reachmira/MetricCard';
 import EmptyState from '@/components/reachmira/EmptyState';
 import NextActionCard from '@/components/reachmira/NextActionCard';
-import { getLeadStatusLabel } from '@/lib/leads/status';
+import { getLeadStatusLabel, isRepliedStatus } from '@/lib/leads/status';
 import {
   ArrowUpRight,
   Activity,
@@ -83,7 +83,7 @@ export default function Dashboard() {
           supabase.from('campaigns').select('id').eq('user_id', user.id),
           supabase
             .from('leads')
-            .select('id,status,priority,next_follow_up_date,manual_personalization_status,pain_points,email,company_name,company,decision_maker_name,first_name,last_name')
+            .select('id,status,priority,next_follow_up_at,next_follow_up_date,manual_personalization_status,pain_points,email,company_name,company,decision_maker_name,first_name,last_name')
             .order('created_at', { ascending: false }),
           supabase
             .from('sent_emails')
@@ -122,7 +122,9 @@ export default function Dashboard() {
   const metrics = useMemo(() => {
     const totalLeads = leads.length;
     const readyToSend = leads.filter((lead) => ['manual_email_draft', 'ai_generated', 'email_approved'].includes(String(lead.status || ''))).length;
-    const replies = sentEmails.filter((email) => Boolean(email.replied_at) || email.status === 'replied').length;
+    const repliedLeads = leads.filter((lead) => isRepliedStatus(lead.status)).length;
+    const sentEmailReplies = sentEmails.filter((email) => Boolean(email.replied_at) || email.status === 'replied').length;
+    const replies = Math.max(repliedLeads, sentEmailReplies);
     const bounces = sentEmails.filter((email) => Boolean(email.bounced_at) || email.status === 'bounced').length;
     const bounceRate = sentEmails.length > 0 ? Math.round((bounces / sentEmails.length) * 100) : 0;
     const followUpsDue = leads.filter((lead) => {
@@ -147,7 +149,7 @@ export default function Dashboard() {
       description: 'Leads with a follow-up date that is due now.',
       count: metrics.followUpsDue,
       actionLabel: 'View follow-ups',
-      actionHref: '/leads?followUpStage=1',
+      actionHref: '/leads?filter=followups_due',
       tone: 'amber' as const,
     },
     {
@@ -163,7 +165,7 @@ export default function Dashboard() {
       description: 'Priority leads that still need a first touch.',
       count: leads.filter((lead) => lead.priority === 'high' && !lead.status?.includes('sent')).length,
       actionLabel: 'Review leads',
-      actionHref: '/leads?priority=high',
+      actionHref: '/leads?priority=high&contacted=false',
       tone: 'rose' as const,
     },
     {
@@ -171,7 +173,7 @@ export default function Dashboard() {
       description: 'These leads need richer context before outreach.',
       count: leads.filter((lead) => !lead.pain_points?.trim()).length,
       actionLabel: 'Improve context',
-      actionHref: '/leads',
+      actionHref: '/leads?missing=pain_points',
       tone: 'sky' as const,
     },
     {
@@ -187,7 +189,7 @@ export default function Dashboard() {
       description: 'Check delivery issues and suppression list entries.',
       count: sentEmails.filter((email) => Boolean(email.bounced_at) || email.status === 'bounced').length,
       actionLabel: 'Review bounces',
-      actionHref: '/suppression-list',
+      actionHref: '/leads?status=bounced',
       tone: 'rose' as const,
     },
   ];

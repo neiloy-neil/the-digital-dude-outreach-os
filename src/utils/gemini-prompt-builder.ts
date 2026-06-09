@@ -29,12 +29,12 @@ export function buildLeadAnalysisPrompt(
 
   // Format raw_data fields
   const rawDataFields = Object.entries(lead.raw_data || {})
-    .filter(([_, val]) => val !== null && val !== undefined && val !== '')
+    .filter(([, val]) => val !== null && val !== undefined && val !== '')
     .map(([key, val]) => `- ${key}: ${typeof val === 'object' ? JSON.stringify(val) : val}`)
     .join('\n');
 
   const offersAndServices = `
-The Digital Dude offers:
+ReachMira outreach offers:
 - Custom web applications
 - Enterprise Resource Planning (ERP) systems
 - Customer Relationship Management (CRM) systems
@@ -47,7 +47,7 @@ The Digital Dude offers:
 - Website redesign and optimization
 `;
 
-  return `You are an expert B2B cold outreach strategist for a software agency called The Digital Dude.
+  return `You are an expert B2B cold outreach strategist helping a ReachMira user personalize outreach.
 ${offersAndServices}
 
 Your task:
@@ -84,10 +84,10 @@ Respond ONLY with a valid JSON object matching this schema. Do not enclose the o
   "company_summary": "A 1-2 sentence description of what the lead's company does.",
   "lead_analysis": "A brief analysis of the company's status, tech stack indicators, and business needs.",
   "pain_point_summary": "The main pain point identified from the lead's data.",
-  "solution_angle": "How The Digital Dude can help solve that specific pain point.",
+  "solution_angle": "How the sender can help solve that specific pain point.",
   "outreach_strategy": "1-2 sentences explaining why this personalization strategy is chosen.",
   "personalized_first_line": "The natural introductory sentence for the email.",
-  "recommended_offer": "The chosen offer from The Digital Dude list that best fits.",
+  "recommended_offer": "The chosen offer from the ReachMira outreach services list that best fits.",
   "subject": "A personalized, intriguing, short email subject line (do not use brackets or template tokens).",
   "email_body": "The complete personalized email body. Start with the personalized first line. End with the soft CTA. Include the {{unsubscribe_url}} placeholder at the bottom.",
   "cta": "The low-friction CTA used in the email.",

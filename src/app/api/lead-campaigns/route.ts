@@ -33,7 +33,7 @@ export async function POST(request: Request) {
 
     const { data: leads } = await supabase
       .from('leads')
-      .select('id, lead_list_id')
+      .select('id, email, company_name, company, lead_list_id')
       .in('id', leadIds);
 
     const attachments = (leads || []).map((lead) => ({
@@ -59,6 +59,23 @@ export async function POST(request: Request) {
           updated_at: new Date().toISOString(),
         })
         .in('id', leadIds);
+
+      await Promise.all(
+        (leads || []).map((lead) =>
+          createAuditLog({
+            userId: user.id,
+            campaignId,
+            leadId: lead.id,
+            action: 'lead_added_to_campaign',
+            message: `Lead added to campaign: ${lead.email}`,
+            metadata: {
+              campaign_id: campaignId,
+              email: lead.email,
+              company: lead.company_name || lead.company || null,
+            },
+          })
+        )
+      );
     }
 
     await createAuditLog({

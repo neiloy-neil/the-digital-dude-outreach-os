@@ -4,7 +4,8 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, use } from 'react';
 import { createClient } from '@/utils/supabase/client';
-import Sidebar from '@/components/Sidebar';
+import AppShell from '@/components/reachmira/AppShell';
+import PageHeader from '@/components/reachmira/PageHeader';
 import { 
   ArrowLeft, 
   Sparkles, 
@@ -39,6 +40,8 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [priorityFilter, setPriorityFilter] = useState<boolean>(false);
   const [scoreFilter, setScoreFilter] = useState<boolean>(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 12;
 
   // Modal Editing States
   const [activeLead, setActiveLead] = useState<any | null>(null);
@@ -57,6 +60,7 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
   const [success, setSuccess] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const [bulkActionType, setBulkActionType] = useState('');
+  const [bulkApproveModalOpen, setBulkApproveModalOpen] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -206,6 +210,7 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
   // Bulk Actions Executor
   const handleBulkAction = async (action: 'approve' | 'regenerate' | 'exclude') => {
     if (selectedLeads.length === 0) return;
+    setBulkApproveModalOpen(false);
     setProcessing(true);
     setBulkActionType(action);
     setError(null);
@@ -281,45 +286,48 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
 
     return true;
   });
+  const totalPages = Math.max(1, Math.ceil(filteredLeads.length / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const paginatedLeads = filteredLeads.slice((safeCurrentPage - 1) * pageSize, safeCurrentPage * pageSize);
+
+  const inputClass = 'rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-violet-500';
+  const modalInputClass = 'mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs text-zinc-900 outline-none transition focus:border-violet-500';
 
   return (
-    <div className="flex min-h-screen bg-zinc-950 text-zinc-100 font-sans">
-      <Sidebar />
-      <main className="flex-1 p-8 overflow-y-auto max-w-7xl">
-        {/* Top bar */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-          <div className="flex items-center gap-3">
-            <Link href={`/campaigns/${campaignId}`} className="p-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-white transition-all">
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
-            <div>
-              <h2 className="text-2xl font-bold text-white tracking-tight">AI Personalization Center</h2>
-              <p className="text-xs text-zinc-400">Review outreach copy for: <span className="text-violet-400 font-semibold">{campaign?.name}</span></p>
+    <AppShell showSearch={false}>
+      <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <PageHeader
+          eyebrow="Campaign personalization"
+          title="AI Personalization Center"
+          subtitle={`Review outreach copy for: ${campaign?.name || 'Loading campaign...'}`}
+          actions={
+            <div className="flex flex-wrap items-center gap-3">
+              <Link href={`/campaigns/${campaignId}`} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
+                <ArrowLeft className="h-4 w-4" />
+                Back to Campaign
+              </Link>
+              {campaign && (
+                <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold ${
+                  campaign.require_approval_before_send
+                    ? 'border-amber-200 bg-amber-50 text-amber-700'
+                    : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                }`}>
+                  {campaign.require_approval_before_send ? 'Requires Approval' : 'Auto-Send Allowed'}
+                </span>
+              )}
             </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            {campaign && (
-              <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${
-                campaign.require_approval_before_send 
-                  ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' 
-                  : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-              }`}>
-                {campaign.require_approval_before_send ? 'Requires Approval' : 'Auto-Send Allowed'}
-              </span>
-            )}
-          </div>
-        </div>
+          }
+        />
 
         {/* Global Notifications */}
         {error && (
-          <div className="mb-6 rounded-lg bg-rose-500/10 p-3.5 text-xs text-rose-400 border border-rose-500/20 flex items-center gap-2">
+          <div className="mb-6 flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-3.5 text-xs text-rose-700">
             <AlertCircle className="h-4.5 w-4.5" />
             {error}
           </div>
         )}
         {success && (
-          <div className="mb-6 rounded-lg bg-emerald-500/10 p-3.5 text-xs text-emerald-400 border border-emerald-500/20">
+          <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-3.5 text-xs text-emerald-700">
             {success}
           </div>
         )}
@@ -331,16 +339,16 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
         ) : (
           <div className="space-y-6">
             {/* Filters panel */}
-            <div className="rounded-xl border border-zinc-850 bg-zinc-900/10 p-4 flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-[var(--border)] bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
               <div className="flex flex-wrap items-center gap-3">
                 <SlidersHorizontal className="h-4 w-4 text-zinc-500" />
-                <span className="text-xs text-zinc-400 font-bold uppercase tracking-wider">Filters:</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">Filters:</span>
                 
                 {/* Status selector */}
                 <select
                   value={statusFilter}
-                  onChange={(e) => { setStatusFilter(e.target.value); setSelectedLeads([]); }}
-                  className="rounded border border-zinc-800 bg-zinc-950 px-2 py-1 text-xs text-zinc-350 focus:outline-none"
+                  onChange={(e) => { setStatusFilter(e.target.value); setSelectedLeads([]); setCurrentPage(1); }}
+                  className={inputClass}
                 >
                   <option value="all">All AI Statuses</option>
                   <option value="pending">AI Pending</option>
@@ -351,22 +359,22 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
                 </select>
 
                 {/* Checks */}
-                <label className="flex items-center gap-1.5 text-xs text-zinc-400 cursor-pointer select-none">
+                <label className="flex cursor-pointer select-none items-center gap-1.5 text-xs text-zinc-600">
                   <input
                     type="checkbox"
                     checked={priorityFilter}
-                    onChange={(e) => { setPriorityFilter(e.target.checked); setSelectedLeads([]); }}
-                    className="rounded border-zinc-800 bg-zinc-950 text-violet-500 focus:ring-0"
+                    onChange={(e) => { setPriorityFilter(e.target.checked); setSelectedLeads([]); setCurrentPage(1); }}
+                    className="rounded border-zinc-300 text-violet-600 focus:ring-violet-500"
                   />
                   High Priority
                 </label>
 
-                <label className="flex items-center gap-1.5 text-xs text-zinc-400 cursor-pointer select-none">
+                <label className="flex cursor-pointer select-none items-center gap-1.5 text-xs text-zinc-600">
                   <input
                     type="checkbox"
                     checked={scoreFilter}
-                    onChange={(e) => { setScoreFilter(e.target.checked); setSelectedLeads([]); }}
-                    className="rounded border-zinc-800 bg-zinc-950 text-violet-500 focus:ring-0"
+                    onChange={(e) => { setScoreFilter(e.target.checked); setSelectedLeads([]); setCurrentPage(1); }}
+                    className="rounded border-zinc-300 text-violet-600 focus:ring-violet-500"
                   />
                   Score &gt; 60
                 </label>
@@ -375,25 +383,25 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
               {/* Bulk actions */}
               {selectedLeads.length > 0 && (
                 <div className="flex items-center gap-2">
-                  <span className="text-xs text-zinc-500 font-semibold mr-1">{selectedLeads.length} selected</span>
+                  <span className="mr-1 text-xs font-semibold text-zinc-500">{selectedLeads.length} selected</span>
                   <button
-                    onClick={() => handleBulkAction('approve')}
+                    onClick={() => setBulkApproveModalOpen(true)}
                     disabled={processing}
-                    className="px-2.5 py-1 bg-emerald-600/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-600/20 rounded text-[11px] font-bold cursor-pointer transition-colors"
+                    className="cursor-pointer rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-bold text-emerald-700 transition-colors hover:bg-emerald-100"
                   >
                     {bulkActionType === 'approve' ? 'Approving...' : 'Approve'}
                   </button>
                   <button
                     onClick={() => handleBulkAction('regenerate')}
                     disabled={processing}
-                    className="px-2.5 py-1 bg-violet-600/10 text-violet-400 border border-violet-500/20 hover:bg-violet-600/20 rounded text-[11px] font-bold cursor-pointer transition-colors"
+                    className="cursor-pointer rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-bold text-violet-700 transition-colors hover:bg-violet-100"
                   >
                     {bulkActionType === 'regenerate' ? 'Regenerating...' : 'Regenerate'}
                   </button>
                   <button
                     onClick={() => handleBulkAction('exclude')}
                     disabled={processing}
-                    className="px-2.5 py-1 bg-rose-600/10 text-rose-400 border border-rose-500/20 hover:bg-rose-600/20 rounded text-[11px] font-bold cursor-pointer transition-colors"
+                    className="cursor-pointer rounded-lg border border-rose-200 bg-rose-50 px-2.5 py-1 text-[11px] font-bold text-rose-700 transition-colors hover:bg-rose-100"
                   >
                     {bulkActionType === 'exclude' ? 'Excluding...' : 'Exclude'}
                   </button>
@@ -402,15 +410,15 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
             </div>
 
             {/* Table list */}
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 overflow-hidden">
+            <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-white shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
               <div className="overflow-x-auto max-h-[500px]">
-                <table className="w-full text-left text-xs text-zinc-400">
-                  <thead className="text-[10px] font-bold uppercase text-zinc-500 border-b border-zinc-800 bg-zinc-900/40 sticky top-0">
+                <table className="w-full text-left text-xs text-zinc-600">
+                  <thead className="sticky top-0 border-b border-[var(--border)] bg-[var(--surface-muted)] text-[10px] font-bold uppercase text-zinc-500">
                     <tr>
                       <th className="py-3 px-4 w-10">
-                        <button onClick={toggleSelectAll} className="text-zinc-500 hover:text-white">
+                        <button onClick={toggleSelectAll} className="text-zinc-500 hover:text-violet-700">
                           {selectedLeads.length === filteredLeads.length && filteredLeads.length > 0 ? (
-                            <CheckSquare className="h-4.5 w-4.5 text-violet-400" />
+                            <CheckSquare className="h-4.5 w-4.5 text-violet-700" />
                           ) : (
                             <Square className="h-4.5 w-4.5" />
                           )}
@@ -425,18 +433,18 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
                       <th className="py-3 px-4 text-right">Actions</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-zinc-900">
-                    {filteredLeads.map((lead) => {
+                  <tbody className="divide-y divide-[var(--border)]">
+                    {paginatedLeads.map((lead) => {
                       const isSelected = selectedLeads.includes(lead.id);
                       const displaySubject = lead.ai_subject || lead.personalized_subject || '';
                       
                       return (
-                        <tr key={lead.id} className={`hover:bg-zinc-900/10 transition-colors ${isSelected ? 'bg-zinc-900/30' : ''}`}>
+                        <tr key={lead.id} className={`transition-colors hover:bg-violet-50/50 ${isSelected ? 'bg-violet-50' : ''}`}>
                           {/* Selection Checkbox */}
                           <td className="py-3.5 px-4">
-                            <button onClick={() => toggleSelectLead(lead.id)} className="text-zinc-600 hover:text-zinc-300">
+                            <button onClick={() => toggleSelectLead(lead.id)} className="text-zinc-400 hover:text-violet-700">
                               {isSelected ? (
-                                <CheckSquare className="h-4.5 w-4.5 text-violet-400" />
+                                <CheckSquare className="h-4.5 w-4.5 text-violet-700" />
                               ) : (
                                 <Square className="h-4.5 w-4.5" />
                               )}
@@ -444,29 +452,35 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
                           </td>
 
                           {/* Company */}
-                          <td className="py-3.5 px-4 font-semibold text-zinc-200">
+                          <td className="py-3.5 px-4 font-semibold text-zinc-950">
                             {lead.company_name || lead.company || '-'}
                             {lead.priority?.toLowerCase() === 'high' && (
-                              <span className="ml-1.5 px-1 py-0.5 bg-rose-500/10 text-rose-400 border border-rose-500/20 text-[9px] rounded uppercase font-bold">High</span>
+                              <span className="ml-1.5 rounded border border-rose-200 bg-rose-50 px-1 py-0.5 text-[9px] font-bold uppercase text-rose-700">High</span>
                             )}
                           </td>
 
                           {/* Contact */}
                           <td className="py-3.5 px-4">
-                            <span className="block text-zinc-300 font-medium">{lead.decision_maker_name || `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Prospect'}</span>
+                            <Link
+                              href={`/campaigns/${campaignId}/leads/${lead.id}`}
+                              className="block font-semibold text-violet-700 transition hover:text-violet-800 hover:underline"
+                              title="Open lead profile"
+                            >
+                              {lead.decision_maker_name || `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Prospect'}
+                            </Link>
                             <span className="block text-[10px] text-zinc-500 truncate max-w-[120px]">{lead.email}</span>
                           </td>
 
                           {/* Subject Preview */}
-                          <td className="py-3.5 px-4 text-zinc-400 italic font-mono truncate max-w-[200px]" title={displaySubject}>
-                            {displaySubject || <span className="text-zinc-650">No copy generated</span>}
+                          <td className="max-w-[200px] truncate px-4 py-3.5 font-mono italic text-zinc-500" title={displaySubject}>
+                            {displaySubject || <span className="text-zinc-400">No copy generated</span>}
                           </td>
 
                           {/* AI Confidence */}
                           <td className="py-3.5 px-4">
                             {lead.ai_confidence_score !== null ? (
                               <span className={`font-semibold ${
-                                lead.ai_confidence_score >= 80 ? 'text-emerald-400' : lead.ai_confidence_score >= 50 ? 'text-amber-400' : 'text-rose-400'
+                                lead.ai_confidence_score >= 80 ? 'text-emerald-700' : lead.ai_confidence_score >= 50 ? 'text-amber-700' : 'text-rose-700'
                               }`}>{lead.ai_confidence_score}%</span>
                             ) : '-'}
                           </td>
@@ -474,7 +488,7 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
                           {/* solution fit score */}
                           <td className="py-3.5 px-4 text-center font-bold">
                             {lead.solution_fit_score !== null ? (
-                              <span className={lead.solution_fit_score >= 75 ? 'text-emerald-400' : lead.solution_fit_score >= 40 ? 'text-amber-400' : 'text-zinc-500'}>
+                              <span className={lead.solution_fit_score >= 75 ? 'text-emerald-700' : lead.solution_fit_score >= 40 ? 'text-amber-700' : 'text-zinc-500'}>
                                 {lead.solution_fit_score}
                               </span>
                             ) : '-'}
@@ -484,16 +498,16 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
                           <td className="py-3.5 px-4 text-center">
                             <span className={`inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
                               lead.approval_status === 'approved' || lead.ai_status === 'approved'
-                                ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                                ? 'border border-emerald-200 bg-emerald-50 text-emerald-700'
                                 : lead.ai_status === 'failed'
-                                ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                ? 'border border-rose-200 bg-rose-50 text-rose-700'
                                 : lead.ai_status === 'skipped'
-                                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                ? 'border border-amber-200 bg-amber-50 text-amber-700'
                                 : lead.ai_status === 'generated'
-                                ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
+                                ? 'border border-violet-200 bg-violet-50 text-violet-700'
                                 : lead.ai_status === 'edited'
-                                ? 'bg-sky-500/10 text-sky-400 border border-sky-500/20'
-                                : 'bg-zinc-800 text-zinc-500 border border-zinc-700'
+                                ? 'border border-teal-200 bg-teal-50 text-teal-700'
+                                : 'border border-[var(--border)] bg-[var(--surface-muted)] text-zinc-500'
                             }`}>
                               {lead.approval_status === 'approved' ? 'approved' : lead.ai_status}
                             </span>
@@ -505,7 +519,7 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
                               {lead.ai_status !== 'pending' && lead.ai_status !== 'failed' && (
                                 <button
                                   onClick={() => openEditModal(lead)}
-                                  className="p-1 text-zinc-400 hover:text-white bg-zinc-950 border border-zinc-800/80 rounded"
+                                  className="rounded-lg border border-[var(--border)] bg-white p-1 text-zinc-600 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
                                   title="Review & Edit Draft"
                                 >
                                   <Edit3 className="h-3.5 w-3.5" />
@@ -514,7 +528,7 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
                               {lead.approval_status !== 'approved' && lead.ai_status !== 'pending' && (
                                 <button
                                   onClick={() => handleApproveLead(lead.id)}
-                                  className="p-1 text-emerald-400 hover:text-emerald-350 bg-zinc-950 border border-zinc-800/80 rounded"
+                                  className="rounded-lg border border-emerald-200 bg-emerald-50 p-1 text-emerald-700 transition hover:bg-emerald-100"
                                   title="Approve outreach"
                                 >
                                   <Check className="h-3.5 w-3.5" />
@@ -522,14 +536,14 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
                               )}
                               <button
                                 onClick={() => handleRegenerateLead(lead.id)}
-                                className="p-1 text-violet-400 hover:text-violet-350 bg-zinc-950 border border-zinc-800/80 rounded"
+                                className="rounded-lg border border-violet-200 bg-violet-50 p-1 text-violet-700 transition hover:bg-violet-100"
                                 title="Run/Regenerate AI Analysis"
                               >
                                 <Sparkles className="h-3.5 w-3.5" />
                               </button>
                               <button
                                 onClick={() => handleExcludeLead(lead.id)}
-                                className="p-1 text-rose-400 hover:text-rose-350 bg-zinc-950 border border-zinc-800/80 rounded"
+                                className="rounded-lg border border-rose-200 bg-rose-50 p-1 text-rose-700 transition hover:bg-rose-100"
                                 title="Exclude Prospect"
                               >
                                 <X className="h-3.5 w-3.5" />
@@ -550,6 +564,28 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
                   </tbody>
                 </table>
               </div>
+              <div className="flex flex-col gap-3 border-t border-[var(--border)] bg-white px-5 py-4 text-xs text-zinc-500 sm:flex-row sm:items-center sm:justify-between">
+                <span>
+                  Showing {filteredLeads.length === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1}-{Math.min(safeCurrentPage * pageSize, filteredLeads.length)} of {filteredLeads.length} filtered leads
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                    disabled={safeCurrentPage <= 1}
+                    className="rounded-lg border border-[var(--border)] bg-white px-3 py-1.5 font-semibold text-zinc-700 transition hover:bg-violet-50 disabled:opacity-50"
+                  >
+                    Previous
+                  </button>
+                  <span className="font-semibold text-zinc-700">Page {safeCurrentPage} / {totalPages}</span>
+                  <button
+                    onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                    disabled={safeCurrentPage >= totalPages}
+                    className="rounded-lg border border-[var(--border)] bg-white px-3 py-1.5 font-semibold text-zinc-700 transition hover:bg-violet-50 disabled:opacity-50"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -557,17 +593,17 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
 
       {/* DETAILED LEAD EDIT POPUP MODAL */}
       {modalOpen && activeLead && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-zinc-950 border border-zinc-800 rounded-xl w-full max-w-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+          <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-[var(--border)] bg-white shadow-2xl">
             {/* Modal Header */}
-            <div className="p-4 border-b border-zinc-900 flex items-center justify-between bg-zinc-900/20">
+            <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface-muted)] p-4">
               <div>
-                <h3 className="font-bold text-white text-md">Review & Edit Outreach Email</h3>
+                <h3 className="text-md font-bold text-zinc-950">Review & Edit Outreach Email</h3>
                 <p className="text-[11px] text-zinc-500">{activeLead.decision_maker_name || 'Prospect'} at {activeLead.company_name || activeLead.company}</p>
               </div>
               <button 
                 onClick={() => setModalOpen(false)}
-                className="p-1 hover:bg-zinc-900 rounded text-zinc-400 hover:text-white"
+                className="rounded-xl border border-[var(--border)] bg-white p-1 text-zinc-500 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -577,13 +613,13 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
             <div className="p-6 overflow-y-auto space-y-4 flex-1">
               {/* Strategic Insights Info panel */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="p-3 bg-zinc-900/20 border border-zinc-900 rounded-lg text-xs">
+                <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-3 text-xs">
                   <span className="block text-[10px] uppercase font-bold text-zinc-500 mb-1">AI Company Summary</span>
-                  <span className="text-zinc-300">{activeLead.ai_company_summary || '-'}</span>
+                  <span className="text-zinc-700">{activeLead.ai_company_summary || '-'}</span>
                 </div>
-                <div className="p-3 bg-zinc-900/20 border border-zinc-900 rounded-lg text-xs">
+                <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-3 text-xs">
                   <span className="block text-[10px] uppercase font-bold text-zinc-500 mb-1">AI Solution Angle</span>
-                  <span className="text-zinc-300">{activeLead.ai_solution_angle || '-'}</span>
+                  <span className="text-zinc-700">{activeLead.ai_solution_angle || '-'}</span>
                 </div>
               </div>
 
@@ -594,7 +630,7 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
                   type="text"
                   value={editedAngle}
                   onChange={(e) => setEditedAngle(e.target.value)}
-                  className="mt-1 w-full rounded border border-zinc-800 bg-zinc-950 py-1.5 px-3 text-xs text-zinc-200 focus:border-violet-500 focus:outline-none"
+                  className={modalInputClass}
                 />
               </div>
 
@@ -605,7 +641,7 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
                   type="text"
                   value={editedFirstLine}
                   onChange={(e) => setEditedFirstLine(e.target.value)}
-                  className="mt-1 w-full rounded border border-zinc-800 bg-zinc-950 py-1.5 px-3 text-xs text-zinc-200 focus:border-violet-500 focus:outline-none"
+                  className={modalInputClass}
                 />
               </div>
 
@@ -616,7 +652,7 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
                   type="text"
                   value={editedSubject}
                   onChange={(e) => setEditedSubject(e.target.value)}
-                  className="mt-1 w-full rounded border border-zinc-800 bg-zinc-950 py-1.5 px-3 text-xs text-zinc-200 focus:border-violet-500 focus:outline-none"
+                  className={modalInputClass}
                 />
               </div>
 
@@ -627,7 +663,7 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
                   rows={6}
                   value={editedBody}
                   onChange={(e) => setEditedBody(e.target.value)}
-                  className="mt-1 w-full rounded border border-zinc-800 bg-zinc-950 py-2.5 px-3 text-xs text-zinc-200 focus:border-violet-500 focus:outline-none font-sans"
+                  className={`${modalInputClass} font-sans`}
                 />
               </div>
 
@@ -639,7 +675,7 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
                     type="text"
                     value={editedCta}
                     onChange={(e) => setEditedCta(e.target.value)}
-                    className="mt-1 w-full rounded border border-zinc-800 bg-zinc-950 py-1.5 px-3 text-xs text-zinc-200 focus:border-violet-500 focus:outline-none"
+                    className={modalInputClass}
                   />
                 </div>
                 {/* Notes */}
@@ -649,26 +685,26 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
                     type="text"
                     value={editedNotes}
                     onChange={(e) => setEditedNotes(e.target.value)}
-                    className="mt-1 w-full rounded border border-zinc-800 bg-zinc-950 py-1.5 px-3 text-xs text-zinc-200 focus:border-violet-500 focus:outline-none"
+                    className={modalInputClass}
                   />
                 </div>
               </div>
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 border-t border-zinc-900 flex items-center justify-between bg-zinc-900/20">
+            <div className="flex items-center justify-between border-t border-[var(--border)] bg-[var(--surface-muted)] p-4">
               <span className="text-[10px] text-zinc-500">Manual edits set status to "edited".</span>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setModalOpen(false)}
-                  className="px-4 py-2 border border-zinc-800 hover:bg-zinc-900 rounded-lg text-xs font-semibold text-zinc-400 hover:text-white transition-colors cursor-pointer"
+                  className="cursor-pointer rounded-xl border border-[var(--border)] bg-white px-4 py-2 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleSaveEdits}
                   disabled={processing}
-                  className="px-5 py-2 bg-gradient-to-r from-violet-600 to-blue-600 rounded-lg text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 cursor-pointer shadow-md shadow-violet-500/10 flex items-center gap-1.5"
+                  className="flex cursor-pointer items-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-5 py-2 text-xs font-semibold text-white shadow-md shadow-violet-500/10 hover:opacity-95 disabled:opacity-50"
                 >
                   {processing ? (
                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
@@ -681,6 +717,50 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
           </div>
         </div>
       )}
-    </div>
+
+      {bulkApproveModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-3xl border border-[var(--border)] bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-4">
+              <div>
+                <div className="mb-2 inline-flex rounded-full bg-amber-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-amber-100">
+                  Bulk send safety check
+                </div>
+                <h3 className="text-lg font-semibold text-zinc-950">Approve and queue {selectedLeads.length} selected leads?</h3>
+                <p className="mt-2 text-sm leading-6 text-zinc-500">
+                  This approves the selected outreach drafts and queues them for campaign sending. If the campaign is active, automation can send them on the next run within daily limits.
+                </p>
+              </div>
+              <button
+                onClick={() => setBulkApproveModalOpen(false)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] text-zinc-500 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-4 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+              Confirm these emails have been reviewed and are safe to queue. Suppression checks and daily limits still apply when sending.
+            </div>
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                onClick={() => setBulkApproveModalOpen(false)}
+                className="rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => handleBulkAction('approve')}
+                disabled={processing}
+                className="rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-600/15 transition hover:opacity-95 disabled:opacity-50"
+              >
+                Confirm Bulk Queue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </AppShell>
   );
 }

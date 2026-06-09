@@ -35,6 +35,11 @@ export async function GET(
     : { data: null };
   const leadList = leadListResponse.data;
   const campaign = campaignResponse.data;
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('outreach_company_name,outreach_company_website,outreach_company_description,outreach_offers_services,outreach_value_proposition,outreach_target_customers,outreach_proof_points')
+    .eq('id', user.id)
+    .maybeSingle();
 
   if (data.user_id !== user.id) {
     if (campaign) {
@@ -67,7 +72,7 @@ export async function GET(
   }
 
   const serviceSupabase = createServiceClient();
-  const [sentEmailsResponse, auditLogsResponse] = await Promise.all([
+  const [sentEmailsResponse, auditLogsResponse, activityLogsResponse] = await Promise.all([
     serviceSupabase
       .from('sent_emails')
       .select('*')
@@ -75,6 +80,12 @@ export async function GET(
       .order('sent_at', { ascending: false }),
     serviceSupabase
       .from('audit_logs')
+      .select('*')
+      .eq('lead_id', id)
+      .order('created_at', { ascending: false })
+      .limit(100),
+    serviceSupabase
+      .from('activity_logs')
       .select('*')
       .eq('lead_id', id)
       .order('created_at', { ascending: false })
@@ -99,6 +110,16 @@ export async function GET(
       }),
     },
     auditLogs: auditLogsResponse.data || [],
+    activityLogs: activityLogsResponse.data || [],
+    companyContext: {
+      companyName: profile?.outreach_company_name || null,
+      website: profile?.outreach_company_website || null,
+      description: profile?.outreach_company_description || null,
+      offersServices: profile?.outreach_offers_services || null,
+      valueProposition: profile?.outreach_value_proposition || null,
+      targetCustomers: profile?.outreach_target_customers || null,
+      proofPoints: profile?.outreach_proof_points || null,
+    },
   });
 }
 
@@ -121,7 +142,7 @@ export async function PATCH(
     const payload = await request.json();
     const { data: existingLead, error: leadError } = await supabase
       .from('leads')
-      .select('id, user_id, campaign_id, lead_list_id')
+      .select('id, email, user_id, campaign_id, lead_list_id, manual_email_approved')
       .eq('id', id)
       .maybeSingle();
 
@@ -157,6 +178,9 @@ export async function PATCH(
 
     const serviceSupabase = createServiceClient();
     const quality = calculateLeadQuality(payload);
+    const isManualDraft = payload.manual_personalization_status === 'drafted';
+    const isManualApproval = Boolean(payload.manual_email_approved) && !existingLead.manual_email_approved;
+    const nowIso = new Date().toISOString();
     const { error } = await serviceSupabase
       .from('leads')
       .update({
@@ -209,10 +233,12 @@ export async function PATCH(
         manual_personalization_status: payload.manual_personalization_status || 'not_started',
         manual_email_subject: payload.manual_email_subject || null,
         manual_email_body: payload.manual_email_body || null,
+        manual_email_type: payload.manual_email_type || null,
+        manual_email_saved_at: isManualDraft ? nowIso : payload.manual_email_saved_at || null,
         manual_email_approved: Boolean(payload.manual_email_approved),
         last_manual_email_account_id: payload.last_manual_email_account_id || null,
         last_email_sent_at: payload.last_email_sent_at || null,
-        updated_at: new Date().toISOString(),
+        updated_at: nowIso,
       })
       .eq('id', id);
 
@@ -225,6 +251,34 @@ export async function PATCH(
       message: `Lead updated: ${payload.email || id}`,
       metadata: { lead_id: id },
     });
+
+    if (isManualDraft) {
+      await createAuditLog({
+        userId: user.id,
+        leadId: id,
+        campaignId: existingLead.campaign_id || null,
+        action: 'email_draft_saved',
+        message: `Manual email draft saved: ${payload.email || existingLead.email || id}`,
+        metadata: {
+          lead_id: id,
+          email_type: payload.manual_email_type || null,
+        },
+      });
+    }
+
+    if (isManualApproval) {
+      await createAuditLog({
+        userId: user.id,
+        leadId: id,
+        campaignId: existingLead.campaign_id || null,
+        action: 'email_approved',
+        message: `Manual email approved: ${payload.email || existingLead.email || id}`,
+        metadata: {
+          lead_id: id,
+          email_type: payload.manual_email_type || null,
+        },
+      });
+    }
 
     return NextResponse.json({ success: true });
   } catch (err: unknown) {

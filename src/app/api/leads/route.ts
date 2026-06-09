@@ -22,6 +22,13 @@ export async function GET(request: Request) {
   const search = url.searchParams.get('search')?.trim().toLowerCase() || '';
   const status = url.searchParams.get('status');
   const priority = url.searchParams.get('priority');
+  const aiStatus = url.searchParams.get('aiStatus');
+  const industry = url.searchParams.get('industry')?.trim();
+  const country = url.searchParams.get('country')?.trim();
+  const tags = url.searchParams.get('tags')?.trim();
+  const filter = url.searchParams.get('filter');
+  const missing = url.searchParams.get('missing');
+  const contacted = url.searchParams.get('contacted');
   const leadListId = url.searchParams.get('leadListId');
   const lastEmailType = url.searchParams.get('lastEmailType');
   const replied = url.searchParams.get('replied');
@@ -67,6 +74,22 @@ export async function GET(request: Request) {
 
   if (priority && priority !== 'all') {
     query = query.eq('priority', priority);
+  }
+
+  if (aiStatus && aiStatus !== 'all') {
+    query = query.eq('ai_status', aiStatus);
+  }
+
+  if (industry) {
+    query = query.ilike('industry', `%${industry}%`);
+  }
+
+  if (country) {
+    query = query.ilike('country', `%${country}%`);
+  }
+
+  if (tags) {
+    query = query.ilike('tags', `%${tags}%`);
   }
 
   if (lastContactedFrom) {
@@ -155,6 +178,21 @@ export async function GET(request: Request) {
     }
 
     if (followUpStage && followUpStage !== 'all' && String(getFollowUpStage(lead.status)) !== followUpStage) {
+      return false;
+    }
+
+    if (filter === 'followups_due') {
+      const nextFollowUp = lead.next_follow_up_at || lead.next_follow_up_date || lead.next_email_at;
+      if (!nextFollowUp || new Date(nextFollowUp).getTime() > Date.now()) {
+        return false;
+      }
+    }
+
+    if (missing === 'pain_points' && String(lead.pain_points || '').trim()) {
+      return false;
+    }
+
+    if (contacted === 'false' && (lead.last_email_sent_at || lead.last_contacted_at || lead.last_contacted || Number(lead.emails_sent_count || 0) > 0)) {
       return false;
     }
 

@@ -201,7 +201,15 @@ export default function LeadListDetailPage() {
                         <td className="px-4 py-4">
                           <input type="checkbox" checked={selected.includes(lead.id)} onChange={() => toggleSelected(lead.id)} className="h-4 w-4 rounded border-zinc-300 text-violet-600 focus:ring-violet-500" />
                         </td>
-                        <td className="px-4 py-4 text-zinc-900">{lead.decision_maker_name || `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Prospect'}</td>
+                        <td className="px-4 py-4">
+                          <Link
+                            href={`/leads/${lead.id}`}
+                            className="font-semibold text-violet-700 transition hover:text-violet-800 hover:underline"
+                            title="Open lead profile"
+                          >
+                            {lead.decision_maker_name || `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Prospect'}
+                          </Link>
+                        </td>
                         <td className="px-4 py-4 text-zinc-600">{lead.company_name || lead.company || '-'}</td>
                         <td className="px-4 py-4 text-zinc-600">{lead.email}</td>
                         <td className="px-4 py-4 text-violet-700">{lead.data_quality_label || 'poor'}</td>

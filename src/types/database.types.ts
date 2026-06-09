@@ -17,6 +17,13 @@ export interface Profile {
   imap_port?: number | null;
   imap_user?: string | null;
   imap_pass?: string | null;
+  outreach_company_name?: string | null;
+  outreach_company_website?: string | null;
+  outreach_company_description?: string | null;
+  outreach_offers_services?: string | null;
+  outreach_value_proposition?: string | null;
+  outreach_target_customers?: string | null;
+  outreach_proof_points?: string | null;
   created_at: string;
   updated_at: string;
 }

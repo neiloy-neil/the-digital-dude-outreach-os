@@ -134,19 +134,20 @@ export async function POST(
     }
 
     if (leadsToInsert.length > 0) {
-      const { error: insertError } = await supabase
+      const { data: insertedLeads, error: insertError } = await supabase
         .from('leads')
-        .insert(leadsToInsert);
+        .insert(leadsToInsert)
+        .select('id, email, company_name, company');
 
       if (insertError) throw insertError;
-      imported = leadsToInsert.length;
+      imported = insertedLeads?.length || leadsToInsert.length;
 
       await Promise.all(
-        leadsToInsert.map((lead) =>
+        (insertedLeads || []).map((lead) =>
           createAuditLog({
             userId: user.id,
             campaignId,
-            leadId: null,
+            leadId: lead.id,
             action: 'lead_imported',
             message: `Lead imported for ${lead.email}`,
             metadata: {

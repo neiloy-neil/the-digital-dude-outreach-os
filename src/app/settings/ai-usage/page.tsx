@@ -3,9 +3,39 @@
 export const dynamic = 'force-dynamic';
 
 import { useEffect, useMemo, useState } from 'react';
-import Sidebar from '@/components/Sidebar';
+import AppShell from '@/components/reachmira/AppShell';
+import PageHeader from '@/components/reachmira/PageHeader';
 import { createClient } from '@/utils/supabase/client';
-import { Bot, CalendarDays, CheckCircle, Clock3, Layers3, ShieldAlert, Sparkles, Save } from 'lucide-react';
+import { CalendarDays, CheckCircle, Clock3, Layers3, ShieldAlert, Sparkles, Save } from 'lucide-react';
+
+type AiSettingsRow = {
+  default_model?: string | null;
+  deep_model?: string | null;
+  daily_ai_limit?: number | null;
+  daily_deep_ai_limit?: number | null;
+  monthly_ai_limit?: number | null;
+  max_bulk_ai_batch_size?: number | null;
+  min_data_quality_for_ai?: number | null;
+  full_ai_min_solution_score?: number | null;
+  use_flash_lite_by_default?: boolean | null;
+  deep_ai_only_for_high_priority?: boolean | null;
+  stop_ai_when_limit_reached?: boolean | null;
+};
+
+type AiUsageLogRow = {
+  action?: string | null;
+  operation?: string | null;
+  model?: string | null;
+  model_used?: string | null;
+  ai_depth?: string | null;
+  cached?: boolean | null;
+  cache_hit?: boolean | null;
+  skipped?: boolean | null;
+  skip_reason?: string | null;
+  total_tokens?: number | null;
+  tokens_total?: number | null;
+  created_at: string;
+};
 
 function startOfDayIso() {
   const now = new Date();
@@ -48,7 +78,9 @@ export default function AiUsageSettingsPage() {
     cacheHits: 0,
     skipped: 0,
   });
-  const [recentLogs, setRecentLogs] = useState<any[]>([]);
+  const [recentLogs, setRecentLogs] = useState<AiUsageLogRow[]>([]);
+  const inputClass = 'mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition focus:border-violet-500';
+  const labelClass = 'block text-[10px] font-semibold uppercase text-zinc-500';
 
   useEffect(() => {
     const loadPage = async () => {
@@ -66,18 +98,22 @@ export default function AiUsageSettingsPage() {
 
         if (settingsError) throw settingsError;
 
-        if (settings) {
-          setDefaultModel(settings.default_model || 'gemini-3.1-flash-lite');
-          setDeepModel(settings.deep_model || 'gemini-2.5-flash');
-          setDailyAiCallLimit(String(settings.daily_ai_limit ?? 75));
-          setDailyDeepAiLimit(String(settings.daily_deep_ai_limit ?? 20));
-          setMonthlyAiCallLimit(String(settings.monthly_ai_limit ?? 1500));
-          setMaxBulkAiBatchSize(String(settings.max_bulk_ai_batch_size ?? 5));
-          setMinDataQualityForAi(String(settings.min_data_quality_for_ai ?? 45));
-          setFullAiMinSolutionScore(String(settings.full_ai_min_solution_score ?? 65));
-          setUseFlashLiteByDefault(settings.use_flash_lite_by_default ?? true);
-          setDeepAiOnlyForHighPriority(settings.deep_ai_only_for_high_priority ?? true);
-          setStopAiWhenLimitReached(settings.stop_ai_when_limit_reached ?? true);
+        const typedSettings = settings as AiSettingsRow | null;
+        const loadedDailyLimit = typedSettings?.daily_ai_limit ?? 75;
+        const loadedDeepLimit = typedSettings?.daily_deep_ai_limit ?? 20;
+
+        if (typedSettings) {
+          setDefaultModel(typedSettings.default_model || 'gemini-3.1-flash-lite');
+          setDeepModel(typedSettings.deep_model || 'gemini-2.5-flash');
+          setDailyAiCallLimit(String(loadedDailyLimit));
+          setDailyDeepAiLimit(String(loadedDeepLimit));
+          setMonthlyAiCallLimit(String(typedSettings.monthly_ai_limit ?? 1500));
+          setMaxBulkAiBatchSize(String(typedSettings.max_bulk_ai_batch_size ?? 5));
+          setMinDataQualityForAi(String(typedSettings.min_data_quality_for_ai ?? 45));
+          setFullAiMinSolutionScore(String(typedSettings.full_ai_min_solution_score ?? 65));
+          setUseFlashLiteByDefault(typedSettings.use_flash_lite_by_default ?? true);
+          setDeepAiOnlyForHighPriority(typedSettings.deep_ai_only_for_high_priority ?? true);
+          setStopAiWhenLimitReached(typedSettings.stop_ai_when_limit_reached ?? true);
         }
 
         const dailyFrom = startOfDayIso();
@@ -145,14 +181,14 @@ export default function AiUsageSettingsPage() {
           callsToday: todayUsage.count || 0,
           flashLiteToday: flashLiteToday.count || 0,
           flash25Today: flash25Today.count || 0,
-          deepRemaining: Math.max(0, (Number(dailyDeepAiLimit) || 0) - (flash25Today.count || 0)),
-          totalRemaining: Math.max(0, (Number(dailyAiCallLimit) || 0) - (todayUsage.count || 0)),
+          deepRemaining: Math.max(0, loadedDeepLimit - (flash25Today.count || 0)),
+          totalRemaining: Math.max(0, loadedDailyLimit - (todayUsage.count || 0)),
           cacheHits: cacheHits.count || 0,
           skipped: skipped.count || 0,
         });
-        setRecentLogs(logRows.data || []);
-      } catch (err: any) {
-        setError(err.message || 'Failed to load AI usage settings');
+        setRecentLogs(((logRows.data || []) as unknown) as AiUsageLogRow[]);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : 'Failed to load AI usage settings');
       } finally {
         setLoading(false);
       }
@@ -200,26 +236,21 @@ export default function AiUsageSettingsPage() {
       if (updateError) throw updateError;
       setSuccess('AI usage settings saved.');
       setTimeout(() => setSuccess(null), 2500);
-    } catch (err: any) {
-      setError(err.message || 'Failed to save AI usage settings');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to save AI usage settings');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen bg-zinc-950 text-zinc-100">
-      <Sidebar />
-      <main className="flex-1 p-8 overflow-y-auto max-w-6xl">
-        <div className="flex items-center gap-3 mb-8">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600/10 text-violet-400">
-            <Bot className="h-6 w-6" />
-          </div>
-          <div>
-            <h2 className="text-2xl font-bold text-white tracking-tight">AI Usage Controls</h2>
-            <p className="text-sm text-zinc-400">Set global Gemini budgets, batch limits, and gating thresholds.</p>
-          </div>
-        </div>
+    <AppShell showSearch={false}>
+      <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+        <PageHeader
+          eyebrow="AI controls"
+          title="AI Usage Controls"
+          subtitle="Set global Gemini budgets, batch limits, and gating thresholds."
+        />
 
         {loading ? (
           <div className="flex h-64 items-center justify-center">
@@ -228,133 +259,133 @@ export default function AiUsageSettingsPage() {
         ) : (
           <div className="space-y-6">
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+              <div className="rounded-3xl border border-[var(--border)] bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
                 <div className="flex items-center justify-between">
                   <span className="text-xs uppercase tracking-wider text-zinc-500">Calls Today</span>
-                  <Clock3 className="h-4 w-4 text-violet-400" />
+                  <Clock3 className="h-4 w-4 text-violet-600" />
                 </div>
-                <div className="mt-3 text-2xl font-bold text-white">{stats.callsToday}</div>
+                <div className="mt-3 text-2xl font-bold text-zinc-950">{stats.callsToday}</div>
               </div>
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+              <div className="rounded-3xl border border-[var(--border)] bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
                 <div className="flex items-center justify-between">
                   <span className="text-xs uppercase tracking-wider text-zinc-500">Flash Lite Today</span>
-                  <CalendarDays className="h-4 w-4 text-violet-400" />
+                  <CalendarDays className="h-4 w-4 text-violet-600" />
                 </div>
-                <div className="mt-3 text-2xl font-bold text-white">{stats.flashLiteToday}</div>
+                <div className="mt-3 text-2xl font-bold text-zinc-950">{stats.flashLiteToday}</div>
               </div>
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+              <div className="rounded-3xl border border-[var(--border)] bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
                 <div className="flex items-center justify-between">
                   <span className="text-xs uppercase tracking-wider text-zinc-500">2.5 Flash Today</span>
-                  <Layers3 className="h-4 w-4 text-emerald-400" />
+                  <Layers3 className="h-4 w-4 text-teal-600" />
                 </div>
-                <div className="mt-3 text-2xl font-bold text-white">{stats.flash25Today}</div>
+                <div className="mt-3 text-2xl font-bold text-zinc-950">{stats.flash25Today}</div>
                 <p className="mt-1 text-[11px] text-zinc-500">{stats.deepRemaining ?? '∞'} deep credits left</p>
               </div>
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+              <div className="rounded-3xl border border-[var(--border)] bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
                 <div className="flex items-center justify-between">
                   <span className="text-xs uppercase tracking-wider text-zinc-500">Total Remaining</span>
-                  <ShieldAlert className="h-4 w-4 text-amber-400" />
+                  <ShieldAlert className="h-4 w-4 text-amber-500" />
                 </div>
-                <div className="mt-3 text-2xl font-bold text-white">{stats.totalRemaining ?? '∞'}</div>
+                <div className="mt-3 text-2xl font-bold text-zinc-950">{stats.totalRemaining ?? '∞'}</div>
               </div>
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+              <div className="rounded-3xl border border-[var(--border)] bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
                 <div className="flex items-center justify-between">
                   <span className="text-xs uppercase tracking-wider text-zinc-500">Cache Hits</span>
-                  <Layers3 className="h-4 w-4 text-emerald-400" />
+                  <Layers3 className="h-4 w-4 text-teal-600" />
                 </div>
-                <div className="mt-3 text-2xl font-bold text-white">{stats.cacheHits}</div>
+                <div className="mt-3 text-2xl font-bold text-zinc-950">{stats.cacheHits}</div>
                 <p className="mt-1 text-[11px] text-zinc-500">{cacheRate}% of visible AI activity</p>
               </div>
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
+              <div className="rounded-3xl border border-[var(--border)] bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
                 <div className="flex items-center justify-between">
                   <span className="text-xs uppercase tracking-wider text-zinc-500">Skipped Leads</span>
-                  <ShieldAlert className="h-4 w-4 text-amber-400" />
+                  <ShieldAlert className="h-4 w-4 text-amber-500" />
                 </div>
-                <div className="mt-3 text-2xl font-bold text-white">{stats.skipped}</div>
+                <div className="mt-3 text-2xl font-bold text-zinc-950">{stats.skipped}</div>
               </div>
             </div>
 
             <form onSubmit={handleSave} className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-              <div className="xl:col-span-2 rounded-xl border border-zinc-800 bg-zinc-900/40 p-6 space-y-5">
-                <div className="flex items-center gap-2 text-white font-semibold">
-                  <Sparkles className="h-5 w-5 text-violet-400" />
+              <div className="xl:col-span-2 space-y-5 rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+                <div className="flex items-center gap-2 font-semibold text-zinc-950">
+                  <Sparkles className="h-5 w-5 text-violet-600" />
                   <h3>Global AI Budget Rules</h3>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[10px] text-zinc-400 font-semibold uppercase">Daily AI Call Limit</label>
+                    <label className={labelClass}>Daily AI Call Limit</label>
                     <input
                       type="number"
                       value={dailyAiCallLimit}
                       onChange={(e) => setDailyAiCallLimit(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 py-2 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none"
+                      className={inputClass}
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] text-zinc-400 font-semibold uppercase">Monthly AI Call Limit</label>
+                    <label className={labelClass}>Monthly AI Call Limit</label>
                     <input
                       type="number"
                       value={monthlyAiCallLimit}
                       onChange={(e) => setMonthlyAiCallLimit(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 py-2 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none"
+                      className={inputClass}
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] text-zinc-400 font-semibold uppercase">Max Bulk AI Batch Size</label>
+                    <label className={labelClass}>Max Bulk AI Batch Size</label>
                     <input
                       type="number"
                       value={maxBulkAiBatchSize}
                       onChange={(e) => setMaxBulkAiBatchSize(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 py-2 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none"
+                      className={inputClass}
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] text-zinc-400 font-semibold uppercase">Minimum Data Quality</label>
+                    <label className={labelClass}>Minimum Data Quality</label>
                     <input
                       type="number"
                       min="0"
                       max="100"
                       value={minDataQualityForAi}
                       onChange={(e) => setMinDataQualityForAi(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 py-2 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none"
+                      className={inputClass}
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] text-zinc-400 font-semibold uppercase">Full AI Minimum Solution Score</label>
+                    <label className={labelClass}>Full AI Minimum Solution Score</label>
                     <input
                       type="number"
                       min="0"
                       max="100"
                       value={fullAiMinSolutionScore}
                       onChange={(e) => setFullAiMinSolutionScore(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 py-2 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none"
+                      className={inputClass}
                     />
                   </div>
                 </div>
 
-                <label className="flex items-start gap-3 p-4 rounded-xl border border-zinc-800 bg-zinc-950/40">
+                <label className="flex items-start gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
                   <input
                     type="checkbox"
                     checked={stopAiWhenLimitReached}
                     onChange={(e) => setStopAiWhenLimitReached(e.target.checked)}
-                    className="mt-1 rounded border-zinc-800 bg-zinc-950 text-violet-500 focus:ring-0"
+                    className="mt-1 rounded border-zinc-300 text-violet-600 focus:ring-violet-500"
                   />
                   <div>
-                    <span className="block text-sm font-semibold text-white">Stop Gemini when a limit is reached</span>
+                    <span className="block text-sm font-semibold text-zinc-950">Stop Gemini when a limit is reached</span>
                     <span className="block text-xs text-zinc-500">When enabled, the system falls back to local template paths instead of making new AI calls.</span>
                   </div>
                 </label>
 
                 {error && (
-                  <div className="rounded-lg bg-rose-500/10 p-3 text-xs text-rose-400 border border-rose-500/20">
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
                     {error}
                   </div>
                 )}
 
                 {success && (
-                  <div className="rounded-lg bg-emerald-500/10 p-3 text-xs text-emerald-400 border border-emerald-500/20 flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-emerald-400" />
+                  <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">
+                    <CheckCircle className="h-4 w-4 text-emerald-600" />
                     {success}
                   </div>
                 )}
@@ -362,7 +393,7 @@ export default function AiUsageSettingsPage() {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-6 py-2.5 rounded-lg bg-gradient-to-r from-violet-600 to-blue-600 font-semibold text-white shadow-lg shadow-violet-600/20 hover:opacity-90 active:scale-[0.98] transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                  className="flex cursor-pointer items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-6 py-2.5 font-semibold text-white shadow-lg shadow-violet-600/20 transition-all hover:opacity-95 active:scale-[0.98] disabled:opacity-50"
                 >
                   {saving ? (
                     <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
@@ -374,27 +405,27 @@ export default function AiUsageSettingsPage() {
                 </button>
               </div>
 
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-6">
-                <h3 className="font-semibold text-white flex items-center gap-2">
-                  <Layers3 className="h-5 w-5 text-violet-400" />
+              <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+                <h3 className="flex items-center gap-2 font-semibold text-zinc-950">
+                  <Layers3 className="h-5 w-5 text-violet-600" />
                   Recent AI Logs
                 </h3>
                 <div className="mt-4 space-y-3">
                   {recentLogs.length === 0 ? (
-                    <div className="rounded-lg border border-dashed border-zinc-800 p-6 text-center text-sm text-zinc-500">
+                    <div className="rounded-2xl border border-dashed border-[var(--border)] p-6 text-center text-sm text-zinc-500">
                       No AI logs recorded yet.
                     </div>
                   ) : (
                     recentLogs.map((log, index) => (
-                      <div key={index} className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+                      <div key={index} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-3">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs font-semibold text-white uppercase">{log.action || log.operation}</span>
+                          <span className="text-xs font-semibold uppercase text-zinc-950">{log.action || log.operation}</span>
                           <span className={`text-[10px] px-2 py-0.5 rounded-full border ${
                             log.cached || log.cache_hit
-                              ? 'border-emerald-500/20 bg-emerald-500/10 text-emerald-400'
+                              ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
                               : log.skipped
-                                ? 'border-amber-500/20 bg-amber-500/10 text-amber-400'
-                                : 'border-violet-500/20 bg-violet-500/10 text-violet-400'
+                                ? 'border-amber-100 bg-amber-50 text-amber-700'
+                                : 'border-violet-100 bg-violet-50 text-violet-700'
                           }`}>
                             {log.cached || log.cache_hit ? 'cache' : log.skipped ? 'skipped' : 'ai'}
                           </span>
@@ -403,7 +434,7 @@ export default function AiUsageSettingsPage() {
                           {new Date(log.created_at).toLocaleString()} · {log.model || log.model_used || 'local'} · {log.total_tokens || log.tokens_total || 0} tokens
                         </p>
                         {log.skip_reason && (
-                          <p className="mt-1 text-[11px] text-amber-400">{log.skip_reason}</p>
+                          <p className="mt-1 text-[11px] text-amber-700">{log.skip_reason}</p>
                         )}
                       </div>
                     ))
@@ -414,6 +445,6 @@ export default function AiUsageSettingsPage() {
           </div>
         )}
       </main>
-    </div>
+    </AppShell>
   );
 }

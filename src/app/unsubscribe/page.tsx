@@ -3,13 +3,11 @@ export const dynamic = 'force-dynamic';
 import { createServiceClient } from '@/utils/supabase/service';
 import { Mail, CheckCircle, AlertCircle } from 'lucide-react';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
+import { resolveLeadOwnerFromLead } from '@/lib/leads/resolve-lead-owner';
 
 interface UnsubscribePageProps {
   searchParams: Promise<{ token?: string }>;
 }
-
-type CampaignRelation = { user_id?: string | null } | null;
-type LeadListRelation = { user_id?: string | null } | null;
 
 export default async function UnsubscribePage({ searchParams }: UnsubscribePageProps) {
   const resolvedSearchParams = await searchParams;
@@ -45,24 +43,27 @@ export default async function UnsubscribePage({ searchParams }: UnsubscribePageP
     if (fetchError) {
       status = 'error';
     } else if (lead) {
-      const userCampaign: CampaignRelation = Array.isArray(lead.campaigns) ? lead.campaigns[0] : lead.campaigns;
-      const userLeadList: LeadListRelation = Array.isArray(lead.lead_lists) ? lead.lead_lists[0] : lead.lead_lists;
-      const userId = lead.user_id || userCampaign?.user_id || userLeadList?.user_id;
+      const owner = resolveLeadOwnerFromLead(lead);
+      const userId = owner.userId;
       emailAddress = lead.email;
 
       // 2. Mark lead status as unsubscribed
       await supabase
         .from('leads')
-        .update({ status: 'unsubscribed', updated_at: new Date().toISOString() })
+        .update({
+          status: 'unsubscribed',
+          reply_status: 'unsubscribed',
+          next_email_at: null,
+          next_follow_up_at: null,
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', lead.id);
 
-      if (lead.campaign_id) {
-        await supabase
-          .from('outbox')
-          .update({ status: 'cancelled', error_message: 'Lead unsubscribed' })
-          .eq('lead_id', lead.id)
-          .eq('status', 'pending');
-      }
+      await supabase
+        .from('outbox')
+        .update({ status: 'cancelled', error_message: 'Lead unsubscribed' })
+        .eq('lead_id', lead.id)
+        .eq('status', 'pending');
 
       // 5. Add to suppressions
       if (userId) {
@@ -75,11 +76,11 @@ export default async function UnsubscribePage({ searchParams }: UnsubscribePageP
 
         await createAuditLog({
           userId,
-          campaignId: lead.campaign_id || null,
+          campaignId: owner.campaignId,
           leadId: lead.id,
           action: 'lead_unsubscribed',
           message: `Lead unsubscribed: ${lead.email}`,
-          metadata: { source: 'unsubscribe_page', lead_list_id: lead.lead_list_id || null },
+          metadata: { source: 'unsubscribe_page', lead_list_id: owner.leadListId },
         });
       }
 

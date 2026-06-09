@@ -3,7 +3,7 @@
 export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, use } from 'react';
-import Sidebar from '@/components/Sidebar';
+import AppShell from '@/components/reachmira/AppShell';
 import { createClient } from '@/utils/supabase/client';
 import { 
   ArrowLeft, 
@@ -17,7 +17,8 @@ import {
   Save, 
   AlertCircle,
   FileText,
-  UserPlus
+  UserPlus,
+  X
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -55,12 +56,17 @@ export default function CampaignDetailPage({ params }: PageProps) {
   const [sequences, setSequences] = useState<any[]>([]);
   const [emailAccounts, setEmailAccounts] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<any[]>([]);
+  const [sentEmails, setSentEmails] = useState<any[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
   // Tabs: 'leads' | 'sequence' | 'personalize' | 'review'
   const [activeTab, setActiveTab] = useState<'leads' | 'sequence' | 'personalize' | 'review'>('leads');
   const [reviewFilter, setReviewFilter] = useState<'all' | 'pending_review' | 'approved' | 'skipped'>('pending_review');
+  const [leadsPage, setLeadsPage] = useState(1);
+  const [personalizationPage, setPersonalizationPage] = useState(1);
+  const [reviewPage, setReviewPage] = useState(1);
+  const pageSize = 10;
 
   // Google Sheets state
   const [googleSheetUrl, setGoogleSheetUrl] = useState('');
@@ -82,6 +88,8 @@ export default function CampaignDetailPage({ params }: PageProps) {
   const [editedSubject, setEditedSubject] = useState('');
   const [editedBody, setEditedBody] = useState('');
   const [approvingLeadId, setApprovingLeadId] = useState<string | null>(null);
+  const [bulkApproveModalOpen, setBulkApproveModalOpen] = useState(false);
+  const [launchModalOpen, setLaunchModalOpen] = useState(false);
 
   useEffect(() => {
     loadCampaignData();
@@ -129,6 +137,13 @@ export default function CampaignDetailPage({ params }: PageProps) {
         .order('created_at', { ascending: false })
         .limit(10);
       setAuditLogs(logs || []);
+
+      const { data: campaignSentEmails } = await supabase
+        .from('sent_emails')
+        .select('*')
+        .eq('campaign_id', campaignId)
+        .order('sent_at', { ascending: false });
+      setSentEmails(campaignSentEmails || []);
 
     } catch (err: any) {
       setError(err.message || 'Error loading campaign details');
@@ -339,7 +354,7 @@ export default function CampaignDetailPage({ params }: PageProps) {
         step_number: nextStepNum,
         delay_days: nextStepNum === 1 ? 0 : 2, // step 1 defaults to 0 (immediate), subsequent steps to 2 days
         subject: 'Quick question {{first_name}}',
-        body: 'Hi {{first_name}},\n\n{{ai_personalization}}\n\nWould you be open to a quick call next week?\n\nBest,\n[Your Name]',
+        body: 'Hi {{first_name}},\n\n{{ai_personalization}}\n\nWould you be open to a quick call next week?\n\nBest,\n{{sender_name}}',
       }
     ]);
   };
@@ -523,19 +538,31 @@ export default function CampaignDetailPage({ params }: PageProps) {
     }
   };
 
-  const handleBulkApprove = async () => {
+  const pendingBulkApprovalLeads = leads.filter(l => l.personalization_strategy && l.approval_status === 'pending_review');
+
+  const requestBulkApprove = () => {
     if (sequences.length === 0) {
       setError('Please add at least one email sequence step first.');
       return;
     }
-    const pendingReviewLeads = leads.filter(l => l.personalization_strategy && l.approval_status === 'pending_review');
-    if (pendingReviewLeads.length === 0) {
+    if (pendingBulkApprovalLeads.length === 0) {
       setError('No leads pending review with AI personalizations.');
       return;
     }
 
-    if (!confirm(`Are you sure you want to bulk-approve all ${pendingReviewLeads.length} leads currently pending review?`)) return;
+    setError(null);
+    setBulkApproveModalOpen(true);
+  };
 
+  const handleBulkApprove = async () => {
+    const pendingReviewLeads = pendingBulkApprovalLeads;
+    if (pendingReviewLeads.length === 0) {
+      setBulkApproveModalOpen(false);
+      setError('No leads pending review with AI personalizations.');
+      return;
+    }
+
+    setBulkApproveModalOpen(false);
     setApprovingLeadId('bulk');
     setError(null);
     setSuccess(null);
@@ -633,26 +660,117 @@ export default function CampaignDetailPage({ params }: PageProps) {
     }
   };
 
+  const analytics = {
+    leads: leads.length,
+    sent: sentEmails.length,
+    delivered: sentEmails.filter((email) => email.status === 'delivered' || Boolean(email.delivered_at)).length,
+    opened: sentEmails.filter((email) => email.status === 'opened' || Boolean(email.opened_at)).length,
+    clicked: sentEmails.filter((email) => email.status === 'clicked' || Boolean(email.clicked_at)).length,
+    replied: leads.filter((lead) => ['replied', 'interested', 'not_interested', 'demo_scheduled', 'proposal_sent', 'won', 'lost'].includes(String(lead.status || ''))).length,
+    bounced: leads.filter((lead) => ['bounced', 'complained'].includes(String(lead.status || ''))).length,
+    unsubscribed: leads.filter((lead) => lead.status === 'unsubscribed').length,
+  };
+  const selectedEmailAccount = emailAccounts.find((account) => account.id === campaign?.email_account_id);
+  const approvedLeadsCount = leads.filter((lead) => lead.approval_status === 'approved' || lead.ai_status === 'approved').length;
+  const pendingReviewCount = leads.filter((lead) => lead.personalization_strategy && lead.approval_status === 'pending_review').length;
+  const launchChecklist = [
+    {
+      label: 'Email account selected',
+      detail: selectedEmailAccount ? `${selectedEmailAccount.email_address} is active` : 'Choose an active sender account.',
+      ok: Boolean(selectedEmailAccount),
+      required: true,
+    },
+    {
+      label: 'Sequence exists',
+      detail: sequences.length > 0 ? `${sequences.length} step${sequences.length === 1 ? '' : 's'} configured` : 'Add at least one sequence step.',
+      ok: sequences.length > 0,
+      required: true,
+    },
+    {
+      label: 'Leads added',
+      detail: leads.length > 0 ? `${leads.length} lead${leads.length === 1 ? '' : 's'} in campaign` : 'Add or import leads before launching.',
+      ok: leads.length > 0,
+      required: true,
+    },
+    {
+      label: 'Approved leads ready',
+      detail: approvedLeadsCount > 0 ? `${approvedLeadsCount} approved/queued lead${approvedLeadsCount === 1 ? '' : 's'}` : 'Approve at least one lead or disable approval rules before automation.',
+      ok: approvedLeadsCount > 0 || campaign?.require_approval_before_send === false,
+      required: true,
+    },
+    {
+      label: 'Daily campaign limit',
+      detail: `${campaign?.daily_limit || 0} email${Number(campaign?.daily_limit || 0) === 1 ? '' : 's'} per day`,
+      ok: Number(campaign?.daily_limit || 0) > 0,
+      required: true,
+    },
+    {
+      label: 'Safety stops enabled',
+      detail: 'Replies, bounces, unsubscribes, and suppression matches stop future sends.',
+      ok: true,
+      required: false,
+    },
+  ];
+  const launchBlockingIssues = launchChecklist.filter((item) => item.required && !item.ok);
+  const leadTotalPages = Math.max(1, Math.ceil(leads.length / pageSize));
+  const safeLeadsPage = Math.min(leadsPage, leadTotalPages);
+  const paginatedLeads = leads.slice((safeLeadsPage - 1) * pageSize, safeLeadsPage * pageSize);
+  const personalizationTotalPages = Math.max(1, Math.ceil(leads.length / pageSize));
+  const safePersonalizationPage = Math.min(personalizationPage, personalizationTotalPages);
+  const paginatedPersonalizationLeads = leads.slice((safePersonalizationPage - 1) * pageSize, safePersonalizationPage * pageSize);
+  const reviewLeads = leads.filter((lead) => {
+    if (!lead.personalization_strategy) return false;
+    if (reviewFilter === 'all') return true;
+    return lead.approval_status === reviewFilter;
+  });
+  const reviewTotalPages = Math.max(1, Math.ceil(reviewLeads.length / pageSize));
+  const safeReviewPage = Math.min(reviewPage, reviewTotalPages);
+  const paginatedReviewLeads = reviewLeads.slice((safeReviewPage - 1) * pageSize, safeReviewPage * pageSize);
+
+  const renderPagination = (currentPage: number, totalPages: number, totalItems: number, onPageChange: (page: number) => void) => (
+    <div className="mt-4 flex flex-col gap-3 border-t border-[var(--border)] pt-4 text-xs text-zinc-500 sm:flex-row sm:items-center sm:justify-between">
+      <span>
+        Showing {totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, totalItems)} of {totalItems}
+      </span>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => onPageChange(Math.max(1, currentPage - 1))}
+          disabled={currentPage <= 1}
+          className="rounded-lg border border-[var(--border)] bg-white px-3 py-1.5 font-semibold text-zinc-700 transition hover:bg-violet-50 disabled:opacity-50"
+        >
+          Previous
+        </button>
+        <span className="font-semibold text-zinc-700">Page {currentPage} / {totalPages}</span>
+        <button
+          onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))}
+          disabled={currentPage >= totalPages}
+          className="rounded-lg border border-[var(--border)] bg-white px-3 py-1.5 font-semibold text-zinc-700 transition hover:bg-violet-50 disabled:opacity-50"
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="flex min-h-screen bg-zinc-950 text-zinc-100">
-      <Sidebar />
-      <main className="flex-1 p-8 overflow-y-auto">
+    <AppShell showSearch={false}>
+      <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
         {/* Back and Title */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div className="flex items-center gap-3">
-            <Link href="/campaigns" className="p-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-white transition-all">
+            <Link href="/campaigns" className="p-2 bg-white border border-[var(--border)] rounded-lg text-zinc-600 hover:text-violet-700 transition-all">
               <ArrowLeft className="h-5 w-5" />
             </Link>
             {campaign && (
               <div>
-                <h2 className="text-2xl font-bold text-white tracking-tight">{campaign.name}</h2>
+                <h2 className="text-2xl font-bold text-zinc-950 tracking-tight">{campaign.name}</h2>
                 <div className="flex items-center gap-2 mt-1">
                   <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-medium uppercase border ${
                     campaign.status === 'active' 
                       ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' 
                       : campaign.status === 'paused'
                       ? 'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                      : 'bg-zinc-850 text-zinc-400 border-zinc-700'
+                      : 'bg-[var(--surface-muted)] text-zinc-600 border-zinc-700'
                   }`}>
                     {campaign.status}
                   </span>
@@ -666,7 +784,7 @@ export default function CampaignDetailPage({ params }: PageProps) {
             <div className="flex items-center gap-3">
               {campaign.status === 'draft' || campaign.status === 'paused' ? (
                 <button
-                  onClick={handleLaunchCampaign}
+                  onClick={() => setLaunchModalOpen(true)}
                   className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 rounded-lg text-sm font-semibold text-white hover:opacity-90 shadow-md shadow-emerald-500/10 cursor-pointer"
                 >
                   <Play className="h-4 w-4" /> Launch Campaign
@@ -674,7 +792,7 @@ export default function CampaignDetailPage({ params }: PageProps) {
               ) : (
                 <button
                   onClick={handlePauseCampaign}
-                  className="flex items-center gap-2 px-4 py-2 bg-zinc-900 border border-zinc-800 rounded-lg text-sm font-semibold text-amber-400 hover:text-amber-300 hover:bg-zinc-850 cursor-pointer"
+                  className="flex items-center gap-2 px-4 py-2 bg-white border border-[var(--border)] rounded-lg text-sm font-semibold text-amber-400 hover:text-amber-300 hover:bg-violet-50 cursor-pointer"
                 >
                   <Pause className="h-4 w-4" /> Pause Campaign
                 </button>
@@ -698,10 +816,10 @@ export default function CampaignDetailPage({ params }: PageProps) {
 
         {!loading && campaign && (
           <div className="mb-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4 backdrop-blur-sm">
+            <div className="rounded-xl border border-[var(--border)] bg-white/20 p-4 backdrop-blur-sm">
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div>
-                  <h3 className="text-sm font-bold text-white">Email Account</h3>
+                  <h3 className="text-sm font-bold text-zinc-950">Email Account</h3>
                   <p className="text-xs text-zinc-500">Choose the sender account used for this campaign.</p>
                 </div>
                 <Link href="/settings/email-accounts" className="text-xs font-semibold text-violet-400 hover:text-violet-300">
@@ -711,7 +829,7 @@ export default function CampaignDetailPage({ params }: PageProps) {
               <select
                 value={campaign.email_account_id || ''}
                 onChange={(e) => handleCampaignEmailAccountChange(e.target.value)}
-                className="w-full rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none"
+                className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 focus:border-violet-500 focus:outline-none"
               >
                 <option value="">Select an active email account</option>
                 {emailAccounts.map((account) => (
@@ -728,10 +846,10 @@ export default function CampaignDetailPage({ params }: PageProps) {
               )}
             </div>
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-4 backdrop-blur-sm">
+            <div className="rounded-xl border border-[var(--border)] bg-white/20 p-4 backdrop-blur-sm">
               <div className="flex items-center justify-between gap-3 mb-3">
                 <div>
-                  <h3 className="text-sm font-bold text-white">Latest Activity</h3>
+                  <h3 className="text-sm font-bold text-zinc-950">Latest Activity</h3>
                   <p className="text-xs text-zinc-500">Recent campaign audit trail.</p>
                 </div>
                 <Link href={`/campaigns/${campaignId}/activity`} className="text-xs font-semibold text-violet-400 hover:text-violet-300">
@@ -743,10 +861,10 @@ export default function CampaignDetailPage({ params }: PageProps) {
                   <p className="text-xs text-zinc-500">No audit logs yet.</p>
                 ) : (
                   auditLogs.slice(0, 4).map((log) => (
-                    <div key={log.id} className="flex items-start justify-between gap-3 rounded-lg border border-zinc-900 bg-zinc-950/60 px-3 py-2">
+                    <div key={log.id} className="flex items-start justify-between gap-3 rounded-lg border border-[var(--border)] bg-white/60 px-3 py-2">
                       <div>
-                        <div className="text-xs font-semibold text-zinc-200">{log.action}</div>
-                        <div className="text-[11px] text-zinc-400">{log.message || 'No message'}</div>
+                        <div className="text-xs font-semibold text-zinc-900">{log.action}</div>
+                        <div className="text-[11px] text-zinc-600">{log.message || 'No message'}</div>
                       </div>
                       <div className="text-[10px] text-zinc-500 font-mono">
                         {new Date(log.created_at).toLocaleString()}
@@ -759,6 +877,81 @@ export default function CampaignDetailPage({ params }: PageProps) {
           </div>
         )}
 
+        {!loading && campaign && (
+          <section className="mb-6 rounded-3xl border border-[var(--border)] bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-zinc-950">Launch Readiness</h3>
+                <p className="mt-1 text-xs text-zinc-500">A quick safety pass before campaign automation starts sending.</p>
+              </div>
+              <div className={`rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-wide ${
+                launchBlockingIssues.length === 0
+                  ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100'
+                  : 'bg-amber-50 text-amber-700 ring-1 ring-amber-100'
+              }`}>
+                {launchBlockingIssues.length === 0 ? 'Ready to launch' : `${launchBlockingIssues.length} issue${launchBlockingIssues.length === 1 ? '' : 's'} to fix`}
+              </div>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {launchChecklist.map((item) => (
+                <div key={item.label} className={`rounded-2xl border p-4 ${
+                  item.ok
+                    ? 'border-emerald-100 bg-emerald-50/60'
+                    : 'border-amber-200 bg-amber-50'
+                }`}>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-semibold text-zinc-950">{item.label}</div>
+                    <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
+                      item.ok ? 'bg-white text-emerald-700 ring-1 ring-emerald-100' : 'bg-white text-amber-700 ring-1 ring-amber-100'
+                    }`}>
+                      {item.ok ? 'Ready' : 'Needs fix'}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-zinc-600">{item.detail}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 grid gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 text-xs text-zinc-600 sm:grid-cols-3">
+              <div><span className="font-semibold text-zinc-950">{approvedLeadsCount}</span> approved or queued</div>
+              <div><span className="font-semibold text-zinc-950">{pendingReviewCount}</span> pending review</div>
+              <div><span className="font-semibold text-zinc-950">{campaign.daily_limit || 0}</span> campaign daily limit</div>
+            </div>
+          </section>
+        )}
+
+        {!loading && campaign && (
+          <section className="mb-6 rounded-3xl border border-[var(--border)] bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+            <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-zinc-950">Campaign Analytics</h3>
+                <p className="text-xs text-zinc-500">Live delivery and lead outcomes for this campaign.</p>
+              </div>
+              <Link href={`/campaigns/${campaignId}/activity`} className="text-xs font-semibold text-violet-700 hover:text-violet-900">
+                View timeline
+              </Link>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+              {[
+                ['Leads', analytics.leads, 'text-slate-700 bg-slate-50 border-slate-200'],
+                ['Sent', analytics.sent, 'text-violet-700 bg-violet-50 border-violet-200'],
+                ['Delivered', analytics.delivered, 'text-teal-700 bg-teal-50 border-teal-200'],
+                ['Opened', analytics.opened, 'text-sky-700 bg-sky-50 border-sky-200'],
+                ['Clicked', analytics.clicked, 'text-indigo-700 bg-indigo-50 border-indigo-200'],
+                ['Replied', analytics.replied, 'text-emerald-700 bg-emerald-50 border-emerald-200'],
+                ['Bounced', analytics.bounced, 'text-rose-700 bg-rose-50 border-rose-200'],
+                ['Unsubscribed', analytics.unsubscribed, 'text-amber-700 bg-amber-50 border-amber-200'],
+              ].map(([label, value, tone]) => (
+                <div key={label} className={`rounded-2xl border px-3 py-3 ${tone}`}>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-75">{label}</div>
+                  <div className="mt-2 text-2xl font-black tracking-tight">{value}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
+
         {loading ? (
           <div className="flex h-64 items-center justify-center">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
@@ -766,7 +959,7 @@ export default function CampaignDetailPage({ params }: PageProps) {
         ) : (
           <div className="space-y-6">
             {/* Tab Selectors */}
-            <div className="flex border-b border-zinc-800 gap-6">
+            <div className="flex border-b border-[var(--border)] gap-6">
               {[
                 { id: 'leads', label: 'Leads List' },
                 { id: 'sequence', label: 'Outreach Sequence' },
@@ -779,7 +972,7 @@ export default function CampaignDetailPage({ params }: PageProps) {
                   className={`pb-3 text-sm font-semibold border-b-2 transition-all cursor-pointer ${
                     activeTab === tab.id
                       ? 'border-violet-500 text-white'
-                      : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                      : 'border-transparent text-zinc-600 hover:text-zinc-900'
                   }`}
                 >
                   {tab.label}
@@ -791,10 +984,10 @@ export default function CampaignDetailPage({ params }: PageProps) {
             {activeTab === 'leads' && (
               <div className="space-y-4">
                 {/* Upload & Google Sheets / CSV Help Panel Banner */}
-                <div className="flex flex-col sm:flex-row items-center justify-between gap-6 rounded-xl border border-zinc-800 bg-zinc-900/20 p-6 backdrop-blur-sm">
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-6 rounded-xl border border-[var(--border)] bg-white/20 p-6 backdrop-blur-sm">
                   <div>
-                    <h3 className="font-bold text-white text-md">Campaign Prospects & Leads</h3>
-                    <p className="text-xs text-zinc-400">Import your leads from a local CSV spreadsheet or a public Google Sheet URL using our advanced column mapper.</p>
+                    <h3 className="font-bold text-zinc-950 text-md">Campaign Prospects & Leads</h3>
+                    <p className="text-xs text-zinc-600">Import your leads from a local CSV spreadsheet or a public Google Sheet URL using our advanced column mapper.</p>
                   </div>
                   <div className="flex items-center gap-3">
                     {leads.length > 0 && (
@@ -807,7 +1000,7 @@ export default function CampaignDetailPage({ params }: PageProps) {
                     )}
                     <Link
                       href={`/campaigns/${campaignId}/leads/import`}
-                      className="px-5 py-2 bg-gradient-to-r from-violet-600 to-blue-600 hover:opacity-90 rounded-lg text-xs font-semibold text-white shadow-lg shadow-violet-500/10 transition-opacity whitespace-nowrap"
+                      className="px-5 py-2 bg-gradient-to-r from-violet-600 to-teal-500 hover:opacity-90 rounded-lg text-xs font-semibold text-white shadow-lg shadow-violet-500/10 transition-opacity whitespace-nowrap"
                     >
                       Import Leads Wizard &rarr;
                     </Link>
@@ -815,8 +1008,8 @@ export default function CampaignDetailPage({ params }: PageProps) {
                 </div>
 
                 {/* Leads Table */}
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-6 backdrop-blur-sm">
-                  <h3 className="font-bold text-white mb-4 text-md">Leads ({leads.length})</h3>
+                <div className="rounded-xl border border-[var(--border)] bg-white/20 p-6 backdrop-blur-sm">
+                  <h3 className="font-bold text-zinc-950 mb-4 text-md">Leads ({leads.length})</h3>
                   {leads.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-48 text-zinc-500">
                       <UserPlus className="h-10 w-10 text-zinc-700 mb-2" />
@@ -824,8 +1017,8 @@ export default function CampaignDetailPage({ params }: PageProps) {
                     </div>
                   ) : (
                     <div className="overflow-x-auto max-h-96">
-                      <table className="w-full text-left text-sm text-zinc-400">
-                        <thead className="text-xs font-semibold uppercase text-zinc-500 border-b border-zinc-800 bg-zinc-900/30 sticky top-0">
+                      <table className="w-full text-left text-sm text-zinc-600">
+                        <thead className="text-xs font-semibold uppercase text-zinc-500 border-b border-[var(--border)] bg-white/30 sticky top-0">
                           <tr>
                             <th className="py-2.5 px-4">Name</th>
                             <th className="py-2.5 px-4">Email</th>
@@ -834,18 +1027,18 @@ export default function CampaignDetailPage({ params }: PageProps) {
                             <th className="py-2.5 px-4">Status</th>
                           </tr>
                         </thead>
-                        <tbody className="divide-y divide-zinc-900">
-                          {leads.map((lead) => (
-                            <tr key={lead.id} className="hover:bg-zinc-900/20">
-                              <td className="py-3 px-4 text-zinc-100 font-medium">
+                        <tbody className="divide-y divide-[var(--border)]">
+                          {paginatedLeads.map((lead) => (
+                            <tr key={lead.id} className="hover:bg-white/20">
+                              <td className="py-3 px-4 text-zinc-900 font-medium">
                                 <Link href={`/campaigns/${campaignId}/leads/${lead.id}`} className="text-violet-400 hover:underline">
                                   {lead.decision_maker_name || lead.first_name || lead.last_name 
                                     ? `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || lead.decision_maker_name
                                     : lead.email.split('@')[0]}
                                 </Link>
                               </td>
-                              <td className="py-3 px-4 font-mono text-xs text-zinc-300">{lead.email}</td>
-                              <td className="py-3 px-4 text-zinc-300">{lead.company_name || lead.company || '-'}</td>
+                              <td className="py-3 px-4 font-mono text-xs text-zinc-700">{lead.email}</td>
+                              <td className="py-3 px-4 text-zinc-700">{lead.company_name || lead.company || '-'}</td>
                               <td className="py-3 px-4 text-xs italic max-w-xs truncate text-violet-300" title={lead.ai_personalized_first_line || lead.ai_personalization}>
                                 {lead.ai_personalized_first_line || lead.ai_personalization || 'Not generated'}
                               </td>
@@ -857,7 +1050,7 @@ export default function CampaignDetailPage({ params }: PageProps) {
                                     ? 'bg-blue-500/10 text-blue-400 border-blue-500/20'
                                     : lead.status === 'unsubscribed' || lead.status === 'bounced' || lead.status === 'complained'
                                     ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                                    : 'bg-zinc-800 text-zinc-400 border-zinc-700'
+                                    : 'bg-[var(--surface-muted)] text-zinc-600 border-zinc-700'
                                 }`}>
                                   {lead.status}
                                 </span>
@@ -866,6 +1059,7 @@ export default function CampaignDetailPage({ params }: PageProps) {
                           ))}
                         </tbody>
                       </table>
+                      {renderPagination(safeLeadsPage, leadTotalPages, leads.length, setLeadsPage)}
                     </div>
                   )}
                 </div>
@@ -877,20 +1071,20 @@ export default function CampaignDetailPage({ params }: PageProps) {
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="font-bold text-white text-md">Email Follow-up Steps</h3>
-                    <p className="text-xs text-zinc-400">Configure email subjects, delay timers, and markdown templates for follow-ups.</p>
+                    <h3 className="font-bold text-zinc-950 text-md">Email Follow-up Steps</h3>
+                    <p className="text-xs text-zinc-600">Configure email subjects, delay timers, and markdown templates for follow-ups.</p>
                   </div>
                   <div className="flex items-center gap-3">
                     <button
                       onClick={handleAddSequenceStep}
-                      className="flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 hover:text-white rounded-lg text-xs font-semibold text-zinc-300 transition-colors cursor-pointer"
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-[var(--border)] hover:bg-violet-50 hover:text-violet-700 rounded-lg text-xs font-semibold text-zinc-700 transition-colors cursor-pointer"
                     >
                       <Plus className="h-4 w-4 text-violet-400" /> Add Step
                     </button>
                     <button
                       onClick={handleSaveSequence}
                       disabled={savingSequence}
-                      className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-r from-violet-600 to-blue-600 rounded-lg text-xs font-semibold text-white hover:opacity-90 shadow-md shadow-violet-500/10 transition-colors disabled:opacity-50 cursor-pointer"
+                      className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-r from-violet-600 to-teal-500 rounded-lg text-xs font-semibold text-white hover:opacity-90 shadow-md shadow-violet-500/10 transition-colors disabled:opacity-50 cursor-pointer"
                     >
                       {savingSequence ? (
                         <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
@@ -904,7 +1098,7 @@ export default function CampaignDetailPage({ params }: PageProps) {
                 </div>
 
                 {sequences.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-64 border border-dashed border-zinc-850 rounded-lg p-6">
+                  <div className="flex flex-col items-center justify-center h-64 border border-dashed border-[var(--border)] rounded-lg p-6">
                     <FileText className="h-10 w-10 text-zinc-700 mb-3" />
                     <p className="text-sm text-zinc-500 font-medium">No sequence steps added.</p>
                     <button onClick={handleAddSequenceStep} className="mt-3 text-xs text-violet-400 hover:text-violet-300 font-semibold">
@@ -914,27 +1108,27 @@ export default function CampaignDetailPage({ params }: PageProps) {
                 ) : (
                   <div className="space-y-6">
                     {sequences.map((step, index) => (
-                      <div key={index} className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-6 backdrop-blur-sm space-y-4">
-                        <div className="flex items-center justify-between border-b border-zinc-855 pb-3">
+                      <div key={index} className="rounded-xl border border-[var(--border)] bg-white/20 p-6 backdrop-blur-sm space-y-4">
+                        <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
                           <div className="flex items-center gap-3">
                             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-600/10 text-xs font-bold text-violet-400 border border-violet-500/20">
                               {step.step_number}
                             </span>
-                            <h4 className="font-bold text-white">Step {step.step_number} Email</h4>
+                            <h4 className="font-bold text-zinc-950">Step {step.step_number} Email</h4>
                           </div>
 
                           <div className="flex items-center gap-4">
                             {/* Delay Days */}
                             <div className="flex items-center gap-2">
-                              <span className="text-xs text-zinc-400">Delay:</span>
+                              <span className="text-xs text-zinc-600">Delay:</span>
                               <input
                                 type="number"
                                 min="0"
                                 value={step.delay_days}
                                 onChange={(e) => handleUpdateSequenceField(index, 'delay_days', e.target.value)}
-                                className="w-16 rounded border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-center text-xs font-semibold text-zinc-200 focus:outline-none focus:border-violet-500"
+                                className="w-16 rounded border border-[var(--border)] bg-white px-2 py-0.5 text-center text-xs font-semibold text-zinc-900 focus:outline-none focus:border-violet-500"
                               />
-                              <span className="text-xs text-zinc-400">days</span>
+                              <span className="text-xs text-zinc-600">days</span>
                             </div>
 
                             {/* Remove Step */}
@@ -956,7 +1150,7 @@ export default function CampaignDetailPage({ params }: PageProps) {
                             value={step.subject}
                             onChange={(e) => handleUpdateSequenceField(index, 'subject', e.target.value)}
                             placeholder="E.g. Quick question"
-                            className="mt-1 w-full rounded-lg border border-zinc-850 bg-zinc-950 py-2 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors"
+                            className="mt-1 w-full rounded-lg border border-[var(--border)] bg-white py-2 px-3 text-sm text-zinc-900 focus:border-violet-500 focus:outline-none transition-colors"
                           />
                         </div>
 
@@ -968,12 +1162,12 @@ export default function CampaignDetailPage({ params }: PageProps) {
                             value={step.body}
                             onChange={(e) => handleUpdateSequenceField(index, 'body', e.target.value)}
                             placeholder="Write your email outreach template here..."
-                            className="mt-1 w-full rounded-lg border border-zinc-850 bg-zinc-950 py-2.5 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors font-sans"
+                            className="mt-1 w-full rounded-lg border border-[var(--border)] bg-white py-2.5 px-3 text-sm text-zinc-900 focus:border-violet-500 focus:outline-none transition-colors font-sans"
                           />
                         </div>
 
                         {/* Formatting Variables Info */}
-                        <div className="flex flex-wrap gap-2 text-[10px] text-zinc-400 font-medium">
+                        <div className="flex flex-wrap gap-2 text-[10px] text-zinc-600 font-medium">
                           <span>Placeholders:</span>
                           <code className="text-violet-400 font-mono">{"{{first_name}}"}</code>
                           <code className="text-violet-400 font-mono">{"{{last_name}}"}</code>
@@ -990,19 +1184,19 @@ export default function CampaignDetailPage({ params }: PageProps) {
             {/* TAB CONTENT: AI PERSONALIZATION */}
             {activeTab === 'personalize' && (
               <div className="space-y-6">
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-6 backdrop-blur-sm space-y-4">
+                <div className="rounded-xl border border-[var(--border)] bg-white/20 p-6 backdrop-blur-sm space-y-4">
                   <div>
-                    <h3 className="font-bold text-white text-md">Gemini AI Personalization Prompt</h3>
-                    <p className="text-xs text-zinc-400">Configure instructions for the AI to personalize an introduction sentence for each prospect before emails are sent.</p>
+                    <h3 className="font-bold text-zinc-950 text-md">Gemini AI Personalization Prompt</h3>
+                    <p className="text-xs text-zinc-600">Configure instructions for the AI to personalize an introduction sentence for each prospect before emails are sent.</p>
                   </div>
 
                   <div>
-                    <label className="block text-xs text-zinc-400 font-semibold uppercase">AI Instruction Template</label>
+                    <label className="block text-xs text-zinc-600 font-semibold uppercase">AI Instruction Template</label>
                     <textarea
                       rows={4}
                       value={promptInstructions}
                       onChange={(e) => setPromptInstructions(e.target.value)}
-                      className="mt-1 w-full rounded-lg border border-zinc-855 bg-zinc-950 py-2.5 px-3 text-sm text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors font-sans"
+                      className="mt-1 w-full rounded-lg border border-[var(--border)] bg-white py-2.5 px-3 text-sm text-zinc-900 focus:border-violet-500 focus:outline-none transition-colors font-sans"
                     />
                   </div>
 
@@ -1010,13 +1204,13 @@ export default function CampaignDetailPage({ params }: PageProps) {
                     <button
                       onClick={handleRunAIPersonalization}
                       disabled={personalizing}
-                      className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-600 to-blue-600 rounded-lg text-xs font-semibold text-white hover:opacity-90 shadow-lg shadow-violet-600/20 disabled:opacity-50 cursor-pointer"
+                      className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-violet-600 to-teal-500 rounded-lg text-xs font-semibold text-white hover:opacity-90 shadow-lg shadow-violet-600/20 disabled:opacity-50 cursor-pointer"
                     >
                       <Sparkles className="h-4 w-4" /> Run Gemini AI Personalization
                     </button>
                     <Link
                       href={`/campaigns/${campaignId}/personalization`}
-                      className="px-5 py-2.5 bg-zinc-900 border border-zinc-800 hover:bg-zinc-850 rounded-lg text-xs font-semibold text-zinc-300 hover:text-white transition-all shadow-md"
+                      className="px-5 py-2.5 bg-white border border-[var(--border)] hover:bg-violet-50 rounded-lg text-xs font-semibold text-zinc-700 hover:text-violet-700 transition-all shadow-md"
                     >
                       Go to Personalization Review Dashboard &rarr;
                     </Link>
@@ -1025,28 +1219,36 @@ export default function CampaignDetailPage({ params }: PageProps) {
                     )}
                   </div>
 
-                  <div className="text-[11px] text-zinc-500 border-t border-zinc-850 pt-4">
+                  <div className="text-[11px] text-zinc-500 border-t border-[var(--border)] pt-4">
                     <strong>Note:</strong> This runs only for leads currently in <code className="font-mono">imported</code> status who do not yet have an generated AI introduction. It calls Gemini <code className="font-mono">gemini-2.5-flash</code>. Ensure your Gemini API Key is saved in Settings first.
                   </div>
                 </div>
 
                 {/* Preview Personalizations */}
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-6 backdrop-blur-sm">
-                  <h3 className="font-bold text-white mb-4 text-md">AI Personalization Previews</h3>
+                <div className="rounded-xl border border-[var(--border)] bg-white/20 p-6 backdrop-blur-sm">
+                  <h3 className="font-bold text-zinc-950 mb-4 text-md">AI Personalization Previews</h3>
                   <div className="overflow-x-auto max-h-80">
-                    <table className="w-full text-left text-sm text-zinc-400">
-                      <thead className="text-xs font-semibold uppercase text-zinc-500 border-b border-zinc-800 bg-zinc-900/30">
+                    <table className="w-full text-left text-sm text-zinc-600">
+                      <thead className="text-xs font-semibold uppercase text-zinc-500 border-b border-[var(--border)] bg-white/30">
                         <tr>
                           <th className="py-2.5 px-4">Prospect</th>
                           <th className="py-2.5 px-4">Company</th>
                           <th className="py-2.5 px-4">Generated Personalization</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-zinc-900">
-                        {leads.map((lead) => (
-                          <tr key={lead.id} className="hover:bg-zinc-900/20">
-                            <td className="py-3 px-4 font-semibold text-zinc-200">{lead.first_name || lead.email}</td>
-                            <td className="py-3 px-4 text-zinc-300">{lead.company || '-'}</td>
+                      <tbody className="divide-y divide-[var(--border)]">
+                        {paginatedPersonalizationLeads.map((lead) => (
+                          <tr key={lead.id} className="hover:bg-white/20">
+                            <td className="py-3 px-4">
+                              <Link
+                                href={`/campaigns/${campaignId}/leads/${lead.id}`}
+                                className="font-semibold text-violet-700 transition hover:text-violet-800 hover:underline"
+                                title="Open lead profile"
+                              >
+                                {lead.first_name || lead.email}
+                              </Link>
+                            </td>
+                            <td className="py-3 px-4 text-zinc-700">{lead.company || '-'}</td>
                             <td className="py-3 px-4 text-xs italic text-violet-300">
                               {lead.ai_personalization || <span className="text-zinc-600">No personalization generated yet.</span>}
                             </td>
@@ -1054,6 +1256,7 @@ export default function CampaignDetailPage({ params }: PageProps) {
                         ))}
                       </tbody>
                     </table>
+                    {renderPagination(safePersonalizationPage, personalizationTotalPages, leads.length, setPersonalizationPage)}
                   </div>
                 </div>
               </div>
@@ -1063,9 +1266,9 @@ export default function CampaignDetailPage({ params }: PageProps) {
             {activeTab === 'review' && (
               <div className="space-y-6">
                 {/* Review Header / Controls */}
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-zinc-900/40 p-4 border border-zinc-800 rounded-xl backdrop-blur-sm">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white/40 p-4 border border-[var(--border)] rounded-xl backdrop-blur-sm">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-xs text-zinc-400 font-semibold uppercase tracking-wider mr-2">Filter Leads:</span>
+                    <span className="text-xs text-zinc-600 font-semibold uppercase tracking-wider mr-2">Filter Leads:</span>
                     {[
                       { id: 'pending_review', label: 'Pending Review' },
                       { id: 'approved', label: 'Approved' },
@@ -1077,11 +1280,12 @@ export default function CampaignDetailPage({ params }: PageProps) {
                         onClick={() => {
                           setReviewFilter(btn.id as any);
                           setSelectedLeadId(null);
+                          setReviewPage(1);
                         }}
                         className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
                           reviewFilter === btn.id
                             ? 'bg-violet-600/10 text-violet-400 border-violet-500/20'
-                            : 'bg-zinc-950 border-zinc-850 text-zinc-400 hover:text-zinc-200'
+                            : 'bg-white border-[var(--border)] text-zinc-600 hover:text-zinc-900'
                         }`}
                       >
                         {btn.label}
@@ -1090,18 +1294,18 @@ export default function CampaignDetailPage({ params }: PageProps) {
                   </div>
 
                   <button
-                    onClick={handleBulkApprove}
-                    disabled={approvingLeadId === 'bulk' || leads.filter(l => l.personalization_strategy && l.approval_status === 'pending_review').length === 0}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-violet-600 to-blue-600 rounded-lg text-xs font-semibold text-white hover:opacity-90 shadow-md shadow-violet-500/10 disabled:opacity-50 cursor-pointer"
+                    onClick={requestBulkApprove}
+                    disabled={approvingLeadId === 'bulk' || pendingBulkApprovalLeads.length === 0}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-violet-600 to-teal-500 rounded-lg text-xs font-semibold text-white hover:opacity-90 shadow-md shadow-violet-500/10 disabled:opacity-50 cursor-pointer"
                   >
                     <Sparkles className="h-4 w-4" /> Bulk Approve All Pending
                   </button>
                 </div>
 
                 {leads.filter(l => l.personalization_strategy).length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-72 border border-dashed border-zinc-850 rounded-xl p-8 bg-zinc-900/10 text-center">
+                  <div className="flex flex-col items-center justify-center h-72 border border-dashed border-[var(--border)] rounded-xl p-8 bg-white/10 text-center">
                     <Sparkles className="h-10 w-10 text-zinc-700 mb-3 animate-pulse" />
-                    <h4 className="text-sm font-semibold text-zinc-350">No AI-Personalized Leads Found</h4>
+                    <h4 className="text-sm font-semibold text-zinc-700">No AI-Personalized Leads Found</h4>
                     <p className="text-xs text-zinc-500 max-w-sm mt-1">
                       Run AI Personalization on your imported leads first to review custom strategy, subjects, and email drafts here.
                     </p>
@@ -1115,22 +1319,14 @@ export default function CampaignDetailPage({ params }: PageProps) {
                 ) : (
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     {/* Leads List Side Pane */}
-                    <div className="lg:col-span-1 rounded-xl border border-zinc-800 bg-zinc-900/20 p-4 backdrop-blur-sm h-[600px] flex flex-col">
+                    <div className="lg:col-span-1 rounded-xl border border-[var(--border)] bg-white/20 p-4 backdrop-blur-sm h-[600px] flex flex-col">
                       <div className="mb-3">
-                        <h4 className="font-bold text-white text-sm">Personalized Leads ({leads.filter(l => {
-                          if (!l.personalization_strategy) return false;
-                          if (reviewFilter === 'all') return true;
-                          return l.approval_status === reviewFilter;
-                        }).length})</h4>
+                        <h4 className="font-bold text-white text-sm">Personalized Leads ({reviewLeads.length})</h4>
                         <p className="text-[11px] text-zinc-500">Select a lead to edit and approve their outreach email.</p>
                       </div>
 
                       <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-                        {leads.filter(l => {
-                          if (!l.personalization_strategy) return false;
-                          if (reviewFilter === 'all') return true;
-                          return l.approval_status === reviewFilter;
-                        }).map((lead) => {
+                        {paginatedReviewLeads.map((lead) => {
                           const isSelected = selectedLeadId === lead.id;
                           return (
                             <button
@@ -1138,12 +1334,12 @@ export default function CampaignDetailPage({ params }: PageProps) {
                               onClick={() => setSelectedLeadId(lead.id)}
                               className={`w-full text-left p-3 rounded-lg border transition-all cursor-pointer flex flex-col gap-1 ${
                                 isSelected
-                                  ? 'bg-zinc-900 border-violet-500/50 shadow-md shadow-violet-500/5'
-                                  : 'bg-zinc-950/40 border-zinc-900 hover:bg-zinc-900/30'
+                                  ? 'bg-white border-violet-500/50 shadow-md shadow-violet-500/5'
+                                  : 'bg-white/40 border-[var(--border)] hover:bg-white/30'
                               }`}
                             >
                               <div className="flex items-center justify-between w-full">
-                                <span className="text-xs font-semibold text-zinc-200 truncate max-w-[120px]">
+                                <span className="text-xs font-semibold text-zinc-900 truncate max-w-[120px]">
                                   {lead.first_name || lead.last_name 
                                     ? `${lead.first_name || ''} ${lead.last_name || ''}`.trim() 
                                     : lead.email.split('@')[0]}
@@ -1158,7 +1354,7 @@ export default function CampaignDetailPage({ params }: PageProps) {
                                   {lead.approval_status === 'pending_review' ? 'pending' : lead.approval_status}
                                 </span>
                               </div>
-                              <span className="text-[10px] text-zinc-400 truncate w-full">{lead.company_name || lead.company || lead.email}</span>
+                              <span className="text-[10px] text-zinc-600 truncate w-full">{lead.company_name || lead.company || lead.email}</span>
                               {lead.personalization_strategy && (
                                 <span className="text-[10px] text-violet-400 italic truncate w-full mt-0.5" title={lead.personalization_strategy}>
                                   {lead.personalization_strategy}
@@ -1168,33 +1364,30 @@ export default function CampaignDetailPage({ params }: PageProps) {
                           );
                         })}
 
-                        {leads.filter(l => {
-                          if (!l.personalization_strategy) return false;
-                          if (reviewFilter === 'all') return true;
-                          return l.approval_status === reviewFilter;
-                        }).length === 0 && (
+                        {reviewLeads.length === 0 && (
                           <div className="flex items-center justify-center h-48 text-zinc-500 text-xs">
                             No leads matching this filter.
                           </div>
                         )}
                       </div>
+                      {reviewLeads.length > pageSize && renderPagination(safeReviewPage, reviewTotalPages, reviewLeads.length, setReviewPage)}
                     </div>
 
                     {/* Lead Detail & Actions Pane */}
-                    <div className="lg:col-span-2 rounded-xl border border-zinc-800 bg-zinc-900/20 p-6 backdrop-blur-sm h-[600px] flex flex-col">
+                    <div className="lg:col-span-2 rounded-xl border border-[var(--border)] bg-white/20 p-6 backdrop-blur-sm h-[600px] flex flex-col">
                       {selectedLead ? (
                         <div className="flex flex-col h-full justify-between">
                           <div className="space-y-4 overflow-y-auto pr-1">
                             {/* Profile Info Row */}
-                            <div className="flex flex-wrap items-start justify-between gap-4 pb-4 border-b border-zinc-800/80">
+                            <div className="flex flex-wrap items-start justify-between gap-4 pb-4 border-b border-[var(--border)]/80">
                               <div>
                                 <h3 className="font-bold text-white text-base">
                                   {selectedLead.first_name || ''} {selectedLead.last_name || ''}
                                 </h3>
-                                <p className="text-xs text-zinc-400">{selectedLead.decision_maker_title || 'Decision Maker'} at <span className="text-violet-400 font-semibold">{selectedLead.company_name || selectedLead.company || 'Unknown Company'}</span></p>
+                                <p className="text-xs text-zinc-600">{selectedLead.decision_maker_title || 'Decision Maker'} at <span className="text-violet-400 font-semibold">{selectedLead.company_name || selectedLead.company || 'Unknown Company'}</span></p>
                               </div>
-                              <div className="text-right text-xs text-zinc-400 space-y-1">
-                                <div>Email: <span className="font-mono text-zinc-300">{selectedLead.email}</span></div>
+                              <div className="text-right text-xs text-zinc-600 space-y-1">
+                                <div>Email: <span className="font-mono text-zinc-700">{selectedLead.email}</span></div>
                                 {selectedLead.website && (
                                   <div>Website: <a href={selectedLead.website.startsWith('http') ? selectedLead.website : `https://${selectedLead.website}`} target="_blank" rel="noreferrer" className="text-violet-400 hover:underline inline-flex items-center gap-0.5">{selectedLead.website}</a></div>
                                 )}
@@ -1204,31 +1397,31 @@ export default function CampaignDetailPage({ params }: PageProps) {
                             {/* Tech Stack & Pain Points */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               {selectedLead.tech_stack && (
-                                <div className="p-3 bg-zinc-950/60 rounded-lg border border-zinc-900 text-xs">
+                                <div className="p-3 bg-white/60 rounded-lg border border-[var(--border)] text-xs">
                                   <span className="block text-[10px] uppercase font-bold text-zinc-500 mb-1">Tech Stack</span>
-                                  <span className="text-zinc-300">{selectedLead.tech_stack}</span>
+                                  <span className="text-zinc-700">{selectedLead.tech_stack}</span>
                                 </div>
                               )}
                               {selectedLead.pain_points && (
-                                <div className="p-3 bg-zinc-950/60 rounded-lg border border-zinc-900 text-xs">
+                                <div className="p-3 bg-white/60 rounded-lg border border-[var(--border)] text-xs">
                                   <span className="block text-[10px] uppercase font-bold text-zinc-500 mb-1">Pain Points / Trigger</span>
-                                  <span className="text-zinc-300">{selectedLead.pain_points}</span>
+                                  <span className="text-zinc-700">{selectedLead.pain_points}</span>
                                 </div>
                               )}
                               {selectedLead.solution && (
-                                <div className="p-3 bg-zinc-950/60 rounded-lg border border-zinc-900 text-xs md:col-span-2">
+                                <div className="p-3 bg-white/60 rounded-lg border border-[var(--border)] text-xs md:col-span-2">
                                   <span className="block text-[10px] uppercase font-bold text-zinc-500 mb-1">Solution / Offer</span>
-                                  <span className="text-zinc-300">{selectedLead.solution}</span>
+                                  <span className="text-zinc-700">{selectedLead.solution}</span>
                                 </div>
                               )}
                             </div>
 
                             {/* AI Strategy Box */}
-                            <div className="rounded-lg bg-gradient-to-r from-violet-950/10 to-blue-950/10 border border-violet-500/20 p-4">
+                            <div className="rounded-lg bg-gradient-to-r from-violet-50 to-teal-50 border border-violet-500/20 p-4">
                               <div className="flex items-center gap-1.5 text-xs font-bold text-violet-400 uppercase tracking-wider mb-1.5">
                                 <Sparkles className="h-4 w-4" /> Outreach Strategy
                               </div>
-                              <p className="text-xs text-zinc-300 leading-relaxed italic">
+                              <p className="text-xs text-zinc-700 leading-relaxed italic">
                                 "{selectedLead.personalization_strategy}"
                               </p>
                             </div>
@@ -1241,7 +1434,7 @@ export default function CampaignDetailPage({ params }: PageProps) {
                                   type="text"
                                   value={editedSubject}
                                   onChange={(e) => setEditedSubject(e.target.value)}
-                                  className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 py-2 px-3 text-xs text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors"
+                                  className="mt-1 w-full rounded-lg border border-[var(--border)] bg-white py-2 px-3 text-xs text-zinc-900 focus:border-violet-500 focus:outline-none transition-colors"
                                 />
                               </div>
 
@@ -1251,18 +1444,18 @@ export default function CampaignDetailPage({ params }: PageProps) {
                                   rows={8}
                                   value={editedBody}
                                   onChange={(e) => setEditedBody(e.target.value)}
-                                  className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 py-2.5 px-3 text-xs text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors font-sans leading-relaxed"
+                                  className="mt-1 w-full rounded-lg border border-[var(--border)] bg-white py-2.5 px-3 text-xs text-zinc-900 focus:border-violet-500 focus:outline-none transition-colors font-sans leading-relaxed"
                                 />
                               </div>
                             </div>
                           </div>
 
                           {/* Detail Buttons Row */}
-                          <div className="flex items-center justify-between border-t border-zinc-800 pt-4 mt-4">
+                          <div className="flex items-center justify-between border-t border-[var(--border)] pt-4 mt-4">
                             <button
                               onClick={() => handleApproveLead(selectedLead.id, 'skip')}
                               disabled={approvingLeadId !== null}
-                              className="px-4 py-2 border border-zinc-800 hover:bg-rose-500/5 hover:border-rose-500/20 text-xs font-semibold text-zinc-400 hover:text-rose-400 rounded-lg transition-all cursor-pointer disabled:opacity-50"
+                              className="px-4 py-2 border border-[var(--border)] hover:bg-rose-500/5 hover:border-rose-500/20 text-xs font-semibold text-zinc-600 hover:text-rose-400 rounded-lg transition-all cursor-pointer disabled:opacity-50"
                             >
                               Skip Prospect
                             </button>
@@ -1303,6 +1496,117 @@ export default function CampaignDetailPage({ params }: PageProps) {
           </div>
         )}
       </main>
-    </div>
+
+      {bulkApproveModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-3xl border border-[var(--border)] bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-4">
+              <div>
+                <div className="mb-2 inline-flex rounded-full bg-amber-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-amber-100">
+                  Bulk send safety check
+                </div>
+                <h3 className="text-lg font-semibold text-zinc-950">Approve and queue {pendingBulkApprovalLeads.length} leads?</h3>
+                <p className="mt-2 text-sm leading-6 text-zinc-500">
+                  This will approve every pending personalized email and add them to the campaign outbox. If the campaign is active, ReachMira can send them during the next automation run while respecting campaign and email-account limits.
+                </p>
+              </div>
+              <button
+                onClick={() => setBulkApproveModalOpen(false)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] text-zinc-500 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-4 grid gap-3 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-900">
+              <div className="font-semibold">Before continuing, confirm:</div>
+              <div>Each selected lead has been reviewed enough for automated sending.</div>
+              <div>Your sequence, sender account, suppression checks, and daily limits are ready.</div>
+            </div>
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                onClick={() => setBulkApproveModalOpen(false)}
+                className="rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBulkApprove}
+                disabled={approvingLeadId === 'bulk'}
+                className="rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-600/15 transition hover:opacity-95 disabled:opacity-50"
+              >
+                Confirm Bulk Queue
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {launchModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-3xl border border-[var(--border)] bg-white p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-4">
+              <div>
+                <div className="mb-2 inline-flex rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-100">
+                  Campaign launch
+                </div>
+                <h3 className="text-lg font-semibold text-zinc-950">Launch {campaign?.name}?</h3>
+                <p className="mt-2 text-sm leading-6 text-zinc-500">
+                  Once active, ReachMira will send approved campaign emails during automation runs while respecting suppression checks, campaign limits, and email-account limits.
+                </p>
+              </div>
+              <button
+                onClick={() => setLaunchModalOpen(false)}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] text-zinc-500 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-3">
+              {launchChecklist.map((item) => (
+                <div key={item.label} className="flex items-start justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
+                  <div>
+                    <div className="text-sm font-semibold text-zinc-950">{item.label}</div>
+                    <div className="mt-1 text-xs leading-5 text-zinc-500">{item.detail}</div>
+                  </div>
+                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
+                    item.ok ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-amber-50 text-amber-700 ring-1 ring-amber-100'
+                  }`}>
+                    {item.ok ? 'Ready' : 'Fix'}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {launchBlockingIssues.length > 0 && (
+              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
+                Fix the required launch items before starting this campaign. We’ll keep the launch button disabled until the checklist is clean.
+              </div>
+            )}
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                onClick={() => setLaunchModalOpen(false)}
+                className="rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  setLaunchModalOpen(false);
+                  handleLaunchCampaign();
+                }}
+                disabled={launchBlockingIssues.length > 0}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-600/15 transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Play className="h-4 w-4" /> Confirm Launch
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </AppShell>
   );
 }

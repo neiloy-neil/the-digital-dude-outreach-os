@@ -1,8 +1,106 @@
 import { NextResponse } from 'next/server';
+import { createClient } from '@/utils/supabase/server';
 import { createServiceClient } from '@/utils/supabase/service';
 import { sendTelegramReport } from '@/utils/telegram';
 import Imap from 'imap';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
+import { resolveLeadOwnerFromLead } from '@/lib/leads/resolve-lead-owner';
+import { isBlockedLeadStatus } from '@/lib/leads/status';
+
+type ImapReplyBody = {
+  bodyText: string;
+  bodyHtml: string;
+  snippet: string;
+};
+
+function decodeTransferContent(content: string, encoding: string) {
+  const normalizedEncoding = encoding.toLowerCase();
+
+  if (normalizedEncoding.includes('base64')) {
+    try {
+      return Buffer.from(content.replace(/\s+/g, ''), 'base64').toString('utf8').trim();
+    } catch {
+      return content.trim();
+    }
+  }
+
+  if (normalizedEncoding.includes('quoted-printable')) {
+    const binary = content
+      .replace(/=\r?\n/g, '')
+      .replace(/=([A-Fa-f0-9]{2})/g, (_match, hex: string) => String.fromCharCode(parseInt(hex, 16)));
+    return Buffer.from(binary, 'binary').toString('utf8').trim();
+  }
+
+  return content.trim();
+}
+
+function htmlToText(html: string) {
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function extractMimePart(rawBody: string, contentType: 'text/plain' | 'text/html') {
+  const parts = rawBody.split(/\r?\n--[^\r\n]+(?:\r?\n|$)/g);
+
+  for (const part of parts) {
+    const headerEnd = part.search(/\r?\n\r?\n/);
+    if (headerEnd === -1) continue;
+
+    const headers = part.slice(0, headerEnd);
+    const body = part.slice(headerEnd).replace(/^\r?\n\r?\n?/, '');
+
+    if (!new RegExp(`Content-Type:\\s*${contentType.replace('/', '\\/')}`, 'i').test(headers)) continue;
+
+    const transferEncoding = headers.match(/Content-Transfer-Encoding:\s*([^\r\n]+)/i)?.[1] || '';
+    return decodeTransferContent(body, transferEncoding);
+  }
+
+  return '';
+}
+
+function stripMimeNoise(value: string) {
+  return value
+    .replace(/\r/g, '')
+    .split('\n')
+    .filter((line) => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('--')) return false;
+      if (/^(Content-Type|Content-Transfer-Encoding|Content-Disposition|charset=|boundary=)/i.test(trimmed)) return false;
+      return true;
+    })
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function parseImapReplyBody(rawBody: string): ImapReplyBody {
+  const bodyHtml = extractMimePart(rawBody, 'text/html');
+  const bodyText = extractMimePart(rawBody, 'text/plain') || (bodyHtml ? htmlToText(bodyHtml) : stripMimeNoise(rawBody));
+  const snippet = bodyText.replace(/\s+/g, ' ').slice(0, 300);
+
+  return { bodyText, bodyHtml, snippet };
+}
+
+function firstRelation<T>(value: T[] | T | null | undefined): T | null {
+  return Array.isArray(value) ? value[0] || null : value || null;
+}
+
+function extractEmailAddress(value: string) {
+  return value.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]?.toLowerCase() || '';
+}
 
 export async function GET(request: Request) {
   // Validate Vercel Cron Secret (if set)
@@ -50,6 +148,46 @@ export async function GET(request: Request) {
   }
 }
 
+export async function POST() {
+  const supabase = await createClient();
+  const {
+    data: { user },
+    error: authError,
+  } = await supabase.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const serviceSupabase = createServiceClient();
+  const { data: profile, error: profileError } = await serviceSupabase
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (profileError) {
+    return NextResponse.json({ error: profileError.message }, { status: 500 });
+  }
+
+  if (!profile?.imap_host || !profile?.imap_user || !profile?.imap_pass) {
+    return NextResponse.json({ error: 'IMAP is not configured for this user.' }, { status: 400 });
+  }
+
+  try {
+    const repliesFound = await checkIMAPRepliesForUser(profile, serviceSupabase);
+    return NextResponse.json({
+      success: true,
+      userId: user.id,
+      repliesProcessed: repliesFound.length,
+      details: repliesFound,
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'IMAP error';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+}
+
 // Function to handle IMAP connection and scan
 function checkIMAPRepliesForUser(profile: any, supabase: any): Promise<any[]> {
   return new Promise((resolve, reject) => {
@@ -82,15 +220,17 @@ function checkIMAPRepliesForUser(profile: any, supabase: any): Promise<any[]> {
           }
 
           const fetchOption = {
-            bodies: 'HEADER.FIELDS (FROM SUBJECT IN-REPLY-TO DATE)',
+            bodies: ['HEADER.FIELDS (FROM SUBJECT IN-REPLY-TO DATE)', 'TEXT'],
             struct: true
           };
 
           const f = imap.fetch(uids, fetchOption);
+          const messageTasks: Promise<void>[] = [];
 
           f.on('message', (msg, seqno) => {
             let from = '';
             let subject = '';
+            let rawBody = '';
 
             msg.on('body', (stream, info) => {
               let buffer = '';
@@ -98,92 +238,175 @@ function checkIMAPRepliesForUser(profile: any, supabase: any): Promise<any[]> {
                 buffer += chunk.toString('utf8');
               });
               stream.once('end', () => {
-                const parsedHeaders = Imap.parseHeader(buffer);
-                from = parsedHeaders.from?.[0] || '';
-                subject = parsedHeaders.subject?.[0] || '';
+                if (String(info.which || '').toUpperCase().includes('HEADER')) {
+                  const parsedHeaders = Imap.parseHeader(buffer);
+                  from = parsedHeaders.from?.[0] || '';
+                  subject = parsedHeaders.subject?.[0] || '';
+                } else {
+                  rawBody += buffer;
+                }
               });
             });
 
-            msg.once('end', async () => {
-              // Extract sender email using clean regex
-              const emailMatch = from.match(/[\w.-]+@[\w.-]+\.[\w.-]+/);
-              if (emailMatch) {
-                const senderEmail = emailMatch[0].toLowerCase();
-                
-                // Match this sender to our active campaigns/leads for this user
-                const { data: leads } = await supabase
-                  .from('leads')
-                  .select(`
-                    id,
-                    first_name,
-                    last_name,
-                    company,
-                    email,
-                    campaign_id,
-                    campaigns!inner (
+            msg.once('end', () => {
+              const task = (async () => {
+                const senderEmail = extractEmailAddress(from);
+                if (senderEmail) {
+                  const replyBody = parseImapReplyBody(rawBody);
+
+                  // Match replies to any lead owned by this user, including manual/global leads.
+                  const { data: possibleLeads } = await supabase
+                    .from('leads')
+                    .select(`
                       id,
-                      name,
-                      user_id
-                    )
-                  `)
-                  .eq('email', senderEmail)
-                  .eq('campaigns.user_id', profile.id)
-                  .in('status', ['sending', 'sent']);
+                      first_name,
+                      last_name,
+                      company,
+                      email,
+                      status,
+                      user_id,
+                      campaign_id,
+                      lead_list_id,
+                      campaigns (
+                        id,
+                        name,
+                        user_id
+                      ),
+                      lead_lists (
+                        id,
+                        user_id
+                      )
+                    `)
+                    .eq('email', senderEmail)
+                    .order('updated_at', { ascending: false });
 
-                if (leads && leads.length > 0) {
-                  for (const lead of leads) {
-                    const campaign = lead.campaigns as any;
-                    
-                    // Mark lead as replied
-                    await supabase
-                      .from('leads')
-                      .update({ status: 'replied', updated_at: new Date().toISOString() })
-                      .eq('id', lead.id);
+                  const leads = (possibleLeads || []).filter((lead: any) => {
+                    const owner = resolveLeadOwnerFromLead(lead);
+                    return owner.userId === profile.id && !isBlockedLeadStatus(lead.status);
+                  });
 
-                    // Cancel outbox items
-                    await supabase
-                      .from('outbox')
-                      .update({ status: 'cancelled', error_message: 'IMAP reply detected' })
-                      .eq('lead_id', lead.id)
-                      .eq('status', 'pending');
+                  if (leads && leads.length > 0) {
+                    for (const lead of leads) {
+                      const owner = resolveLeadOwnerFromLead(lead);
+                      const campaign = firstRelation(lead.campaigns as any);
+                      const campaignId = owner.campaignId;
+                      const campaignName = owner.campaignName || campaign?.name || 'ReachMira outreach';
+                      const repliedAt = new Date().toISOString();
 
-                    // Log Activity
-                    await supabase.from('activity_logs').insert({
-                      campaign_id: campaign.id,
-                      lead_id: lead.id,
-                      event_type: 'replied',
-                      payload: { subject, source: 'imap_cron' },
-                    });
+                      // Mark lead as replied
+                      const { error: leadUpdateError } = await supabase
+                        .from('leads')
+                        .update({
+                          status: 'replied',
+                          reply_status: 'replied',
+                          next_email_at: null,
+                          next_follow_up_at: null,
+                          updated_at: new Date().toISOString(),
+                        })
+                        .eq('id', lead.id);
 
-                    await createAuditLog({
-                      userId: profile.id,
-                      campaignId: campaign.id,
-                      leadId: lead.id,
-                      action: 'reply_received',
-                      message: `Reply detected via IMAP for ${lead.email}`,
-                      metadata: { subject, source: 'imap_cron' },
-                    });
+                      if (leadUpdateError) {
+                        // Keep older databases usable if newer reply columns have not been migrated yet.
+                        const { error: fallbackLeadUpdateError } = await supabase
+                          .from('leads')
+                          .update({
+                            status: 'replied',
+                            updated_at: repliedAt,
+                          })
+                          .eq('id', lead.id);
 
-                    // Trigger Telegram Notification
-                    if (profile.telegram_chat_id && profile.telegram_bot_token) {
-                      const name = `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Someone';
-                      const companyStr = lead.company ? ` at *${lead.company}*` : '';
-                      const alertMsg = 
+                        if (fallbackLeadUpdateError) {
+                          throw fallbackLeadUpdateError;
+                        }
+                      }
+
+                      // Cancel outbox items
+                      await supabase
+                        .from('outbox')
+                        .update({ status: 'cancelled', error_message: 'IMAP reply detected' })
+                        .eq('lead_id', lead.id)
+                        .eq('status', 'pending');
+
+                      const replyMetadata = {
+                        sender: senderEmail,
+                        subject,
+                        snippet: replyBody.snippet,
+                        body_text: replyBody.bodyText,
+                        body_html: replyBody.bodyHtml,
+                        source: 'imap_cron',
+                        reply_received_at: repliedAt,
+                      };
+
+                      const { data: latestSentEmail } = await supabase
+                        .from('sent_emails')
+                        .select('id')
+                        .eq('lead_id', lead.id)
+                        .order('sent_at', { ascending: false })
+                        .limit(1)
+                        .maybeSingle();
+
+                      if (latestSentEmail?.id) {
+                        const { error: sentEmailUpdateError } = await supabase
+                          .from('sent_emails')
+                          .update({ replied_at: repliedAt, status: 'replied' })
+                          .eq('id', latestSentEmail.id);
+
+                        if (sentEmailUpdateError) {
+                          // Legacy tables may not have replied_at yet; status is still enough for dashboards.
+                          const { error: fallbackSentEmailError } = await supabase
+                            .from('sent_emails')
+                            .update({ status: 'replied' })
+                            .eq('id', latestSentEmail.id);
+
+                          if (fallbackSentEmailError) {
+                            throw fallbackSentEmailError;
+                          }
+                        }
+                      }
+
+                      if (campaignId) {
+                        // Log Activity for campaign-owned leads. Global/manual leads use audit logs.
+                        await supabase.from('activity_logs').insert({
+                          campaign_id: campaignId,
+                          lead_id: lead.id,
+                          event_type: 'replied',
+                          payload: replyMetadata,
+                        });
+                      }
+
+                      await createAuditLog({
+                        userId: profile.id,
+                        campaignId,
+                        leadId: lead.id,
+                        action: 'reply_received',
+                        message: `Reply detected via IMAP for ${lead.email}`,
+                        metadata: replyMetadata,
+                      });
+
+                      // Trigger Telegram Notification
+                      if (profile.telegram_chat_id && profile.telegram_bot_token) {
+                        const name = `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Someone';
+                        const companyStr = lead.company ? ` at *${lead.company}*` : '';
+                        const alertMsg =
 `📥 *New Email Reply Detected! (cPanel IMAP)*
-📬 Campaign: *${campaign.name}*
+📬 Campaign: *${campaignName}*
 👤 Lead: *${name}* (${lead.email})${companyStr}
 
 💬 *Subject*: ${subject}
+📝 *Body snippet*:
+_"${replyBody.snippet}${replyBody.bodyText.length > 300 ? '...' : ''}"_
 
 🛑 _All follow-ups for this lead have been automatically stopped._`;
 
-                      await sendTelegramReport(profile.telegram_bot_token, profile.telegram_chat_id, alertMsg);
-                    }
+                        await sendTelegramReport(profile.telegram_bot_token, profile.telegram_chat_id, alertMsg);
+                      }
 
-                    repliesProcessed.push({ leadId: lead.id, email: lead.email });
+                      repliesProcessed.push({ leadId: lead.id, email: lead.email });
+                    }
                   }
                 }
-              }
+              })();
+              messageTasks.push(task);
             });
           });
 
@@ -192,9 +415,15 @@ function checkIMAPRepliesForUser(profile: any, supabase: any): Promise<any[]> {
             return reject(fetchErr);
           });
 
-          f.once('end', () => {
-            imap.end();
-            return resolve(repliesProcessed);
+          f.once('end', async () => {
+            try {
+              await Promise.all(messageTasks);
+              imap.end();
+              return resolve(repliesProcessed);
+            } catch (taskErr) {
+              imap.end();
+              return reject(taskErr);
+            }
           });
         });
       });

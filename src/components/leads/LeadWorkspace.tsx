@@ -2,12 +2,16 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, CheckCircle2, Copy, Database, ExternalLink, History, Mail, Save, Send, Sparkles, WandSparkles, X, Clock3 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ArrowLeft, Ban, CheckCircle2, Copy, Database, Edit3, ExternalLink, History, Mail, MessageSquare, PlusCircle, Save, Send, Sparkles, WandSparkles, X, Clock3, AlertTriangle, Trash2 } from 'lucide-react';
 import AppShell from '@/components/reachmira/AppShell';
 import StatusBadge from '@/components/leads/StatusBadge';
 import RichTextEditor from '@/components/leads/RichTextEditor';
-import { buildLeadContextPrompt } from '@/lib/leads/context-prompt';
+import { buildFollowUpPrompt, buildLeadContextPrompt, buildLeadSummary, type CompanyPromptContext } from '@/lib/leads/context-prompt';
 import { htmlToPlainText, normalizeDraftHtml } from '@/lib/email/html';
+import { checkEmailQuality, hasBlockingEmailQualityIssue } from '@/lib/email/check-email-quality';
+import { buildEmailSignatureHtml, buildSendSignatureHtml } from '@/lib/email/signature';
+import { applyTemplateVariables } from '@/lib/templates/template-helpers';
 import { EMAIL_TYPES, getLeadStatusLabel } from '@/lib/leads/status';
 import { createClient } from '@/utils/supabase/client';
 import type { AuditLog, EmailAccount, Lead, SentEmail } from '@/types/database.types';
@@ -18,14 +22,52 @@ type LeadDetail = Lead & {
   sent_emails?: SentEmail[];
 };
 
-type TabId = 'lead-data' | 'ai' | 'manual' | 'history' | 'timeline';
+type CampaignOption = {
+  id: string;
+  name: string;
+};
+
+type TemplateOption = {
+  id: string;
+  name: string;
+  category?: string | null;
+  subject: string;
+  body?: string | null;
+};
+
+type ReplyEvent = {
+  id: string;
+  createdAt: string;
+  message?: string | null;
+  sender: string;
+  recipient: string;
+  subject: string;
+  snippet: string;
+  bodyText: string;
+  bodyHtml: string;
+  source: string;
+};
+
+type ActivityLog = {
+  id: string;
+  campaign_id: string;
+  lead_id: string;
+  outbox_id?: string | null;
+  event_type: string;
+  payload: Record<string, unknown>;
+  created_at: string;
+};
+
+type TabId = 'overview' | 'intelligence' | 'manual' | 'history' | 'replies' | 'timeline' | 'raw-data';
 
 const TABS: Array<{ id: TabId; label: string; icon: typeof Database }> = [
-  { id: 'lead-data', label: 'Lead Data', icon: Database },
-  { id: 'ai', label: 'AI / Lead Intelligence', icon: WandSparkles },
+  { id: 'overview', label: 'Overview', icon: Database },
+  { id: 'intelligence', label: 'Lead Intelligence', icon: WandSparkles },
   { id: 'manual', label: 'Manual Email', icon: Mail },
   { id: 'history', label: 'Email History', icon: History },
+  { id: 'replies', label: 'Replies', icon: MessageSquare },
   { id: 'timeline', label: 'Timeline', icon: Clock3 },
+  { id: 'raw-data', label: 'Raw Data', icon: Database },
 ];
 
 type Props = {
@@ -50,22 +92,55 @@ function eventTimestamp(event: { created_at?: string; sent_at?: string }) {
   return event.created_at || event.sent_at || '';
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function metadataString(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  if (typeof value === 'string') return value;
+  if (value === null || value === undefined) return '';
+  return String(value);
+}
+
+function metadataRecord(value: unknown) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function isReplyAction(value?: string | null) {
+  return ['reply_received', 'replied', 'email_replied', 'lead_replied'].includes(String(value || '').toLowerCase());
+}
+
 export default function LeadWorkspace({ leadId, title, subtitle, backHref, backLabel }: Props) {
+  const router = useRouter();
   const supabase = createClient();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [checkingReplies, setCheckingReplies] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<TabId>('lead-data');
+  const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [lead, setLead] = useState<LeadDetail | null>(null);
   const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
+  const [campaignOptions, setCampaignOptions] = useState<CampaignOption[]>([]);
+  const [templateOptions, setTemplateOptions] = useState<TemplateOption[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
+  const [companyContext, setCompanyContext] = useState<CompanyPromptContext | null>(null);
   const [selectedEmailAccountId, setSelectedEmailAccountId] = useState('');
   const [targetEmail, setTargetEmail] = useState('');
   const [selectedEmail, setSelectedEmail] = useState<SentEmail | null>(null);
   const [manualEmailType, setManualEmailType] = useState<(typeof EMAIL_TYPES)[number]>('custom_email');
+  const [selectedCampaignId, setSelectedCampaignId] = useState('');
+  const [selectedTemplateId, setSelectedTemplateId] = useState('');
+  const [includeSignature, setIncludeSignature] = useState(true);
 
   const [form, setForm] = useState({
     lead_list_id: '',
@@ -110,27 +185,42 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
       }
 
       try {
-        const [leadResponse, accountsResponse] = await Promise.all([
+        const [leadResponse, accountsResponse, campaignsResponse, templatesResponse] = await Promise.all([
           fetch(`/api/leads/${leadId}`),
+          fetch('/api/email-accounts'),
           supabase
-            .from('email_accounts')
-            .select('id, user_id, provider, email_address, sender_name, daily_send_limit, daily_sent_count, last_sent_reset_date, is_default, warmup_enabled, status, created_at, updated_at')
-            .eq('status', 'active')
-            .order('is_default', { ascending: false }),
+            .from('campaigns')
+            .select('id, name')
+            .order('created_at', { ascending: false }),
+          fetch('/api/templates'),
         ]);
 
-        const leadPayload = (await leadResponse.json()) as { lead?: LeadDetail; auditLogs?: AuditLog[]; error?: string };
+        const leadPayload = (await leadResponse.json()) as { lead?: LeadDetail; auditLogs?: AuditLog[]; activityLogs?: ActivityLog[]; companyContext?: CompanyPromptContext; error?: string };
         if (!leadResponse.ok || !leadPayload.lead) {
           throw new Error(leadPayload.error || 'Failed to load lead');
+        }
+        const accountsPayload = (await accountsResponse.json()) as EmailAccount[] | { error?: string };
+        if (!accountsResponse.ok || !Array.isArray(accountsPayload)) {
+          throw new Error(!Array.isArray(accountsPayload) ? accountsPayload.error || 'Failed to load email accounts' : 'Failed to load email accounts');
+        }
+        const templatesPayload = (await templatesResponse.json()) as { templates?: TemplateOption[]; error?: string };
+        if (!templatesResponse.ok) {
+          throw new Error(templatesPayload.error || 'Failed to load templates');
         }
 
         const nextLead = leadPayload.lead;
         setLead(nextLead);
         setAuditLogs(leadPayload.auditLogs || []);
-        setEmailAccounts((accountsResponse.data as EmailAccount[]) || []);
-        setSelectedEmailAccountId(nextLead.last_manual_email_account_id || accountsResponse.data?.[0]?.id || '');
+        setActivityLogs(leadPayload.activityLogs || []);
+        setCompanyContext(leadPayload.companyContext || null);
+        const activeAccounts = accountsPayload.filter((account) => account.status === 'active');
+        setEmailAccounts(activeAccounts);
+        setCampaignOptions((campaignsResponse.data as CampaignOption[]) || []);
+        setTemplateOptions(templatesPayload.templates || []);
+        setSelectedEmailAccountId(nextLead.last_manual_email_account_id || activeAccounts[0]?.id || '');
         setTargetEmail(nextLead.email || '');
-        setManualEmailType((nextLead.sent_emails?.[0]?.email_type as (typeof EMAIL_TYPES)[number]) || 'custom_email');
+        setManualEmailType((nextLead.manual_email_type as (typeof EMAIL_TYPES)[number]) || (nextLead.sent_emails?.[0]?.email_type as (typeof EMAIL_TYPES)[number]) || 'custom_email');
+        setSelectedCampaignId(nextLead.campaign_id || campaignsResponse.data?.[0]?.id || '');
 
         setForm({
           lead_list_id: nextLead.lead_list_id || '',
@@ -179,6 +269,31 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
     loadLead();
   }, [loadLead]);
 
+  const handleCheckRepliesNow = async () => {
+    setCheckingReplies(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await fetch('/api/cron/check-replies', { method: 'POST' });
+      const payload = (await response.json()) as { error?: string; repliesProcessed?: number };
+      if (!response.ok) {
+        throw new Error(payload.error || 'Failed to check replies');
+      }
+
+      await loadLead({ silent: true });
+      setSuccess(
+        (payload.repliesProcessed || 0) > 0
+          ? `Inbox checked and ${payload.repliesProcessed} repl${payload.repliesProcessed === 1 ? 'y was' : 'ies were'} synced.`
+          : 'Inbox checked. No new matching replies found.'
+      );
+    } catch (replyError: unknown) {
+      setError(replyError instanceof Error ? replyError.message : 'Failed to check replies');
+    } finally {
+      setCheckingReplies(false);
+    }
+  };
+
   const timeline = useMemo(() => {
     const emailEvents = (lead?.sent_emails || []).map((email) => ({
       id: `email-${email.id}`,
@@ -203,19 +318,214 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
     return [...emailEvents, ...auditEvents].sort((a, b) => new Date(eventTimestamp(b)).getTime() - new Date(eventTimestamp(a)).getTime());
   }, [auditLogs, lead?.sent_emails]);
 
+  const replyEvents = useMemo<ReplyEvent[]>(() => {
+    const auditReplyEvents = auditLogs
+      .filter((log) => isReplyAction(log.action))
+      .map((log) => {
+        const metadata = metadataRecord(log.metadata);
+        return {
+          id: `audit-${log.id}`,
+          createdAt: metadataString(metadata, 'reply_received_at') || log.created_at,
+          message: log.message,
+          sender: metadataString(metadata, 'sender') || lead?.email || '',
+          recipient: metadataString(metadata, 'recipient'),
+          subject: metadataString(metadata, 'subject') || '(No subject)',
+          snippet: metadataString(metadata, 'snippet') || metadataString(metadata, 'body_snippet'),
+          bodyText: metadataString(metadata, 'body_text') || metadataString(metadata, 'body'),
+          bodyHtml: metadataString(metadata, 'body_html'),
+          source: metadataString(metadata, 'source') || 'audit_log',
+        };
+      });
+
+    const activityReplyEvents = activityLogs
+      .filter((log) => isReplyAction(log.event_type))
+      .map((log) => {
+        const metadata = metadataRecord(log.payload);
+        const source = metadataString(metadata, 'source') || 'activity_log';
+        return {
+          id: `activity-${log.id}`,
+          createdAt: log.created_at,
+          message: `Reply detected via ${source.replace(/_/g, ' ')}`,
+          sender: metadataString(metadata, 'sender') || lead?.email || '',
+          recipient: metadataString(metadata, 'recipient'),
+          subject: metadataString(metadata, 'subject') || '(No subject)',
+          snippet: metadataString(metadata, 'snippet') || metadataString(metadata, 'body_snippet'),
+          bodyText: metadataString(metadata, 'body_text') || metadataString(metadata, 'body'),
+          bodyHtml: metadataString(metadata, 'body_html'),
+          source,
+        };
+      });
+
+    const sentEmailReplyEvents = (lead?.sent_emails || [])
+      .filter((email) => Boolean(email.replied_at) || String(email.status || '').toLowerCase() === 'replied')
+      .map((email) => {
+        const metadata = metadataRecord(email.raw_provider_response);
+        return {
+          id: `sent-${email.id}`,
+          createdAt: email.replied_at || email.sent_at,
+          message: `Reply recorded for ${email.recipient_email}`,
+          sender: metadataString(metadata, 'sender') || email.recipient_email || lead?.email || '',
+          recipient: metadataString(metadata, 'recipient') || email.sender_email || '',
+          subject: metadataString(metadata, 'subject') || email.subject || '(No subject)',
+          snippet: metadataString(metadata, 'snippet') || metadataString(metadata, 'body_snippet'),
+          bodyText: metadataString(metadata, 'body_text') || metadataString(metadata, 'body'),
+          bodyHtml: metadataString(metadata, 'body_html'),
+          source: metadataString(metadata, 'source') || 'sent_email_status',
+        };
+      });
+
+    const seen = new Set<string>();
+    return [...auditReplyEvents, ...activityReplyEvents, ...sentEmailReplyEvents]
+      .filter((reply) => {
+        const key = `${reply.createdAt}-${reply.sender}-${reply.subject}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [activityLogs, auditLogs, lead?.email, lead?.sent_emails]);
+
   const leadName = lead?.decision_maker_name || `${lead?.first_name || ''} ${lead?.last_name || ''}`.trim() || 'Prospect';
-  const leadContextPrompt = useMemo(() => buildLeadContextPrompt({ ...lead, recommended_offer: form.recommended_offer }), [form.recommended_offer, lead]);
+  const leadContextPrompt = useMemo(() => buildLeadContextPrompt({ ...lead, recommended_offer: form.recommended_offer }, companyContext), [companyContext, form.recommended_offer, lead]);
+  const leadSummary = useMemo(() => buildLeadSummary({ ...lead, ...form } as Partial<Lead>), [form, lead]);
+  const previousEmail = lead?.sent_emails?.[0] || null;
+  const followUpPrompt = useMemo(() => buildFollowUpPrompt({ ...lead, ...form } as Partial<Lead>, previousEmail || undefined, companyContext), [companyContext, form, lead, previousEmail]);
+  const selectedEmailAccount = useMemo(
+    () => emailAccounts.find((account) => account.id === selectedEmailAccountId) || emailAccounts[0] || null,
+    [emailAccounts, selectedEmailAccountId]
+  );
+  const selectedSignatureHtml = useMemo(
+    () => buildEmailSignatureHtml(selectedEmailAccount?.config as Record<string, unknown> | undefined, selectedEmailAccount?.sender_name || selectedEmailAccount?.email_address || ''),
+    [selectedEmailAccount]
+  );
+  const selectedSendSignatureHtml = useMemo(
+    () => buildSendSignatureHtml(selectedEmailAccount?.config as Record<string, unknown> | undefined, selectedEmailAccount?.sender_name || selectedEmailAccount?.email_address || ''),
+    [selectedEmailAccount]
+  );
   const manualEmailBodyText = useMemo(() => htmlToPlainText(form.manual_email_body), [form.manual_email_body]);
+  const emailQualityIssues = useMemo(
+    () =>
+      checkEmailQuality({
+        subject: form.manual_email_subject,
+        bodyText: manualEmailBodyText,
+        bodyHtml: form.manual_email_body,
+        lead,
+      }),
+    [form.manual_email_body, form.manual_email_subject, lead, manualEmailBodyText]
+  );
   const sendChecklist = useMemo(
     () => [
       { label: 'Subject added', ok: Boolean(form.manual_email_subject.trim()) },
       { label: 'Body added', ok: Boolean(manualEmailBodyText.trim()) },
       { label: 'Email approved', ok: Boolean(form.manual_email_approved) },
       { label: 'Lead is sendable', ok: !['unsubscribed', 'bounced', 'do_not_contact'].includes(String(lead?.status || '')) },
+      { label: 'No blocking quality issues', ok: !hasBlockingEmailQualityIssue(emailQualityIssues) },
     ],
-    [form.manual_email_approved, form.manual_email_subject, manualEmailBodyText, lead?.status]
+    [emailQualityIssues, form.manual_email_approved, form.manual_email_subject, manualEmailBodyText, lead?.status]
   );
   const isInitialLoading = loading && !lead;
+
+  const getSentEmailBodyText = (email: SentEmail) => email.body_text || htmlToPlainText(email.body_html || '') || '';
+  const getReplyBodyText = (reply: ReplyEvent) => reply.bodyText || htmlToPlainText(reply.bodyHtml) || reply.snippet || '';
+
+  const copySentEmail = async (email: SentEmail) => {
+    await navigator.clipboard.writeText(`Subject: ${email.subject}\n\n${getSentEmailBodyText(email)}`);
+    setSuccess('Sent email copied.');
+  };
+
+  const copyReply = async (reply: ReplyEvent) => {
+    await navigator.clipboard.writeText(`From: ${reply.sender || 'Unknown'}\nSubject: ${reply.subject}\nReceived: ${formatDate(reply.createdAt)}\n\n${getReplyBodyText(reply) || 'No reply body available.'}`);
+    setSuccess('Reply copied.');
+  };
+
+  const handleUseReplyAsFollowUpContext = (reply: ReplyEvent) => {
+    const replyBody = getReplyBodyText(reply);
+    const nextSubject = reply.subject.toLowerCase().startsWith('re:') ? reply.subject : `Re: ${reply.subject}`;
+    const draft = [
+      `<p>Hi ${leadName === 'Prospect' ? 'there' : leadName},</p>`,
+      '<p>Thanks for getting back to me.</p>',
+      '<p><br></p>',
+      '<blockquote style="border-left:3px solid #d4d4d8;margin:16px 0;padding-left:12px;color:#52525b;">',
+      `<p><strong>Reply received ${formatDate(reply.createdAt)}</strong></p>`,
+      `<p><strong>From:</strong> ${escapeHtml(reply.sender || 'Unknown')}</p>`,
+      `<p><strong>Subject:</strong> ${escapeHtml(reply.subject)}</p>`,
+      `<p>${escapeHtml(replyBody || reply.snippet || 'No reply body available.').replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br />')}</p>`,
+      '</blockquote>',
+    ].join('');
+
+    setForm((current) => ({
+      ...current,
+      manual_email_subject: nextSubject,
+      manual_email_body: draft,
+      manual_email_approved: false,
+    }));
+    setManualEmailType('reply_follow_up');
+    setActiveTab('manual');
+    setSuccess('Reply loaded as follow-up context.');
+  };
+
+  const handleUseEmailAsFollowUpContext = (email: SentEmail) => {
+    const previousBody = getSentEmailBodyText(email);
+    const nextSubject = email.subject?.toLowerCase().startsWith('re:') ? email.subject : `Re: ${email.subject}`;
+    const draft = [
+      `<p>Hi ${leadName === 'Prospect' ? 'there' : leadName},</p>`,
+      '<p>Wanted to follow up on my note below.</p>',
+      '<p><br></p>',
+      '<blockquote style="border-left:3px solid #d4d4d8;margin:16px 0;padding-left:12px;color:#52525b;">',
+      `<p><strong>Previous email sent ${formatDate(email.sent_at)}</strong></p>`,
+      `<p><strong>Subject:</strong> ${escapeHtml(email.subject)}</p>`,
+      `<p>${escapeHtml(previousBody).replace(/\n{2,}/g, '</p><p>').replace(/\n/g, '<br />')}</p>`,
+      '</blockquote>',
+    ].join('');
+
+    setForm((current) => ({
+      ...current,
+      manual_email_subject: nextSubject,
+      manual_email_body: draft,
+      manual_email_approved: false,
+    }));
+    setManualEmailType(email.email_type === 'first_email' ? 'follow_up_1' : 'reply_follow_up');
+    setSelectedEmailAccountId(email.email_account_id || selectedEmailAccountId);
+    setSelectedEmail(null);
+    setActiveTab('manual');
+    setSuccess('Previous email loaded as follow-up context.');
+  };
+
+  const copyPreviousEmailPrompt = async (email: SentEmail) => {
+    await navigator.clipboard.writeText(buildFollowUpPrompt({ ...lead, ...form } as Partial<Lead>, email, companyContext));
+    setSuccess('Follow-up prompt copied.');
+  };
+
+  const handleResendEmail = async (email: SentEmail) => {
+    if (!window.confirm(`Resend "${email.subject}" to ${email.recipient_email}?`)) return;
+    setSending(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const response = await fetch(`/api/leads/${leadId}/manual-send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode: 'send_now',
+          targetEmail: email.recipient_email,
+          emailAccountId: email.email_account_id || selectedEmailAccountId || null,
+          subject: email.subject,
+          body: email.body_html || email.body_text || '',
+          emailType: email.email_type,
+          includeSignature: false,
+        }),
+      });
+      const payload = (await response.json()) as { error?: string; to?: string };
+      if (!response.ok) throw new Error(payload.error || 'Failed to resend email');
+      setSelectedEmail(null);
+      setSuccess(`Email resent to ${payload.to || email.recipient_email}.`);
+      await loadLead({ silent: true });
+    } catch (resendError: unknown) {
+      setError(resendError instanceof Error ? resendError.message : 'Failed to resend email');
+    } finally {
+      setSending(false);
+    }
+  };
 
   const handleSaveLead = async () => {
     setSaving(true);
@@ -238,6 +548,8 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
           company_name: form.company_name || form.company,
           company: form.company || form.company_name,
           last_manual_email_account_id: selectedEmailAccountId || null,
+          manual_email_type: manualEmailType,
+          manual_email_approved: false,
           manual_personalization_status: form.manual_email_subject || manualEmailBodyText ? 'drafted' : 'not_started',
         }),
       });
@@ -263,6 +575,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
         body: JSON.stringify({
           ...form,
           manual_email_approved: true,
+          manual_email_type: manualEmailType,
           manual_personalization_status: 'approved',
           status: form.manual_email_subject || manualEmailBodyText ? 'email_approved' : form.status,
           company_name: form.company_name || form.company,
@@ -302,7 +615,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(payload.error || 'Failed to generate AI');
       setSuccess('AI draft refreshed.');
-      setActiveTab('ai');
+      setActiveTab('intelligence');
       await loadLead({ silent: true });
     } catch (generateError: unknown) {
       setError(generateError instanceof Error ? generateError.message : 'Failed to generate AI');
@@ -312,6 +625,12 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
   };
 
   const handleSendManual = async (mode: 'test' | 'send_now') => {
+    if (mode === 'send_now') {
+      const recipient = targetEmail || lead?.email || 'this lead';
+      const confirmed = window.confirm(`Send this ${getLeadStatusLabel(manualEmailType)} to ${recipient}?`);
+      if (!confirmed) return;
+    }
+
     setSending(true);
     setError(null);
     setSuccess(null);
@@ -326,6 +645,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
           subject: form.manual_email_subject,
           body: form.manual_email_body,
           emailType: manualEmailType,
+          includeSignature,
         }),
       });
       const payload = (await response.json()) as { error?: string; to?: string };
@@ -338,6 +658,23 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
     } finally {
       setSending(false);
     }
+  };
+
+  const handleInsertTemplate = () => {
+    const template = templateOptions.find((item) => item.id === selectedTemplateId);
+    if (!template) {
+      setError('Select a template to insert.');
+      return;
+    }
+
+    const leadForVariables = { ...lead, ...form } as Partial<Lead>;
+    setForm((current) => ({
+      ...current,
+      manual_email_subject: applyTemplateVariables(template.subject || '', leadForVariables),
+      manual_email_body: normalizeDraftHtml(applyTemplateVariables(template.body || '', leadForVariables)),
+      manual_email_approved: false,
+    }));
+    setSuccess(`Template inserted: ${template.name}`);
   };
 
   const handleSkipAi = async () => {
@@ -365,33 +702,153 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
     }
   };
 
+  const handleMarkDoNotContact = async () => {
+    if (!window.confirm('Mark this lead as do not contact?')) return;
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const response = await fetch(`/api/leads/${leadId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...form,
+          status: 'do_not_contact',
+          company_name: form.company_name || form.company,
+          company: form.company || form.company_name,
+          last_manual_email_account_id: selectedEmailAccountId || null,
+          manual_email_type: manualEmailType,
+          manual_email_approved: form.manual_email_approved,
+        }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error || 'Failed to update lead');
+      setSuccess('Lead marked do not contact.');
+      await loadLead({ silent: true });
+    } catch (markError: unknown) {
+      setError(markError instanceof Error ? markError.message : 'Failed to mark lead do not contact');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteLead = async () => {
+    const leadLabel = lead?.company_name || lead?.company || lead?.email || 'this lead';
+    const confirmed = window.confirm(`Delete ${leadLabel}? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const response = await fetch(`/api/leads/${leadId}`, {
+        method: 'DELETE',
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error || 'Failed to delete lead');
+      router.push(backHref);
+      router.refresh();
+    } catch (deleteError: unknown) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Failed to delete lead');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAddToCampaign = async () => {
+    if (!selectedCampaignId) {
+      setError('Select a campaign before adding this lead.');
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const response = await fetch('/api/lead-campaigns', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ leadIds: [leadId], campaignId: selectedCampaignId }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(payload.error || 'Failed to add lead to campaign');
+      setSuccess('Lead added to campaign.');
+      await loadLead({ silent: true });
+    } catch (campaignError: unknown) {
+      setError(campaignError instanceof Error ? campaignError.message : 'Failed to add lead to campaign');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <AppShell showSearch={false}>
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="mb-6 flex flex-col gap-4 rounded-3xl border border-[var(--border)] bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.04)] lg:flex-row lg:items-start lg:justify-between">
-          <div className="flex items-start gap-3">
-            <Link href={backHref} className="mt-1 inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[var(--border)] bg-violet-50 text-violet-600 transition hover:border-violet-200 hover:bg-violet-100">
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-violet-600">{backLabel}</div>
-              <h2 className="mt-1 text-3xl font-semibold tracking-tight text-zinc-950">{title}</h2>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-500">{subtitle}</p>
-              <p className="mt-3 text-lg font-semibold text-zinc-900">{leadName}</p>
+        <div className="mb-6 rounded-2xl border border-[var(--border)] bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+          <div className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+            <div className="flex min-w-0 items-start gap-3">
+              <Link href={backHref} className="mt-1 inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--border)] bg-violet-50 text-violet-600 transition hover:border-violet-200 hover:bg-violet-100">
+                <ArrowLeft className="h-5 w-5" />
+              </Link>
+              <div className="min-w-0">
+                <div className="text-xs font-semibold uppercase tracking-[0.2em] text-violet-600">{backLabel}</div>
+                <h2 className="mt-1 truncate text-2xl font-semibold text-zinc-950">{lead?.company_name || lead?.company || title}</h2>
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-zinc-600">
+                  <span>{leadName}</span>
+                  <span>{lead?.email || 'No email'}</span>
+                  {lead?.website ? (
+                    <a href={normalizeWebsite(lead.website)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-violet-700 hover:text-violet-800">
+                      Website <ExternalLink className="h-3.5 w-3.5" />
+                    </a>
+                  ) : null}
+                </div>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-500">{subtitle}</p>
+              </div>
             </div>
-          </div>
 
-          {lead && (
-            <div className="flex flex-wrap gap-2">
-              <StatusBadge status={lead.status} />
-              <span className="inline-flex rounded-full bg-violet-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-violet-700 ring-1 ring-violet-100">
-                {lead.data_quality_label || 'poor'} quality
-              </span>
-              <span className="inline-flex rounded-full bg-teal-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-teal-700 ring-1 ring-teal-100">
-                {lead.emails_sent_count || 0} emails sent
-              </span>
-            </div>
-          )}
+            {lead && (
+              <div className="flex flex-col gap-3 xl:items-end">
+                <div className="flex flex-wrap gap-2 xl:justify-end">
+                  <StatusBadge status={lead.status} />
+                  <span className="inline-flex rounded-full bg-amber-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-amber-100">
+                    {lead.priority || 'normal'} priority
+                  </span>
+                  <span className="inline-flex rounded-full bg-violet-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-violet-700 ring-1 ring-violet-100">
+                    {lead.data_quality_score ?? '-'} quality
+                  </span>
+                  <span className="inline-flex rounded-full bg-teal-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-teal-700 ring-1 ring-teal-100">
+                    {lead.emails_sent_count || 0} emails sent
+                  </span>
+                </div>
+                <div className="grid gap-2 text-xs text-zinc-500 sm:grid-cols-2 xl:text-right">
+                  <div>Last contacted: <span className="font-medium text-zinc-800">{formatDate(lead.last_email_sent_at || lead.last_contacted_at || lead.last_contacted)}</span></div>
+                  <div>Next follow-up: <span className="font-medium text-zinc-800">{formatDate(lead.next_follow_up_at || lead.next_follow_up_date)}</span></div>
+                </div>
+                <div className="flex flex-wrap gap-2 xl:justify-end">
+                  <button onClick={() => setActiveTab('overview')} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50">
+                    <Edit3 className="h-3.5 w-3.5" /> Edit Lead
+                  </button>
+                  <button onClick={() => setActiveTab('manual')} className="inline-flex items-center gap-2 rounded-xl bg-zinc-950 px-3 py-2 text-xs font-semibold text-white transition hover:bg-zinc-800">
+                    <Mail className="h-3.5 w-3.5" /> Write Manual Email
+                  </button>
+                  <div className="flex min-w-[220px] overflow-hidden rounded-xl border border-[var(--border)] bg-white">
+                    <select value={selectedCampaignId} onChange={(e) => setSelectedCampaignId(e.target.value)} className="min-w-0 flex-1 bg-white px-3 py-2 text-xs text-zinc-700 outline-none">
+                      {campaignOptions.length === 0 ? <option value="">No campaigns</option> : campaignOptions.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
+                    </select>
+                    <button onClick={handleAddToCampaign} disabled={saving || !selectedCampaignId} className="inline-flex items-center gap-1 border-l border-[var(--border)] px-3 py-2 text-xs font-semibold text-violet-700 transition hover:bg-violet-50 disabled:opacity-50">
+                      <PlusCircle className="h-3.5 w-3.5" /> Add
+                    </button>
+                  </div>
+                  <button onClick={handleMarkDoNotContact} disabled={saving} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-100 disabled:opacity-50">
+                    <Ban className="h-3.5 w-3.5" /> Do Not Contact
+                  </button>
+                  <button onClick={handleDeleteLead} disabled={saving} className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-2 text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:opacity-50">
+                    <Trash2 className="h-3.5 w-3.5" /> Delete Lead
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         {error && <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
@@ -424,11 +881,11 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
               </div>
             </div>
 
-            {activeTab === 'lead-data' && (
+            {activeTab === 'overview' && (
               <div className="grid gap-6 xl:grid-cols-[1.5fr_0.85fr]">
                 <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
                   <div className="mb-5 flex flex-col gap-3 border-b border-[var(--border)] pb-4 sm:flex-row sm:items-center sm:justify-between">
-                    <h3 className="text-base font-semibold text-zinc-950">Lead Data</h3>
+                    <h3 className="text-base font-semibold text-zinc-950">Overview</h3>
                     <button onClick={handleSaveLead} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:opacity-50">
                       <Save className="h-4 w-4" /> Save Lead
                     </button>
@@ -486,39 +943,47 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                   </div>
 
                   <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
-                    <div className="mb-4 flex items-center justify-between border-b border-[var(--border)] pb-3">
-                      <h3 className="text-base font-semibold text-zinc-950">Raw Data</h3>
-                      <button onClick={() => navigator.clipboard.writeText(JSON.stringify(lead.raw_data || {}, null, 2))} className="text-sm font-semibold text-violet-700 hover:text-violet-800">Copy</button>
-                    </div>
-                    <div className="max-h-80 overflow-auto rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]">
-                      <table className="w-full text-left text-xs">
-                        <tbody className="divide-y divide-[var(--border)]">
-                          {Object.entries(lead.raw_data || {})
-                            .filter(([, value]) => value !== null && value !== undefined && value !== '')
-                            .map(([key, value]) => (
-                              <tr key={key}>
-                                <td className="w-40 px-3 py-2 font-semibold text-zinc-500">{key}</td>
-                                <td className="px-3 py-2 text-zinc-900">{String(value)}</td>
-                              </tr>
-                            ))}
-                        </tbody>
-                      </table>
+                    <h3 className="mb-4 text-base font-semibold text-zinc-950">Outreach Status</h3>
+                    <div className="space-y-3 text-sm">
+                      <div className="flex items-start justify-between gap-4 rounded-2xl bg-[var(--surface-muted)] px-4 py-3"><span className="text-zinc-500">Status</span><span className="text-right font-medium text-zinc-900">{getLeadStatusLabel(lead.status)}</span></div>
+                      <div className="flex items-start justify-between gap-4 rounded-2xl bg-[var(--surface-muted)] px-4 py-3"><span className="text-zinc-500">Reply status</span><span className="text-right font-medium text-zinc-900">{lead.reply_status || 'no_reply'}</span></div>
+                      <div className="flex items-start justify-between gap-4 rounded-2xl bg-[var(--surface-muted)] px-4 py-3"><span className="text-zinc-500">Next follow-up</span><span className="text-right font-medium text-zinc-900">{formatDate(lead.next_follow_up_at || lead.next_follow_up_date)}</span></div>
+                      <div className="flex items-start justify-between gap-4 rounded-2xl bg-[var(--surface-muted)] px-4 py-3"><span className="text-zinc-500">Tags</span><span className="text-right font-medium text-zinc-900">{lead.tags || '-'}</span></div>
+                      <div className="flex items-start justify-between gap-4 rounded-2xl bg-[var(--surface-muted)] px-4 py-3"><span className="text-zinc-500">Notes</span><span className="text-right font-medium text-zinc-900">{lead.notes || '-'}</span></div>
                     </div>
                   </div>
                 </div>
               </div>
             )}
 
-            {activeTab === 'ai' && (
+            {activeTab === 'intelligence' && (
               <div className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
                 <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
                   <div className="mb-5 flex flex-col gap-3 border-b border-[var(--border)] pb-4 sm:flex-row sm:items-center sm:justify-between">
-                    <h3 className="text-base font-semibold text-zinc-950">AI / Lead Intelligence</h3>
-                    <button onClick={() => navigator.clipboard.writeText(leadContextPrompt)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
-                      <Copy className="h-4 w-4" /> Copy Lead Context for AI
-                    </button>
+                    <h3 className="text-base font-semibold text-zinc-950">Lead Intelligence</h3>
+                    <div className="flex flex-wrap gap-2">
+                      <button onClick={handleSaveLead} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:opacity-50">
+                        <Save className="h-4 w-4" /> Save
+                      </button>
+                      <button onClick={() => navigator.clipboard.writeText(leadSummary)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
+                        <Copy className="h-4 w-4" /> Copy Summary
+                      </button>
+                      <button onClick={() => navigator.clipboard.writeText(leadContextPrompt)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
+                        <Copy className="h-4 w-4" /> Copy AI Prompt
+                      </button>
+                    </div>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
+                    {[
+                      ['pain_points', 'Pain Point'],
+                      ['ai_solution_angle', 'Solution Angle'],
+                      ['recommended_offer', 'Recommended Offer'],
+                    ].map(([key, label]) => (
+                      <div key={key} className="md:col-span-2">
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">{label}</label>
+                        <textarea value={form[key as keyof typeof form] as string} onChange={(e) => setForm((current) => ({ ...current, [key]: e.target.value }))} rows={3} className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100" />
+                      </div>
+                    ))}
                     {[
                       ['ai_company_summary', 'Company Summary'],
                       ['ai_lead_analysis', 'Lead Analysis'],
@@ -555,6 +1020,36 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                   <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
                     This will use a Deep AI request. You have only 20/day. Flash Lite is recommended for bulk personalization.
                   </div>
+                  <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-3 text-xs leading-5 text-zinc-600">
+                    Data quality: <span className="font-semibold text-zinc-900">{lead.data_quality_label || 'unknown'}</span>
+                    {lead.ai_usage_notes ? <div>{lead.ai_usage_notes}</div> : null}
+                    {lead.processing_error ? <div className="text-rose-700">{lead.processing_error}</div> : null}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'raw-data' && (
+              <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+                <div className="mb-4 flex items-center justify-between border-b border-[var(--border)] pb-3">
+                  <h3 className="text-base font-semibold text-zinc-950">Raw Data</h3>
+                  <button onClick={() => navigator.clipboard.writeText(JSON.stringify(lead.raw_data || {}, null, 2))} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
+                    <Copy className="h-4 w-4" /> Copy Raw Data
+                  </button>
+                </div>
+                <div className="max-h-[560px] overflow-auto rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]">
+                  <table className="w-full text-left text-xs">
+                    <tbody className="divide-y divide-[var(--border)]">
+                      {Object.entries(lead.raw_data || {})
+                        .filter(([, value]) => value !== null && value !== undefined && value !== '')
+                        .map(([key, value]) => (
+                          <tr key={key}>
+                            <td className="w-56 px-3 py-2 font-semibold text-zinc-500">{key}</td>
+                            <td className="px-3 py-2 text-zinc-900">{String(value)}</td>
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
@@ -563,11 +1058,19 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
               <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
                 <div className="space-y-6">
                   <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
-                    <div className="mb-4 flex items-center justify-between border-b border-[var(--border)] pb-3">
+                    <div className="mb-4 flex flex-col gap-3 border-b border-[var(--border)] pb-3 sm:flex-row sm:items-center sm:justify-between">
                       <h3 className="text-base font-semibold text-zinc-950">Lead Context</h3>
-                      <button onClick={() => navigator.clipboard.writeText(leadContextPrompt)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
-                        <Copy className="h-3.5 w-3.5" /> Copy Context
-                      </button>
+                      <div className="flex flex-wrap gap-2">
+                        <button onClick={() => navigator.clipboard.writeText(leadContextPrompt)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
+                          <Copy className="h-3.5 w-3.5" /> Copy Context
+                        </button>
+                        <button onClick={() => navigator.clipboard.writeText(followUpPrompt)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
+                          <Copy className="h-3.5 w-3.5" /> Copy Follow-up Prompt
+                        </button>
+                        <button onClick={() => navigator.clipboard.writeText(leadSummary)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
+                          <Copy className="h-3.5 w-3.5" /> Copy Lead Summary
+                        </button>
+                      </div>
                     </div>
                     <div className="grid gap-3 sm:grid-cols-2">
                       {[
@@ -582,6 +1085,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                         ['Recommended Offer', form.recommended_offer || '-'],
                         ['Notes', form.notes || '-'],
                         ['AI Outreach Strategy', form.ai_outreach_strategy || '-'],
+                        ['Raw Imported Data', Object.entries(lead.raw_data || {}).slice(0, 4).map(([key, value]) => `${key}: ${value}`).join('\n') || '-'],
                       ].map(([label, value]) => (
                         <div key={label} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
                           <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">{label}</div>
@@ -602,6 +1106,9 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                         </button>
                         <button onClick={() => handleSendManual('send_now')} disabled={sending} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:opacity-50">
                           <CheckCircle2 className="h-4 w-4" /> Send Now
+                        </button>
+                        <button onClick={() => navigator.clipboard.writeText(`Subject: ${form.manual_email_subject}\n\n${manualEmailBodyText}`)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
+                          <Copy className="h-4 w-4" /> Copy Email
                         </button>
                       </div>
                     </div>
@@ -625,6 +1132,20 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                           {EMAIL_TYPES.map((emailType) => <option key={emailType} value={emailType}>{getLeadStatusLabel(emailType)}</option>)}
                         </select>
                       </div>
+                      <div className="grid gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 md:grid-cols-[1fr_auto]">
+                        <div>
+                          <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Template</label>
+                          <select value={selectedTemplateId} onChange={(e) => setSelectedTemplateId(e.target.value)} className="w-full rounded-2xl border border-[var(--border)] bg-white px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100">
+                            <option value="">Select a template</option>
+                            {templateOptions.map((template) => (
+                              <option key={template.id} value={template.id}>{template.name} {template.category ? `- ${template.category}` : ''}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <button onClick={handleInsertTemplate} disabled={!selectedTemplateId} className="self-end rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50">
+                          Insert Template
+                        </button>
+                      </div>
                       <div>
                         <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Subject</label>
                         <input value={form.manual_email_subject} onChange={(e) => setForm((current) => ({ ...current, manual_email_subject: e.target.value }))} className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100" />
@@ -632,6 +1153,33 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                       <div>
                         <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Body</label>
                         <RichTextEditor value={form.manual_email_body} onChange={(value) => setForm((current) => ({ ...current, manual_email_body: value }))} placeholder="Write a polished email. Use the toolbar to bold text, add lists, or insert links." className="mt-1" />
+                      </div>
+                      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <div className="text-sm font-semibold text-zinc-950">Email signature</div>
+                            <p className="mt-1 text-sm text-zinc-500">
+                              {selectedSignatureHtml
+                                ? `Signature found for ${selectedEmailAccount?.email_address}.`
+                                : `No custom signature yet. ReachMira will append ${selectedEmailAccount?.sender_name || selectedEmailAccount?.email_address || 'the sender name'} instead.`}
+                            </p>
+                          </div>
+                          <label className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-700">
+                            <input
+                              type="checkbox"
+                              checked={includeSignature}
+                              onChange={(e) => setIncludeSignature(e.target.checked)}
+                              className="rounded border-zinc-300 text-violet-600 focus:ring-violet-500"
+                            />
+                            Append on send
+                          </label>
+                        </div>
+                        {selectedSendSignatureHtml && includeSignature && (
+                          <div className="mt-4 rounded-2xl border border-[var(--border)] bg-white p-4 text-sm text-zinc-900">
+                            <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Preview</div>
+                            <div dangerouslySetInnerHTML={{ __html: selectedSendSignatureHtml }} />
+                          </div>
+                        )}
                       </div>
                       <div className="grid gap-4 lg:grid-cols-[1fr_0.8fr]">
                         <div className="flex flex-wrap gap-2">
@@ -662,6 +1210,20 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                           </div>
                         </div>
                       </div>
+                      {emailQualityIssues.length > 0 && (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+                          <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-900">
+                            <AlertTriangle className="h-4 w-4" /> Email quality notes
+                          </div>
+                          <div className="space-y-1 text-sm text-amber-800">
+                            {emailQualityIssues.map((issue) => (
+                              <div key={`${issue.severity}-${issue.message}`}>
+                                <span className="font-semibold">{issue.severity === 'error' ? 'Fix' : 'Check'}:</span> {issue.message}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -702,6 +1264,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                             <th className="px-3 py-3">Status</th>
                             <th className="px-3 py-3">Provider</th>
                             <th className="px-3 py-3">Signals</th>
+                            <th className="px-3 py-3">Actions</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-[var(--border)]">
@@ -715,6 +1278,14 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                               <td className="px-3 py-3"><StatusBadge status={email.status} /></td>
                               <td className="px-3 py-3 text-zinc-600">{email.provider}</td>
                               <td className="px-3 py-3 text-xs text-zinc-500">{email.opened_at ? 'Opened ' : ''}{email.clicked_at ? 'Clicked ' : ''}{email.replied_at ? 'Replied ' : ''}{email.bounced_at ? 'Bounced' : ''}</td>
+                              <td className="px-3 py-3">
+                                <div className="flex flex-wrap gap-2">
+                                  <button onClick={(event) => { event.stopPropagation(); setSelectedEmail(email); }} className="rounded-lg border border-[var(--border)] bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">View</button>
+                                  <button onClick={(event) => { event.stopPropagation(); copySentEmail(email); }} className="rounded-lg border border-[var(--border)] bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">Copy</button>
+                                  <button onClick={(event) => { event.stopPropagation(); handleUseEmailAsFollowUpContext(email); }} className="rounded-lg border border-[var(--border)] bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">Follow-up</button>
+                                  <button onClick={(event) => { event.stopPropagation(); handleResendEmail(email); }} disabled={sending} className="rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-700 transition hover:bg-teal-100 disabled:opacity-50">Resend</button>
+                                </div>
+                              </td>
                             </tr>
                           ))}
                         </tbody>
@@ -722,7 +1293,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                     </div>
                     <div className="grid gap-4 lg:hidden">
                       {(lead.sent_emails || []).map((email) => (
-                        <button key={email.id} onClick={() => setSelectedEmail(email)} className="rounded-3xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 text-left transition hover:border-violet-200 hover:bg-violet-50/50">
+                        <div key={email.id} onClick={() => setSelectedEmail(email)} className="cursor-pointer rounded-3xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 text-left transition hover:border-violet-200 hover:bg-violet-50/50">
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <div className="text-sm font-semibold text-zinc-950">{email.subject}</div>
@@ -735,10 +1306,93 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                             <div><span className="font-medium text-zinc-900">To:</span> {email.recipient_email}</div>
                             <div><span className="font-medium text-zinc-900">Provider:</span> {email.provider}</div>
                           </div>
-                        </button>
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            <button onClick={(event) => { event.stopPropagation(); setSelectedEmail(email); }} className="rounded-lg border border-[var(--border)] bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-700">View</button>
+                            <button onClick={(event) => { event.stopPropagation(); copySentEmail(email); }} className="rounded-lg border border-[var(--border)] bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-700">Copy</button>
+                            <button onClick={(event) => { event.stopPropagation(); handleUseEmailAsFollowUpContext(email); }} className="rounded-lg border border-[var(--border)] bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-700">Follow-up</button>
+                            <button onClick={(event) => { event.stopPropagation(); handleResendEmail(email); }} disabled={sending} className="rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-700 disabled:opacity-50">Resend</button>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'replies' && (
+              <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+                <div className="mb-5 flex flex-col gap-3 border-b border-[var(--border)] pb-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h3 className="text-base font-semibold text-zinc-950">Replies</h3>
+                    <p className="mt-1 text-sm text-zinc-500">Read inbound replies captured from Mailgun or IMAP reply detection.</p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={handleCheckRepliesNow}
+                      disabled={refreshing || checkingReplies}
+                      className="inline-flex items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-700 transition hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Clock3 className={`h-3.5 w-3.5 ${refreshing || checkingReplies ? 'animate-spin' : ''}`} />
+                      {checkingReplies ? 'Checking inbox...' : refreshing ? 'Refreshing...' : 'Check inbox'}
+                    </button>
+                    {refreshing && (
+                      <span className="inline-flex items-center gap-2 rounded-full bg-violet-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-violet-700 ring-1 ring-violet-100">
+                        <span className="h-2 w-2 animate-spin rounded-full border border-violet-400 border-t-transparent" />
+                        Refreshing
+                      </span>
+                    )}
+                    <span className="rounded-full bg-teal-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-teal-700 ring-1 ring-teal-100">
+                      {replyEvents.length} replies
+                    </span>
+                  </div>
+                </div>
+
+                {replyEvents.length === 0 ? (
+                  <div className="rounded-3xl border border-dashed border-[var(--border)] bg-[var(--surface-muted)] p-8 text-center">
+                    <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-50 text-violet-700">
+                      <MessageSquare className="h-5 w-5" />
+                    </div>
+                    <div className="text-sm font-semibold text-zinc-950">No replies captured yet</div>
+                    <p className="mt-2 text-sm text-zinc-500">When a lead replies, the message will appear here and future follow-ups will stop automatically.</p>
+                  </div>
+                ) : (
+                  <div className="grid gap-4">
+                    {replyEvents.map((reply) => {
+                      const replyBody = getReplyBodyText(reply);
+                      return (
+                        <article key={reply.id} className="rounded-3xl border border-[var(--border)] bg-[var(--surface-muted)] p-5">
+                          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="rounded-full bg-violet-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-violet-700 ring-1 ring-violet-100">
+                                  Reply received
+                                </span>
+                                <span className="text-xs text-zinc-500">{formatDate(reply.createdAt)}</span>
+                              </div>
+                              <h4 className="mt-3 text-base font-semibold text-zinc-950">{reply.subject}</h4>
+                              <div className="mt-2 grid gap-1 text-sm text-zinc-600">
+                                <div><span className="font-medium text-zinc-900">From:</span> {reply.sender || lead?.email || 'Unknown sender'}</div>
+                                {reply.recipient && <div><span className="font-medium text-zinc-900">To:</span> {reply.recipient}</div>}
+                                <div><span className="font-medium text-zinc-900">Source:</span> {reply.source.replace(/_/g, ' ')}</div>
+                              </div>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <button onClick={() => copyReply(reply)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
+                                <Copy className="h-3.5 w-3.5" /> Copy Reply
+                              </button>
+                              <button onClick={() => handleUseReplyAsFollowUpContext(reply)} className="inline-flex items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-700 transition hover:bg-teal-100">
+                                <Edit3 className="h-3.5 w-3.5" /> Use as Follow-up
+                              </button>
+                            </div>
+                          </div>
+                          <pre className="mt-4 max-h-[420px] overflow-auto whitespace-pre-wrap rounded-2xl border border-[var(--border)] bg-white p-4 text-sm leading-6 text-zinc-800">
+                            {replyBody || 'Reply body was not stored for this event. New inbound webhook replies will include the full message body.'}
+                          </pre>
+                        </article>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             )}
@@ -795,6 +1449,20 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                 <span className="rounded-full bg-teal-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-teal-700 ring-1 ring-teal-100">
                   {selectedEmail.provider}
                 </span>
+              </div>
+              <div className="mb-4 flex flex-wrap gap-2">
+                <button onClick={() => copySentEmail(selectedEmail)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
+                  <Copy className="h-3.5 w-3.5" /> Copy Email
+                </button>
+                <button onClick={() => copyPreviousEmailPrompt(selectedEmail)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
+                  <Copy className="h-3.5 w-3.5" /> Copy Follow-up Prompt
+                </button>
+                <button onClick={() => handleUseEmailAsFollowUpContext(selectedEmail)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
+                  <Edit3 className="h-3.5 w-3.5" /> Use as Follow-up Context
+                </button>
+                <button onClick={() => handleResendEmail(selectedEmail)} disabled={sending} className="inline-flex items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-700 transition hover:bg-teal-100 disabled:opacity-50">
+                  <Send className="h-3.5 w-3.5" /> Resend
+                </button>
               </div>
               {selectedEmail.body_html ? (
                 <div className="rounded-3xl border border-[var(--border)] bg-[var(--surface-muted)] p-5 text-sm text-zinc-900">

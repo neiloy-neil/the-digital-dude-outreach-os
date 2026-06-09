@@ -4,7 +4,8 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useEffect, use } from 'react';
 import { createClient } from '@/utils/supabase/client';
-import Sidebar from '@/components/Sidebar';
+import AppShell from '@/components/reachmira/AppShell';
+import PageHeader from '@/components/reachmira/PageHeader';
 import { 
   ArrowLeft, 
   Upload, 
@@ -80,6 +81,8 @@ export default function LeadImportPage({ params }: PageProps) {
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [importResult, setImportResult] = useState<any | null>(null);
+  const inputClass = 'mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs text-zinc-900 outline-none transition placeholder:text-zinc-400 focus:border-violet-500';
+  const labelClass = 'block text-[10px] font-bold uppercase tracking-wider text-zinc-500';
 
   useEffect(() => {
     async function loadCampaign() {
@@ -262,19 +265,19 @@ export default function LeadImportPage({ params }: PageProps) {
   };
 
   return (
-    <div className="flex min-h-screen bg-zinc-950 text-zinc-100">
-      <Sidebar />
-      <main className="flex-1 p-8 overflow-y-auto max-w-6xl">
-        {/* Back header */}
-        <div className="flex items-center gap-3 mb-6">
-          <Link href={`/campaigns/${campaignId}`} className="p-2 bg-zinc-900 border border-zinc-800 rounded-lg text-zinc-400 hover:text-white transition-all">
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-          <div>
-            <h2 className="text-2xl font-bold text-white tracking-tight">Import Leads</h2>
-            <p className="text-xs text-zinc-400">Add prospects to campaign: <span className="text-violet-400 font-semibold">{campaignName || 'Loading...'}</span></p>
-          </div>
-        </div>
+    <AppShell showSearch={false}>
+      <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+        <PageHeader
+          eyebrow="Campaign lead import"
+          title="Import Leads"
+          subtitle={`Add prospects to campaign: ${campaignName || 'Loading...'}`}
+          actions={
+            <Link href={`/campaigns/${campaignId}`} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Campaign
+            </Link>
+          }
+        />
 
         {loading ? (
           <div className="flex h-64 items-center justify-center">
@@ -284,7 +287,7 @@ export default function LeadImportPage({ params }: PageProps) {
           <div className="space-y-6">
             {/* Global notification alerts */}
             {error && (
-              <div className="rounded-lg bg-rose-500/10 p-3 text-xs text-rose-400 border border-rose-500/20 flex items-center gap-2">
+              <div className="flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
                 <AlertCircle className="h-4.5 w-4.5" />
                 {error}
               </div>
@@ -292,38 +295,38 @@ export default function LeadImportPage({ params }: PageProps) {
 
             {/* Success Import Summary Result Box */}
             {importResult && (
-              <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-6 space-y-4">
-                <div className="flex items-center gap-2 text-emerald-400 font-bold">
+              <div className="space-y-4 rounded-3xl border border-emerald-200 bg-emerald-50 p-6">
+                <div className="flex items-center gap-2 font-bold text-emerald-700">
                   <CheckCircle className="h-5 w-5" />
                   <h3>Lead Import Successful!</h3>
                 </div>
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-center">
-                  <div className="bg-zinc-900/40 p-3 border border-zinc-800/80 rounded-lg">
+                  <div className="rounded-2xl border border-[var(--border)] bg-white p-3">
                     <span className="block text-[10px] text-zinc-500 font-bold uppercase">Total Rows Checked</span>
-                    <span className="text-xl font-extrabold text-white">{importResult.totalRows}</span>
+                    <span className="text-xl font-extrabold text-zinc-950">{importResult.totalRows}</span>
                   </div>
-                  <div className="bg-emerald-500/10 p-3 border border-emerald-500/20 rounded-lg">
-                    <span className="block text-[10px] text-emerald-400 font-bold uppercase">Imported Leads</span>
-                    <span className="text-xl font-extrabold text-emerald-400">{importResult.imported}</span>
+                  <div className="rounded-2xl border border-emerald-200 bg-white p-3">
+                    <span className="block text-[10px] font-bold uppercase text-emerald-700">Imported Leads</span>
+                    <span className="text-xl font-extrabold text-emerald-700">{importResult.imported}</span>
                   </div>
-                  <div className="bg-zinc-900/40 p-3 border border-zinc-800/80 rounded-lg">
+                  <div className="rounded-2xl border border-[var(--border)] bg-white p-3">
                     <span className="block text-[10px] text-zinc-500 font-bold uppercase">Duplicates Skipped</span>
-                    <span className="text-xl font-extrabold text-zinc-300">{importResult.skippedDuplicates}</span>
+                    <span className="text-xl font-extrabold text-zinc-800">{importResult.skippedDuplicates}</span>
                   </div>
-                  <div className="bg-rose-500/10 p-3 border border-rose-500/20 rounded-lg">
-                    <span className="block text-[10px] text-rose-400 font-bold uppercase">Invalid Emails</span>
-                    <span className="text-xl font-extrabold text-rose-400">{importResult.invalidEmails}</span>
+                  <div className="rounded-2xl border border-rose-200 bg-white p-3">
+                    <span className="block text-[10px] font-bold uppercase text-rose-700">Invalid Emails</span>
+                    <span className="text-xl font-extrabold text-rose-700">{importResult.invalidEmails}</span>
                   </div>
-                  <div className="bg-zinc-900/40 p-3 border border-zinc-800/80 rounded-lg">
+                  <div className="rounded-2xl border border-[var(--border)] bg-white p-3">
                     <span className="block text-[10px] text-zinc-500 font-bold uppercase">Missing Company Name</span>
-                    <span className="text-xl font-extrabold text-amber-400">{importResult.missingCompanyNames}</span>
+                    <span className="text-xl font-extrabold text-amber-700">{importResult.missingCompanyNames}</span>
                   </div>
                 </div>
                 <div className="flex justify-end gap-3 pt-2">
-                  <Link href={`/campaigns/${campaignId}`} className="px-4 py-2 bg-zinc-900 border border-zinc-850 hover:bg-zinc-800 text-xs font-semibold rounded-lg text-zinc-300 transition-colors">
+                  <Link href={`/campaigns/${campaignId}`} className="rounded-xl border border-[var(--border)] bg-white px-4 py-2 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
                     Back to Campaign Detail
                   </Link>
-                  <button onClick={() => setImportResult(null)} className="px-4 py-2 bg-gradient-to-r from-violet-600 to-blue-600 hover:opacity-90 text-xs font-semibold rounded-lg text-white transition-opacity">
+                  <button onClick={() => setImportResult(null)} className="rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-4 py-2 text-xs font-semibold text-white transition-opacity hover:opacity-95">
                     Import More
                   </button>
                 </div>
@@ -333,11 +336,11 @@ export default function LeadImportPage({ params }: PageProps) {
             {/* Importer tabs selection */}
             {!headers.length && !importResult && (
               <div className="space-y-6">
-                <div className="flex border-b border-zinc-800 gap-6">
+                <div className="flex gap-6 border-b border-[var(--border)]">
                   <button 
                     onClick={() => { setActiveTab('csv'); setPreviewError(null); }}
                     className={`pb-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
-                      activeTab === 'csv' ? 'border-violet-500 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                      activeTab === 'csv' ? 'border-violet-500 text-violet-700' : 'border-transparent text-zinc-500 hover:text-zinc-900'
                     }`}
                   >
                     <FileText className="h-4 w-4" /> Upload CSV
@@ -345,7 +348,7 @@ export default function LeadImportPage({ params }: PageProps) {
                   <button 
                     onClick={() => { setActiveTab('sheet'); setPreviewError(null); }}
                     className={`pb-3 text-sm font-semibold border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
-                      activeTab === 'sheet' ? 'border-violet-500 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                      activeTab === 'sheet' ? 'border-violet-500 text-violet-700' : 'border-transparent text-zinc-500 hover:text-zinc-900'
                     }`}
                   >
                     <FileSpreadsheet className="h-4 w-4" /> Google Sheets URL
@@ -354,13 +357,13 @@ export default function LeadImportPage({ params }: PageProps) {
 
                 {/* CSV Importer Pane */}
                 {activeTab === 'csv' && (
-                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-8 backdrop-blur-sm flex flex-col items-center justify-center border-dashed border-2 py-12">
-                    <Upload className="h-10 w-10 text-violet-400 mb-3" />
-                    <h3 className="font-bold text-white mb-1">Upload CSV Prospect Sheet</h3>
+                  <div className="flex flex-col items-center justify-center rounded-3xl border-2 border-dashed border-violet-200 bg-gradient-to-br from-violet-50 to-teal-50 p-8 py-12">
+                    <Upload className="mb-3 h-10 w-10 text-violet-600" />
+                    <h3 className="mb-1 font-bold text-zinc-950">Upload CSV Prospect Sheet</h3>
                     <p className="text-xs text-zinc-500 text-center max-w-sm mb-4">
                       Select a standard comma-separated values file (.csv). Double-quoted cells with commas are supported.
                     </p>
-                    <label className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-violet-600 to-blue-600 hover:opacity-90 rounded-lg text-xs font-semibold text-white transition-all cursor-pointer shadow-lg shadow-violet-500/10">
+                    <label className="flex cursor-pointer items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-6 py-2.5 text-xs font-semibold text-white shadow-lg shadow-violet-500/10 transition-all hover:opacity-95">
                       Choose CSV File
                       <input 
                         type="file" 
@@ -374,41 +377,41 @@ export default function LeadImportPage({ params }: PageProps) {
 
                 {/* Google Sheet Importer Pane */}
                 {activeTab === 'sheet' && (
-                  <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-6 backdrop-blur-sm space-y-4">
+                  <div className="space-y-4 rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
                     <div>
-                      <h3 className="font-bold text-white mb-1">Import from Google Sheets</h3>
-                      <p className="text-xs text-zinc-400">
+                      <h3 className="mb-1 font-bold text-zinc-950">Import from Google Sheets</h3>
+                      <p className="text-xs text-zinc-500">
                         Paste the public link of your Google Sheets document below. Make sure link sharing settings are set to **"Anyone with the link can view"**.
                       </p>
                     </div>
                     <form onSubmit={handleSheetPreview} className="space-y-4 max-w-2xl">
                       <div>
-                        <label className="block text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Spreadsheet URL</label>
+                        <label className={labelClass}>Spreadsheet URL</label>
                         <input 
                           type="url"
                           required
                           value={googleSheetUrl}
                           onChange={(e) => setGoogleSheetUrl(e.target.value)}
                           placeholder="https://docs.google.com/spreadsheets/d/.../edit#gid=0"
-                          className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 py-2 px-3 text-xs text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors"
+                          className={inputClass}
                         />
                       </div>
                       <div className="grid grid-cols-2 gap-4">
                         <div>
-                          <label className="block text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Tab name or GID (Optional)</label>
+                          <label className={labelClass}>Tab name or GID (Optional)</label>
                           <input 
                             type="text"
                             value={sheetGid}
                             onChange={(e) => setSheetGid(e.target.value)}
                             placeholder="e.g. 0 or List1"
-                            className="mt-1 w-full rounded-lg border border-zinc-800 bg-zinc-950 py-2 px-3 text-xs text-zinc-200 focus:border-violet-500 focus:outline-none transition-colors"
+                            className={inputClass}
                           />
                         </div>
                       </div>
                       <button
                         type="submit"
                         disabled={loadingPreview || !googleSheetUrl}
-                        className="px-5 py-2.5 bg-gradient-to-r from-violet-600 to-blue-600 rounded-lg text-xs font-semibold text-white hover:opacity-90 disabled:opacity-50 cursor-pointer shadow-lg shadow-violet-500/10 flex items-center gap-1.5"
+                        className="flex cursor-pointer items-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-5 py-2.5 text-xs font-semibold text-white shadow-lg shadow-violet-500/10 hover:opacity-95 disabled:opacity-50"
                       >
                         {loadingPreview ? (
                           <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
@@ -421,7 +424,7 @@ export default function LeadImportPage({ params }: PageProps) {
                 )}
 
                 {previewError && (
-                  <div className="rounded-lg bg-rose-500/10 p-4 text-xs text-rose-400 border border-rose-500/20 flex flex-col gap-2">
+                  <div className="flex flex-col gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs text-rose-700">
                     <span className="flex items-center gap-1.5 font-semibold text-sm">
                       <AlertCircle className="h-4.5 w-4.5" /> Import Failed
                     </span>
@@ -442,34 +445,34 @@ export default function LeadImportPage({ params }: PageProps) {
             {/* FILE DETAILS, PREVIEW GRID, AND MAPPER PANEL */}
             {headers.length > 0 && (
               <div className="space-y-6">
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-6 backdrop-blur-sm space-y-4">
+                <div className="space-y-4 rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="font-bold text-white text-md">Step 1: Preview Input Data</h3>
-                      <p className="text-xs text-zinc-400">Reviewing first 5 rows containing {headers.length} columns.</p>
+                      <h3 className="text-md font-bold text-zinc-950">Step 1: Preview Input Data</h3>
+                      <p className="text-xs text-zinc-500">Reviewing first 5 rows containing {headers.length} columns.</p>
                     </div>
                     <button 
                       onClick={() => { setHeaders([]); setRows([]); setMappings({}); }}
-                      className="text-xs font-semibold text-zinc-400 hover:text-white transition-colors"
+                      className="text-xs font-semibold text-zinc-500 transition-colors hover:text-violet-700"
                     >
                       Clear / Start Over
                     </button>
                   </div>
 
-                  <div className="overflow-x-auto max-h-48 border border-zinc-800 rounded-lg">
-                    <table className="w-full text-left text-xs text-zinc-400">
-                      <thead className="text-[10px] font-bold uppercase text-zinc-500 border-b border-zinc-850 bg-zinc-900/40 sticky top-0">
+                  <div className="max-h-48 overflow-x-auto rounded-2xl border border-[var(--border)]">
+                    <table className="w-full text-left text-xs text-zinc-600">
+                      <thead className="sticky top-0 border-b border-[var(--border)] bg-[var(--surface-muted)] text-[10px] font-bold uppercase text-zinc-500">
                         <tr>
                           {headers.map((h, i) => (
                             <th key={i} className="py-2.5 px-3 whitespace-nowrap">{h}</th>
                           ))}
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-zinc-900">
+                      <tbody className="divide-y divide-[var(--border)]">
                         {rows.slice(0, 5).map((row, rowIdx) => (
-                          <tr key={rowIdx} className="hover:bg-zinc-900/10">
+                          <tr key={rowIdx} className="hover:bg-violet-50/50">
                             {headers.map((_, colIdx) => (
-                              <td key={colIdx} className="py-2 px-3 font-medium text-zinc-300 max-w-xs truncate">{row[colIdx] || '-'}</td>
+                              <td key={colIdx} className="max-w-xs truncate px-3 py-2 font-medium text-zinc-700">{row[colIdx] || '-'}</td>
                             ))}
                           </tr>
                         ))}
@@ -479,10 +482,10 @@ export default function LeadImportPage({ params }: PageProps) {
                 </div>
 
                 {/* Column Mappings Layout */}
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900/20 p-6 backdrop-blur-sm space-y-4">
+                <div className="space-y-4 rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
                   <div>
-                    <h3 className="font-bold text-white text-md">Step 2: Map Destination Columns</h3>
-                    <p className="text-xs text-zinc-400">Configure how columns in your CSV/Google Sheet map to outreach fields. Unmapped columns go into the raw data store.</p>
+                    <h3 className="text-md font-bold text-zinc-950">Step 2: Map Destination Columns</h3>
+                    <p className="text-xs text-zinc-500">Configure how columns in your CSV/Google Sheet map to outreach fields. Unmapped columns go into the raw data store.</p>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -495,15 +498,15 @@ export default function LeadImportPage({ params }: PageProps) {
                       const samples = rows.slice(0, 2).map(r => r[headerIdx]).filter(v => v !== undefined && v !== '');
 
                       return (
-                        <div key={field.key} className={`p-4 rounded-xl border transition-all flex flex-col justify-between h-32 ${
-                          isMapped ? 'bg-zinc-950/60 border-violet-500/20' : 'bg-zinc-950/20 border-zinc-900'
+                        <div key={field.key} className={`flex h-32 flex-col justify-between rounded-2xl border p-4 transition-all ${
+                          isMapped ? 'border-violet-200 bg-violet-50/70' : 'border-[var(--border)] bg-[var(--surface-muted)]'
                         }`}>
                           <div>
-                            <span className="block text-xs font-semibold text-zinc-200">{field.label}</span>
+                            <span className="block text-xs font-semibold text-zinc-900">{field.label}</span>
                             <select
                               value={mappings[field.key] || ''}
                               onChange={(e) => handleMappingChange(field.key, e.target.value)}
-                              className="mt-1.5 w-full rounded border border-zinc-800 bg-zinc-950 py-1 px-2 text-xs text-zinc-300 focus:outline-none focus:border-violet-500 font-medium"
+                              className="mt-1.5 w-full rounded-xl border border-[var(--border)] bg-white px-2 py-1 text-xs font-medium text-zinc-900 outline-none focus:border-violet-500"
                             >
                               <option value="">-- Ignore / Skip --</option>
                               {headers.map((h, i) => (
@@ -514,7 +517,7 @@ export default function LeadImportPage({ params }: PageProps) {
 
                           <div className="text-[10px] text-zinc-500 mt-2 truncate">
                             {isMapped && samples.length > 0 ? (
-                              <span>Samples: <code className="text-violet-400">{samples.join(' | ')}</code></span>
+                              <span>Samples: <code className="text-violet-700">{samples.join(' | ')}</code></span>
                             ) : (
                               <span>No column mapped</span>
                             )}
@@ -524,16 +527,16 @@ export default function LeadImportPage({ params }: PageProps) {
                     })}
                   </div>
 
-                  <div className="border-t border-zinc-800 pt-4 flex items-center justify-between">
-                    <div className="text-xs text-zinc-400 flex items-center gap-1.5">
+                  <div className="flex items-center justify-between border-t border-[var(--border)] pt-4">
+                    <div className="flex items-center gap-1.5 text-xs text-zinc-500">
                       <HelpCircle className="h-4.5 w-4.5 text-zinc-500" />
-                      Make sure you map <strong className="text-violet-400">Email Address</strong>.
+                      Make sure you map <strong className="text-violet-700">Email Address</strong>.
                     </div>
 
                     <button
                       onClick={handleExecuteImport}
                       disabled={importing || !mappings['email']}
-                      className="px-6 py-2.5 bg-gradient-to-r from-violet-600 to-blue-600 hover:opacity-90 rounded-lg text-xs font-semibold text-white transition-opacity disabled:opacity-50 flex items-center gap-2 cursor-pointer shadow-lg shadow-violet-500/10"
+                      className="flex cursor-pointer items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-6 py-2.5 text-xs font-semibold text-white shadow-lg shadow-violet-500/10 transition-opacity hover:opacity-95 disabled:opacity-50"
                     >
                       {importing ? (
                         <>
@@ -553,6 +556,6 @@ export default function LeadImportPage({ params }: PageProps) {
           </div>
         )}
       </main>
-    </div>
+    </AppShell>
   );
 }

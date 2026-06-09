@@ -25,6 +25,8 @@ export default function SuppressionListPage() {
   const [email, setEmail] = useState('');
   const [domain, setDomain] = useState('');
   const [reason, setReason] = useState('manual');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 12;
 
   const loadData = async () => {
     setLoading(true);
@@ -81,6 +83,10 @@ export default function SuppressionListPage() {
       setError(err instanceof Error ? err.message : 'Failed to remove suppression');
     }
   };
+
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const paginatedItems = items.slice((safeCurrentPage - 1) * pageSize, safeCurrentPage * pageSize);
 
   return (
     <AppShell>
@@ -154,7 +160,7 @@ export default function SuppressionListPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--border)]">
-                  {items.map((item) => (
+                  {paginatedItems.map((item) => (
                     <tr key={`${item.id || item.email}-${item.created_at || ''}`} className="hover:bg-violet-50/40">
                       <td className="px-5 py-4 font-medium text-zinc-950">{item.domain ? `@${item.domain}` : item.email}</td>
                       <td className="px-5 py-4 text-zinc-600">{item.reason || 'Suppressed'}</td>
@@ -170,6 +176,30 @@ export default function SuppressionListPage() {
                   ))}
                 </tbody>
               </table>
+              {items.length > pageSize && (
+                <div className="flex flex-col gap-3 border-t border-[var(--border)] px-5 py-4 text-xs text-zinc-500 sm:flex-row sm:items-center sm:justify-between">
+                  <span>
+                    Showing {(safeCurrentPage - 1) * pageSize + 1}-{Math.min(safeCurrentPage * pageSize, items.length)} of {items.length} suppressions
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                      disabled={safeCurrentPage <= 1}
+                      className="rounded-lg border border-[var(--border)] bg-white px-3 py-1.5 font-semibold text-zinc-700 transition hover:bg-violet-50 disabled:opacity-50"
+                    >
+                      Previous
+                    </button>
+                    <span className="font-semibold text-zinc-700">Page {safeCurrentPage} / {totalPages}</span>
+                    <button
+                      onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                      disabled={safeCurrentPage >= totalPages}
+                      className="rounded-lg border border-[var(--border)] bg-white px-3 py-1.5 font-semibold text-zinc-700 transition hover:bg-violet-50 disabled:opacity-50"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

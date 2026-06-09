@@ -139,9 +139,28 @@ export async function POST(
     }
 
     if (payload.length > 0) {
-      const { error: insertError } = await supabase.from('leads').insert(payload);
+      const { data: insertedLeads, error: insertError } = await supabase
+        .from('leads')
+        .insert(payload)
+        .select('id, email, company_name, company');
       if (insertError) throw insertError;
-      imported = payload.length;
+      imported = insertedLeads?.length || payload.length;
+
+      await Promise.all(
+        (insertedLeads || []).map((lead) =>
+          createAuditLog({
+            userId: user.id,
+            leadId: lead.id,
+            action: 'lead_imported',
+            message: `Lead imported: ${lead.email}`,
+            metadata: {
+              lead_list_id: id,
+              email: lead.email,
+              company: lead.company_name || lead.company || null,
+            },
+          })
+        )
+      );
     }
 
     await createAuditLog({

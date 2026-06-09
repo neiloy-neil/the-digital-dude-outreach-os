@@ -64,7 +64,7 @@ export async function POST(
           personalized_subject: subject || null,
           personalized_body: body || null,
           status: 'ready',
-          current_step: 1,
+          current_step: 0,
           next_email_at: scheduledAt.toISOString(),
           updated_at: new Date().toISOString(),
         })

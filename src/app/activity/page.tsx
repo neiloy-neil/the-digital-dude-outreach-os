@@ -23,6 +23,8 @@ export default function ActivityPage() {
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<AuditRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 12;
 
   useEffect(() => {
     const load = async () => {
@@ -44,6 +46,10 @@ export default function ActivityPage() {
 
     load();
   }, [supabase]);
+
+  const totalPages = Math.max(1, Math.ceil(logs.length / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const paginatedLogs = logs.slice((safeCurrentPage - 1) * pageSize, safeCurrentPage * pageSize);
 
   return (
     <AppShell>
@@ -70,7 +76,7 @@ export default function ActivityPage() {
         />
       ) : (
         <div className="space-y-3">
-          {logs.map((log) => (
+          {paginatedLogs.map((log) => (
             <div key={log.id} className="rounded-3xl border border-[var(--border)] bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[11px] font-semibold text-violet-700">{log.action}</span>
@@ -79,6 +85,30 @@ export default function ActivityPage() {
               <p className="mt-2 text-sm text-zinc-600">{log.message || 'No details provided.'}</p>
             </div>
           ))}
+          {logs.length > pageSize && (
+            <div className="flex flex-col gap-3 rounded-3xl border border-[var(--border)] bg-white px-5 py-4 text-xs text-zinc-500 shadow-[0_12px_40px_rgba(15,23,42,0.04)] sm:flex-row sm:items-center sm:justify-between">
+              <span>
+                Showing {(safeCurrentPage - 1) * pageSize + 1}-{Math.min(safeCurrentPage * pageSize, logs.length)} of {logs.length} events
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                  disabled={safeCurrentPage <= 1}
+                  className="rounded-lg border border-[var(--border)] bg-white px-3 py-1.5 font-semibold text-zinc-700 transition hover:bg-violet-50 disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <span className="font-semibold text-zinc-700">Page {safeCurrentPage} / {totalPages}</span>
+                <button
+                  onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                  disabled={safeCurrentPage >= totalPages}
+                  className="rounded-lg border border-[var(--border)] bg-white px-3 py-1.5 font-semibold text-zinc-700 transition hover:bg-violet-50 disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </AppShell>

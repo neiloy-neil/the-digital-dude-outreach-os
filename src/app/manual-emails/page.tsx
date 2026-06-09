@@ -43,6 +43,9 @@ export default function ManualEmailsPage() {
   const [drafts, setDrafts] = useState<DraftRow[]>([]);
   const [sentEmails, setSentEmails] = useState<SentEmailRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [draftPage, setDraftPage] = useState(1);
+  const [sentPage, setSentPage] = useState(1);
+  const pageSize = 8;
 
   useEffect(() => {
     const load = async () => {
@@ -96,6 +99,29 @@ export default function ManualEmailsPage() {
       { label: 'Follow-up Due', count: drafts.filter((item) => item.status?.includes('follow_up')).length, href: '#sent' },
     ],
     [drafts, sentEmails]
+  );
+  const draftTotalPages = Math.max(1, Math.ceil(drafts.length / pageSize));
+  const safeDraftPage = Math.min(draftPage, draftTotalPages);
+  const paginatedDrafts = drafts.slice((safeDraftPage - 1) * pageSize, safeDraftPage * pageSize);
+  const sentTotalPages = Math.max(1, Math.ceil(sentEmails.length / pageSize));
+  const safeSentPage = Math.min(sentPage, sentTotalPages);
+  const paginatedSentEmails = sentEmails.slice((safeSentPage - 1) * pageSize, safeSentPage * pageSize);
+
+  const renderPagination = (currentPage: number, totalPages: number, totalItems: number, onPageChange: (page: number) => void) => (
+    <div className="mt-4 flex flex-col gap-3 border-t border-[var(--border)] pt-4 text-xs text-zinc-500 sm:flex-row sm:items-center sm:justify-between">
+      <span>
+        Showing {totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, totalItems)} of {totalItems}
+      </span>
+      <div className="flex items-center gap-2">
+        <button onClick={() => onPageChange(Math.max(1, currentPage - 1))} disabled={currentPage <= 1} className="rounded-lg border border-[var(--border)] bg-white px-3 py-1.5 font-semibold text-zinc-700 hover:bg-violet-50 disabled:opacity-50">
+          Previous
+        </button>
+        <span className="font-semibold text-zinc-700">Page {currentPage} / {totalPages}</span>
+        <button onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))} disabled={currentPage >= totalPages} className="rounded-lg border border-[var(--border)] bg-white px-3 py-1.5 font-semibold text-zinc-700 hover:bg-violet-50 disabled:opacity-50">
+          Next
+        </button>
+      </div>
+    </div>
   );
 
   return (
@@ -154,7 +180,7 @@ export default function ManualEmailsPage() {
               />
             ) : (
               <div className="space-y-3">
-                {drafts.map((draft) => (
+                {paginatedDrafts.map((draft) => (
                   <div key={draft.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]/60 p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div>
@@ -171,6 +197,7 @@ export default function ManualEmailsPage() {
                     </div>
                   </div>
                 ))}
+                {drafts.length > pageSize && renderPagination(safeDraftPage, draftTotalPages, drafts.length, setDraftPage)}
               </div>
             )}
           </section>
@@ -194,7 +221,7 @@ export default function ManualEmailsPage() {
               />
             ) : (
               <div className="space-y-3">
-                {sentEmails.map((email) => (
+                {paginatedSentEmails.map((email) => (
                   <div key={email.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]/60 p-4">
                     <div className="flex items-start justify-between gap-4">
                       <div>
@@ -210,6 +237,7 @@ export default function ManualEmailsPage() {
                     </div>
                   </div>
                 ))}
+                {sentEmails.length > pageSize && renderPagination(safeSentPage, sentTotalPages, sentEmails.length, setSentPage)}
               </div>
             )}
           </section>

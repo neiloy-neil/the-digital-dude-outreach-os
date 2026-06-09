@@ -5,7 +5,9 @@ import { claimLeadsForEmailSending, getAvailableSendCapacity, getCampaignDailySe
 import { sendEmail } from '@/lib/mailers/send-email';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
 import { getStatusForEmailType, type EmailType } from '@/lib/leads/status';
-import { getSuppressionForEmail } from '@/lib/suppressions';
+import { checkSuppression } from '@/lib/suppression/check-suppression';
+import { buildEmailMessageBodies } from '@/lib/email/html';
+import { appendEmailSignature } from '@/lib/email/signature';
 import type { EmailProviderType } from '@/types/email-provider';
 
 type CronResult = {
@@ -65,7 +67,7 @@ type QueueLead = {
   variables?: Record<string, unknown> | null;
 };
 
-function interpolateTemplate(template: string, lead: QueueLead): string {
+function interpolateTemplate(template: string, lead: QueueLead, sender: { name?: string | null; email?: string | null } = {}): string {
   let text = template;
   const firstName =
     lead.first_name ||
@@ -82,8 +84,11 @@ function interpolateTemplate(template: string, lead: QueueLead): string {
     String(lead.variables?.lastname ?? '') ||
     '';
   const company = lead.company_name || lead.company || '';
+  const senderName = sender.name || sender.email || '';
+  const senderEmail = sender.email || '';
 
   text = text
+    .replace(/\[Your Name\]/g, senderName)
     .replace(/\{\{first_name\}\}/g, firstName || '')
     .replace(/\{\{last_name\}\}/g, lastName || '')
     .replace(/\{\{company\}\}/g, company)
@@ -96,6 +101,10 @@ function interpolateTemplate(template: string, lead: QueueLead): string {
     .replace(/\{\{solution_angle\}\}/g, lead.ai_solution_angle || '')
     .replace(/\{\{personalized_first_line\}\}/g, lead.ai_personalized_first_line || '')
     .replace(/\{\{email\}\}/g, lead.email || '')
+    .replace(/\{\{sender_name\}\}/g, senderName)
+    .replace(/\{\{from_name\}\}/g, senderName)
+    .replace(/\{\{sender_email\}\}/g, senderEmail)
+    .replace(/\{\{from_email\}\}/g, senderEmail)
     .replace(/\{\{ai_personalization\}\}/g, lead.ai_personalized_first_line || lead.ai_personalization || '');
 
   if (lead.variables && typeof lead.variables === 'object') {
@@ -105,12 +114,6 @@ function interpolateTemplate(template: string, lead: QueueLead): string {
   }
 
   return text;
-}
-
-function buildEmailHtml(body: string, unsubscribeUrl: string): string {
-  const escapedUnsubscribe = unsubscribeUrl.replace(/"/g, '&quot;');
-  const footer = `<hr style="border:none;border-top:1px solid #e5e7eb;margin:24px 0;" /><p style="font-size:12px;color:#6b7280;">If you do not wish to receive further emails, you can unsubscribe <a href="${escapedUnsubscribe}">here</a>.</p>`;
-  return `${body}${footer}`;
 }
 
 export async function sendDueEmails() {
@@ -154,6 +157,9 @@ export async function sendDueEmails() {
       continue;
     }
 
+    const senderName = emailAccount.sender_name || campaign.sender_name || emailAccount.email_address;
+    const senderEmail = emailAccount.email_address;
+
     const campaignDailySent = await getCampaignDailySendCount(campaign.id);
     const campaignRemaining = Math.max(0, (campaign.daily_limit || 0) - campaignDailySent);
     if (campaignRemaining <= 0) {
@@ -191,14 +197,15 @@ export async function sendDueEmails() {
         break;
       }
 
+      const emailsSentCount = Number(lead.emails_sent_count || 0);
       const currentStep = Number(lead.current_step || 0);
-      const isFirstEmail = currentStep <= 0;
-      const nextStepNumber = isFirstEmail ? 1 : currentStep + 1;
-      const sequence = sequenceByStep.get(nextStepNumber) || sequenceByStep.get(1);
+      const nextStepNumber = emailsSentCount <= 0 ? 1 : currentStep + 1;
+      const isFirstEmail = nextStepNumber === 1;
+      const sequence = sequenceByStep.get(nextStepNumber);
 
       if (!sequence) {
         skipped++;
-        reasons.push(`Lead ${lead.email}: missing sequence step ${nextStepNumber}`);
+        reasons.push(`Lead ${lead.email}: no sequence step ${nextStepNumber} configured`);
         continue;
       }
 
@@ -216,48 +223,62 @@ export async function sendDueEmails() {
 
         if (campaign.require_approval_before_send && !aiApproved) {
           if (campaign.allow_template_fallback && !hasAiCopy) {
-            subject = interpolateTemplate(sequence.subject, lead);
-            body = interpolateTemplate(sequence.body, lead);
+            subject = interpolateTemplate(sequence.subject, lead, { name: senderName, email: senderEmail });
+            body = interpolateTemplate(sequence.body, lead, { name: senderName, email: senderEmail });
           } else {
             skipped++;
             reasons.push(`Lead ${lead.email}: waiting for approval`);
             continue;
           }
         } else if (hasAiCopy) {
-          subject = aiSubject;
-          body = aiBody;
+          subject = interpolateTemplate(aiSubject, lead, { name: senderName, email: senderEmail });
+          body = interpolateTemplate(aiBody, lead, { name: senderName, email: senderEmail });
         } else if (campaign.allow_template_fallback) {
-          subject = interpolateTemplate(sequence.subject, lead);
-          body = interpolateTemplate(sequence.body, lead);
+          subject = interpolateTemplate(sequence.subject, lead, { name: senderName, email: senderEmail });
+          body = interpolateTemplate(sequence.body, lead, { name: senderName, email: senderEmail });
         } else {
           skipped++;
           reasons.push(`Lead ${lead.email}: missing AI copy`);
           continue;
         }
       } else {
-        subject = interpolateTemplate(sequence.subject, lead);
-        body = interpolateTemplate(sequence.body, lead);
+        subject = interpolateTemplate(sequence.subject, lead, { name: senderName, email: senderEmail });
+        body = interpolateTemplate(sequence.body, lead, { name: senderName, email: senderEmail });
       }
 
       const unsubscribeUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/unsubscribe?token=${lead.unsubscribe_token}`;
-      const html = buildEmailHtml(body, unsubscribeUrl);
+      const bodyWithSignature = appendEmailSignature(body, emailAccount.config || {}, senderName, true);
+      const { html, text } = buildEmailMessageBodies(bodyWithSignature, unsubscribeUrl);
       const replyTo = emailAccount.email_address;
-      const suppression = await getSuppressionForEmail(campaign.user_id, lead.email);
+      const suppression = await checkSuppression(campaign.user_id, lead.email);
 
       if (suppression) {
         skipped++;
         reasons.push(`Lead ${lead.email}: suppressed (${suppression.reason || 'suppressed'})`);
+        await createAuditLog({
+          userId: campaign.user_id,
+          campaignId: campaign.id,
+          leadId: lead.id,
+          action: 'send_blocked_suppressed',
+          message: `Blocked automated email to ${lead.email}`,
+          metadata: {
+            email: lead.email,
+            reason: suppression.reason || 'suppressed',
+            matched_on: suppression.matchedOn,
+            suppression_id: suppression.id,
+          },
+        });
         continue;
       }
 
       const sendResult = await sendEmail(emailAccount.provider, emailAccount.config || {}, {
         to: lead.email,
-        fromName: emailAccount.sender_name || campaign.sender_name || emailAccount.email_address,
-        fromEmail: emailAccount.email_address,
+        fromName: senderName,
+        fromEmail: senderEmail,
         replyTo,
         subject,
         html,
-        text: body,
+        text,
         campaignId: campaign.id,
         leadId: lead.id,
         stepNumber: nextStepNumber,
@@ -296,11 +317,11 @@ export async function sendDueEmails() {
         sequence_id: sequence.id,
         provider: emailAccount.provider,
         recipient_email: lead.email,
-        sender_email: emailAccount.email_address,
-        sender_name: emailAccount.sender_name || campaign.sender_name || null,
+        sender_email: senderEmail,
+        sender_name: senderName,
         subject,
         body_html: html,
-        body_text: body,
+        body_text: text,
         email_type: emailType,
         step_number: nextStepNumber,
         provider_message_id: sendResult.messageId || null,
@@ -332,10 +353,10 @@ export async function sendDueEmails() {
               email_type: emailType,
               step_number: nextStepNumber,
               recipient_email: lead.email,
-              sender_email: emailAccount.email_address,
-              sender_name: emailAccount.sender_name || campaign.sender_name || null,
+              sender_email: senderEmail,
+              sender_name: senderName,
               body_html: html,
-              body_text: body,
+              body_text: text,
               raw_provider_response:
                 sendResult.raw && typeof sendResult.raw === 'object'
                   ? (sendResult.raw as Record<string, unknown>)

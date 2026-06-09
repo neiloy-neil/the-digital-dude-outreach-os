@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/utils/supabase/service';
 import { sendTelegramReport } from '@/utils/telegram';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
+import { resolveLeadOwnerFromLead } from '@/lib/leads/resolve-lead-owner';
 
 function isMissingColumnError(error: { message?: string; code?: string } | null | undefined) {
   const message = String(error?.message || '').toLowerCase();
@@ -17,6 +18,15 @@ export async function POST(request: Request) {
     const recipient = (formData.get('recipient') as string || '').trim();
     const subject = (formData.get('subject') as string || '').trim();
     const bodyText = (formData.get('stripped-text') as string || formData.get('body-plain') as string || '').trim();
+    const bodyHtml = (formData.get('stripped-html') as string || formData.get('body-html') as string || '').trim();
+    const replyMetadata = {
+      sender,
+      recipient,
+      subject,
+      snippet: bodyText.substring(0, 300),
+      body_text: bodyText,
+      body_html: bodyHtml,
+    };
 
     if (!sender) {
       return NextResponse.json({ error: 'Missing sender' }, { status: 400 });
@@ -55,64 +65,78 @@ export async function POST(request: Request) {
 
     // Pick the first lead (the most recently active one)
     const targetLead = leads[0];
+    const owner = resolveLeadOwnerFromLead(targetLead);
     const campaign = Array.isArray(targetLead.campaigns)
       ? targetLead.campaigns[0]
-      : (targetLead.campaigns as { id: string; name: string; user_id: string });
-    const campaignId = targetLead.campaign_id;
-    const leadList = Array.isArray(targetLead.lead_lists)
-      ? targetLead.lead_lists[0]
-      : (targetLead.lead_lists as { id: string; user_id: string } | null);
-    const userId = targetLead.user_id || campaign?.user_id || leadList?.user_id;
+      : (targetLead.campaigns as { id: string; name: string; user_id: string } | null);
+    const campaignId = owner.campaignId;
+    const userId = owner.userId;
 
     if (!userId) {
       return NextResponse.json({ success: true, message: 'No owning user found for lead.' });
     }
 
     // 2. Update Lead Status to 'replied'
+    const repliedAt = new Date().toISOString();
     await supabase
       .from('leads')
-      .update({ status: 'replied', updated_at: new Date().toISOString() })
+      .update({
+        status: 'replied',
+        reply_status: 'replied',
+        next_email_at: null,
+        next_follow_up_at: null,
+        updated_at: repliedAt,
+      })
       .eq('id', targetLead.id);
 
-    const repliedAt = new Date().toISOString();
-    const { error: replyUpdateError } = await supabase
+    const { data: latestSentEmail, error: latestSentEmailError } = await supabase
       .from('sent_emails')
-      .update({ replied_at: repliedAt, status: 'replied' })
+      .select('id')
       .eq('lead_id', targetLead.id)
-      .is('replied_at', null);
+      .order('sent_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-    if (replyUpdateError) {
-      if (!isMissingColumnError(replyUpdateError)) {
-        throw replyUpdateError;
-      }
+    if (latestSentEmailError && !isMissingColumnError(latestSentEmailError)) {
+      throw latestSentEmailError;
+    }
 
-      const { error: legacyReplyUpdateError } = await supabase
+    if (latestSentEmail?.id) {
+      const { error: replyUpdateError } = await supabase
         .from('sent_emails')
-        .update({
-          status: 'replied',
-          metadata: {
-            event_type: 'replied',
-            replied_at: repliedAt,
-            recipient,
-            subject,
-            body_snippet: bodyText.substring(0, 300),
-          },
-        })
-        .eq('lead_id', targetLead.id);
+        .update({ replied_at: repliedAt, status: 'replied' })
+        .eq('id', latestSentEmail.id);
 
-      if (legacyReplyUpdateError) {
-        throw legacyReplyUpdateError;
+      if (replyUpdateError) {
+        if (!isMissingColumnError(replyUpdateError)) {
+          throw replyUpdateError;
+        }
+
+        const { error: legacyReplyUpdateError } = await supabase
+          .from('sent_emails')
+          .update({
+            status: 'replied',
+            metadata: {
+              event_type: 'replied',
+              replied_at: repliedAt,
+              body_snippet: bodyText.substring(0, 300),
+              ...replyMetadata,
+            },
+          })
+          .eq('id', latestSentEmail.id);
+
+        if (legacyReplyUpdateError) {
+          throw legacyReplyUpdateError;
+        }
       }
     }
 
-    // 3. Cancel all pending outbox entries for this lead when it belongs to a campaign
-    if (campaignId) {
-      await supabase
-        .from('outbox')
-        .update({ status: 'cancelled', error_message: 'Lead replied' })
-        .eq('lead_id', targetLead.id)
-        .eq('status', 'pending');
-    }
+    // 3. Cancel all pending outbox entries for this lead
+    await supabase
+      .from('outbox')
+      .update({ status: 'cancelled', error_message: 'Lead replied' })
+      .eq('lead_id', targetLead.id)
+      .eq('status', 'pending');
 
     // 4. Log Reply Activity for compatibility when a campaign exists
     if (campaignId) {
@@ -121,9 +145,8 @@ export async function POST(request: Request) {
         lead_id: targetLead.id,
         event_type: 'replied',
         payload: {
-          subject,
-          snippet: bodyText.substring(0, 300),
-          recipient,
+          ...replyMetadata,
+          source: 'inbound_webhook',
         },
       });
     }
@@ -135,9 +158,9 @@ export async function POST(request: Request) {
       action: 'reply_received',
       message: `Reply received from ${sender}`,
       metadata: {
-        subject,
-        recipient,
-        snippet: bodyText.substring(0, 300),
+        ...replyMetadata,
+        source: 'inbound_webhook',
+        reply_received_at: repliedAt,
       },
     });
 

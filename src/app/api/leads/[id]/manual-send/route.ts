@@ -4,9 +4,12 @@ import { createServiceClient } from '@/utils/supabase/service';
 import { sendEmail } from '@/lib/mailers/send-email';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
 import { buildEmailMessageBodies } from '@/lib/email/html';
+import { appendEmailSignature } from '@/lib/email/signature';
+import { checkEmailQuality, hasBlockingEmailQualityIssue } from '@/lib/email/check-email-quality';
 import { getStatusForEmailType, isBlockedLeadStatus, type EmailType } from '@/lib/leads/status';
 import { isMissingTableError } from '@/lib/supabase/schema-errors';
-import { getSuppressionForEmail } from '@/lib/suppressions';
+import { getAvailableSendCapacity, incrementDailySentCount } from '@/lib/queue/queue';
+import { checkSuppression } from '@/lib/suppression/check-suppression';
 import type { EmailProviderType } from '@/types/email-provider';
 
 function isSupportedProvider(provider: string): provider is EmailProviderType {
@@ -21,6 +24,18 @@ function isMissingColumnError(error: { message?: string; code?: string } | null 
     message.includes('undefined column') ||
     message.includes('column') && message.includes('does not exist')
   );
+}
+
+function applySenderPlaceholders(text: string, sender: { name?: string | null; email?: string | null }) {
+  const senderName = sender.name || sender.email || '';
+  const senderEmail = sender.email || '';
+
+  return String(text || '')
+    .replace(/\[Your Name\]/g, senderName)
+    .replace(/\{\{sender_name\}\}/g, senderName)
+    .replace(/\{\{from_name\}\}/g, senderName)
+    .replace(/\{\{sender_email\}\}/g, senderEmail)
+    .replace(/\{\{from_email\}\}/g, senderEmail);
 }
 
 export async function POST(
@@ -40,7 +55,7 @@ export async function POST(
   }
 
   try {
-    const { mode = 'send_now', targetEmail, emailAccountId, subject, body: bodyInput, emailType = 'custom_email', stepNumber } = await request.json();
+    const { mode = 'send_now', targetEmail, emailAccountId, subject, body: bodyInput, emailType = 'custom_email', stepNumber, includeSignature = true } = await request.json();
     const { data: lead, error: leadError } = await supabase.from('leads').select('*').eq('id', id).maybeSingle();
 
     if (leadError || !lead) {
@@ -80,8 +95,22 @@ export async function POST(
     }
 
     const recipientEmail = String(targetEmail || lead.email || '').trim().toLowerCase();
-    const suppression = await getSuppressionForEmail(user.id, recipientEmail);
+    const suppression = await checkSuppression(user.id, recipientEmail);
     if (suppression) {
+      await createAuditLog({
+        userId: user.id,
+        leadId: lead.id,
+        campaignId: lead.campaign_id || null,
+        action: 'send_blocked_suppressed',
+        message: `Blocked manual email to ${recipientEmail}`,
+        metadata: {
+          email: recipientEmail,
+          reason: suppression.reason || 'suppressed',
+          matched_on: suppression.matchedOn,
+          suppression_id: suppression.id,
+        },
+      });
+
       return NextResponse.json(
         { error: `This email is suppressed: ${suppression.reason || 'suppressed'}` },
         { status: 400 }
@@ -121,23 +150,61 @@ export async function POST(
       return NextResponse.json({ error: 'No valid email account available' }, { status: 400 });
     }
 
+    if (emailAccount.status !== 'active') {
+      return NextResponse.json({ error: 'Selected email account is inactive' }, { status: 400 });
+    }
+
+    if (mode !== 'test') {
+      const availableCapacity = await getAvailableSendCapacity(emailAccount.id);
+      if (availableCapacity <= 0) {
+        return NextResponse.json(
+          { error: `Daily send limit reached for ${emailAccount.email_address}` },
+          { status: 429 }
+        );
+      }
+    }
+
     const { data: profile } = await supabase.from('profiles').select('gemini_api_key').eq('id', user.id).single();
 
-    const emailSubject =
+    const senderName = emailAccount.sender_name || emailAccount.email_address;
+    const senderEmail = emailAccount.email_address;
+    const rawEmailSubject =
       subject ||
       lead.manual_email_subject ||
       lead.ai_subject ||
       lead.personalized_subject ||
       `Quick question for ${lead.company_name || lead.company || lead.email}`;
-    const baseBody =
+    const rawBaseBody =
       bodyInput ||
       lead.manual_email_body ||
       lead.ai_email_body ||
       lead.personalized_body ||
-      `Hi ${lead.decision_maker_name || lead.first_name || 'there'},\n\nThought it might be worth reaching out.\n\nBest,\n${emailAccount.sender_name || emailAccount.email_address}`;
+      `Hi ${lead.decision_maker_name || lead.first_name || 'there'},\n\nThought it might be worth reaching out.\n\nBest,\n${senderName}`;
+    const emailSubject = applySenderPlaceholders(rawEmailSubject, { name: senderName, email: senderEmail });
+    const baseBody = applySenderPlaceholders(rawBaseBody, { name: senderName, email: senderEmail });
 
+    const qualityIssues = checkEmailQuality({
+      subject: emailSubject,
+      bodyText: String(baseBody || '').replace(/<[^>]*>/g, ''),
+      bodyHtml: String(baseBody || ''),
+      lead,
+    });
+
+    if (hasBlockingEmailQualityIssue(qualityIssues)) {
+      return NextResponse.json(
+        { error: qualityIssues.filter((issue) => issue.severity === 'error').map((issue) => issue.message).join(' ') },
+        { status: 400 }
+      );
+    }
+
+    const bodyWithSignature = appendEmailSignature(
+      baseBody,
+      emailAccount.config || {},
+      senderName,
+      Boolean(includeSignature)
+    );
     const unsubscribeUrl = `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/unsubscribe?token=${lead.unsubscribe_token}`;
-    const { html, text } = buildEmailMessageBodies(baseBody, unsubscribeUrl);
+    const { html, text } = buildEmailMessageBodies(bodyWithSignature, unsubscribeUrl);
     const to = mode === 'test' ? targetEmail || user.email || lead.email : recipientEmail || lead.email;
 
     if (!to || !String(to).includes('@')) {
@@ -146,9 +213,9 @@ export async function POST(
 
     const result = await sendEmail(emailAccount.provider, emailAccount.config || {}, {
       to,
-      fromName: emailAccount.sender_name || emailAccount.email_address,
-      fromEmail: emailAccount.email_address,
-      replyTo: emailAccount.email_address,
+      fromName: senderName,
+      fromEmail: senderEmail,
+      replyTo: senderEmail,
       subject: emailSubject,
       html,
       text,
@@ -173,7 +240,7 @@ export async function POST(
       const followUpDelayDays: Record<EmailType, number | null> = {
         first_email: 3,
         follow_up_1: 4,
-        follow_up_2: 5,
+        follow_up_2: null,
         follow_up_3: 7,
         custom_email: 3,
         proposal_email: 5,
@@ -196,6 +263,7 @@ export async function POST(
         last_contacted_at: nowIso,
         next_follow_up_at: nextFollowUpAt,
         reply_status: 'no_reply',
+        manual_email_type: emailType,
         manual_email_subject: emailSubject,
         manual_email_body: html,
         updated_at: nowIso,
@@ -211,6 +279,7 @@ export async function POST(
             last_manual_email_account_id: emailAccount.id,
             manual_personalization_status: 'sent',
             last_email_sent_at: nowIso,
+            manual_email_type: emailType,
             manual_email_subject: emailSubject,
             manual_email_body: html,
             updated_at: nowIso,
@@ -236,8 +305,8 @@ export async function POST(
         email_account_id: emailAccount.id,
         provider: emailAccount.provider,
         recipient_email: to,
-        sender_email: emailAccount.email_address,
-        sender_name: emailAccount.sender_name || null,
+        sender_email: senderEmail,
+        sender_name: senderName,
         subject: emailSubject,
         body_html: html,
         body_text: text,
@@ -273,8 +342,8 @@ export async function POST(
               mode,
               email_type: emailType,
               to,
-              sender_email: emailAccount.email_address,
-              sender_name: emailAccount.sender_name || null,
+              sender_email: senderEmail,
+              sender_name: senderName,
               body_html: html,
               body_text: text,
               step_number: typeof stepNumber === 'number' ? stepNumber : null,
@@ -308,6 +377,8 @@ export async function POST(
           status: nextStatus,
         },
       });
+
+      await incrementDailySentCount(emailAccount.id, 1);
     }
 
     return NextResponse.json({
