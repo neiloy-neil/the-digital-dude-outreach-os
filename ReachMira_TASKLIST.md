@@ -148,9 +148,9 @@ Make the lead detail page the main workspace where users understand the lead and
 - [x] Show website link
 - [x] Show contact name
 - [x] Show email
-- [ ] Show email verification badge
-- [ ] Show verification reason
-- [ ] Show verified date
+- [x] Show email verification badge
+- [x] Show verification reason
+- [x] Show verified date
 - [x] Show status badge
 - [x] Show priority badge
 - [x] Show data quality score
@@ -158,7 +158,7 @@ Make the lead detail page the main workspace where users understand the lead and
 - [x] Show next follow-up date
 - [x] Add actions:
   - [x] Edit Lead
-  - [ ] Verify Email
+  - [x] Verify Email
   - [x] Write Manual Email
   - [x] Add to Campaign
   - [x] Mark Do Not Contact
@@ -1235,7 +1235,7 @@ Run after each major phase:
 - [ ] Confirm verification status appears in Lead Library
 - [ ] Filter by email status
 - [ ] Open lead detail page
-- [ ] Confirm verification badge/reason/date
+- [x] Confirm verification badge/reason/date
 - [ ] Add pain point and solution angle
 - [ ] Copy context for ChatGPT
 - [ ] Paste email into manual editor

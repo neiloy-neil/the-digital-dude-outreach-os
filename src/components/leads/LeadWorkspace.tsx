@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Ban, CheckCircle2, Copy, Database, Edit3, ExternalLink, History, Mail, MessageSquare, PlusCircle, Save, Send, Sparkles, WandSparkles, X, Clock3, AlertTriangle, Trash2 } from 'lucide-react';
 import AppShell from '@/components/reachmira/AppShell';
+import EmailVerificationBadge from '@/components/leads/EmailVerificationBadge';
 import StatusBadge from '@/components/leads/StatusBadge';
 import RichTextEditor from '@/components/leads/RichTextEditor';
 import { buildFollowUpPrompt, buildLeadContextPrompt, buildLeadSummary, type CompanyPromptContext } from '@/lib/leads/context-prompt';
@@ -122,6 +123,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [checkingReplies, setCheckingReplies] = useState(false);
+  const [verifyingEmail, setVerifyingEmail] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -732,6 +734,34 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
     }
   };
 
+  const handleVerifyEmail = async () => {
+    if (!lead?.id) return;
+
+    setVerifyingEmail(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      const response = await fetch('/api/leads/verify-bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          lead_ids: [lead.id],
+          checkMx: true,
+        }),
+      });
+      const payload = (await response.json()) as { error?: string; summary?: { total?: number } };
+      if (!response.ok) throw new Error(payload.error || 'Failed to verify email');
+
+      await loadLead({ silent: true });
+      setSuccess('Email verification refreshed.');
+    } catch (verifyError: unknown) {
+      setError(verifyError instanceof Error ? verifyError.message : 'Failed to verify email');
+    } finally {
+      setVerifyingEmail(false);
+    }
+  };
+
   const handleDeleteLead = async () => {
     const leadLabel = lead?.company_name || lead?.company || lead?.email || 'this lead';
     const confirmed = window.confirm(`Delete ${leadLabel}? This cannot be undone.`);
@@ -796,12 +826,23 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                 <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-zinc-600">
                   <span>{leadName}</span>
                   <span>{lead?.email || 'No email'}</span>
+                  {lead?.email ? <EmailVerificationBadge status={lead.email_verification_status} /> : null}
                   {lead?.website ? (
                     <a href={normalizeWebsite(lead.website)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-violet-700 hover:text-violet-800">
                       Website <ExternalLink className="h-3.5 w-3.5" />
                     </a>
                   ) : null}
                 </div>
+                {lead?.email ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-zinc-500">
+                    <span>
+                      Reason: <span className="font-medium text-zinc-700">{lead.email_verification_reason || 'Not checked yet'}</span>
+                    </span>
+                    <span>
+                      Verified: <span className="font-medium text-zinc-700">{formatDate(lead.email_verified_at)}</span>
+                    </span>
+                  </div>
+                ) : null}
                 <p className="mt-2 max-w-3xl text-sm leading-6 text-zinc-500">{subtitle}</p>
               </div>
             </div>
@@ -827,6 +868,9 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                 <div className="flex flex-wrap gap-2 xl:justify-end">
                   <button onClick={() => setActiveTab('overview')} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:bg-zinc-50">
                     <Edit3 className="h-3.5 w-3.5" /> Edit Lead
+                  </button>
+                  <button onClick={handleVerifyEmail} disabled={verifyingEmail || !lead?.email} className="inline-flex items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 transition hover:bg-violet-100 disabled:cursor-not-allowed disabled:opacity-50">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> {verifyingEmail ? 'Verifying...' : 'Verify Email'}
                   </button>
                   <button onClick={() => setActiveTab('manual')} className="inline-flex items-center gap-2 rounded-xl bg-zinc-950 px-3 py-2 text-xs font-semibold text-white transition hover:bg-zinc-800">
                     <Mail className="h-3.5 w-3.5" /> Write Manual Email
