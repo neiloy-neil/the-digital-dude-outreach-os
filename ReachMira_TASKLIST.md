@@ -929,6 +929,33 @@ Move under Settings or hide until ready:
 - [x] AI Usage
 - [x] Sending Rules
 
+## User Profile Settings
+
+- [ ] Add Profile tab to `/settings`
+- [ ] Add profile quick card in Settings
+- [ ] Add profile fields:
+  - [ ] Display name
+  - [ ] Workspace name
+  - [ ] Role/title
+  - [ ] Phone/WhatsApp
+  - [ ] Timezone
+  - [ ] Avatar URL
+  - [ ] Read-only account email
+- [ ] Add Supabase migration for nullable profile fields
+- [ ] Update profile type definitions
+- [ ] Save profile fields through existing Save Settings action
+- [ ] Update sidebar to use display/workspace name
+- [ ] Keep account email read-only for this pass
+- [ ] Defer password/email change flows to later
+
+## User Profile Settings Acceptance Criteria
+
+- [ ] User can edit personal/workspace profile settings
+- [ ] Profile values persist after reload
+- [ ] Sidebar reflects saved profile identity
+- [ ] Account email is visible but not editable
+- [ ] Existing settings tabs still work
+
 ## Empty states
 
 Add friendly empty states for:
