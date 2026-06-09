@@ -942,10 +942,10 @@ Add campaign automation after manual outreach is stable.
 - [x] Use sent email history
 - [x] Use audit logs
 - [x] Add launch readiness checklist before activating automation
-- [ ] Add `allow_risky_emails` campaign setting
-- [ ] Block invalid/disposable/suppressed emails
-- [ ] Skip not_checked/unknown/risky unless `allow_risky_emails = true`
-- [ ] Add audit log: `send_skipped_email_verification`
+- [x] Add `allow_risky_emails` campaign setting
+- [x] Block invalid/disposable/suppressed emails
+- [x] Skip not_checked/unknown/risky unless `allow_risky_emails = true`
+- [x] Add audit log: `send_skipped_email_verification`
 
 ### 9.4 Campaign analytics
 

@@ -44,6 +44,7 @@ export interface Campaign {
   require_manual_approval_for_deep_ai?: boolean;
   use_template_fallback?: boolean;
   require_approval_before_send: boolean;
+  allow_risky_emails?: boolean | null;
   allow_template_fallback: boolean;
   auto_generate_ai_before_send: boolean;
   target_industry?: string | null;

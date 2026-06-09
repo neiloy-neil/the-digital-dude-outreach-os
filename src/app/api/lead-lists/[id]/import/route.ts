@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
 import { buildLeadEmailVerificationFields, verifyEmailLocally } from '@/lib/email-verification/local-verify';
+import { insertLeadsWithVerificationFallback } from '@/lib/email-verification/persist';
 import { calculateLeadQuality, dedupeLeadRows } from '@/lib/leads/library';
 import { isMissingTableError } from '@/lib/supabase/schema-errors';
 
@@ -74,6 +75,7 @@ export async function POST(
     let disposableEmails = 0;
     let suppressedEmails = 0;
     let missingCompanyNames = 0;
+    let verificationWarning: string | null = null;
 
     for (const lead of normalizedRows) {
       const email = normalizeEmail(lead.email);
@@ -153,15 +155,19 @@ export async function POST(
     }
 
     if (payload.length > 0) {
-      const { data: insertedLeads, error: insertError } = await supabase
-        .from('leads')
-        .insert(payload)
-        .select('id, email, company_name, company');
+      const { data: insertedLeads, error: insertError, strippedColumns } = await insertLeadsWithVerificationFallback({
+        supabase,
+        rows: payload,
+        select: 'id, email, company_name, company',
+      });
       if (insertError) throw insertError;
       imported = insertedLeads?.length || payload.length;
+      if (strippedColumns.length > 0) {
+        verificationWarning = `Lead verification columns are missing in this database: ${strippedColumns.join(', ')}. Run the latest migration to persist full verification data.`;
+      }
 
       await Promise.all(
-        (insertedLeads || []).map((lead) =>
+        ((insertedLeads || []) as Array<{ id: string; email: string; company_name?: string | null; company?: string | null }>).map((lead) =>
           createAuditLog({
             userId: user.id,
             leadId: lead.id,
@@ -204,6 +210,7 @@ export async function POST(
       suppressedEmails,
       missingCompanyNames,
       totalRows: leads.length,
+      warning: verificationWarning,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Error importing leads';

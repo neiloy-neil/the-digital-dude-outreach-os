@@ -108,6 +108,7 @@ export default function CampaignWizardPage() {
   const [autoRunAiAfterImport, setAutoRunAiAfterImport] = useState(false);
   const [fetchWebsiteHomepage, setFetchWebsiteHomepage] = useState(true);
   const [requireApprovalBeforeSend, setRequireApprovalBeforeSend] = useState(true);
+  const [allowRiskyEmails, setAllowRiskyEmails] = useState(false);
   const [allowDeepAi, setAllowDeepAi] = useState(true);
   const [requireManualApprovalForDeepAi, setRequireManualApprovalForDeepAi] = useState(false);
   const [useTemplateFallback, setUseTemplateFallback] = useState(true);
@@ -385,34 +386,51 @@ export default function CampaignWizardPage() {
       if (!user) throw new Error('Authentication required');
 
       // 1. Create Campaign
-      const { data: campaign, error: campError } = await supabase
+      const campaignInsertPayload = {
+        user_id: user.id,
+        name: campaignName,
+        target_industry: targetIndustry,
+        offer_type: offerType,
+        sender_name: senderName,
+        sender_email: senderEmail,
+        daily_limit: Number(dailyLimit) || 100,
+        email_account_id: emailAccountId || null,
+        require_approval_before_send: requireApprovalBeforeSend,
+        allow_risky_emails: allowRiskyEmails,
+        allow_template_fallback: useTemplateFallback,
+        use_template_fallback: useTemplateFallback,
+        auto_generate_ai_before_send: false,
+        ai_mode: aiMode,
+        ai_depth: aiDepth,
+        default_ai_depth: defaultAiDepth,
+        auto_run_ai_after_import: autoRunAiAfterImport,
+        fetch_website_homepage: fetchWebsiteHomepage,
+        min_data_quality_for_ai: minDataQualityForAi ? Number(minDataQualityForAi) : null,
+        full_ai_min_solution_score: fullAiMinSolutionScore ? Number(fullAiMinSolutionScore) : null,
+        allow_deep_ai: allowDeepAi,
+        require_manual_approval_for_deep_ai: requireManualApprovalForDeepAi,
+        status: 'draft'
+      };
+
+      let { data: campaign, error: campError } = await supabase
         .from('campaigns')
-        .insert({
-          user_id: user.id,
-          name: campaignName,
-          target_industry: targetIndustry,
-          offer_type: offerType,
-          sender_name: senderName,
-          sender_email: senderEmail,
-          daily_limit: Number(dailyLimit) || 100,
-          email_account_id: emailAccountId || null,
-          require_approval_before_send: requireApprovalBeforeSend,
-          allow_template_fallback: useTemplateFallback,
-          use_template_fallback: useTemplateFallback,
-          auto_generate_ai_before_send: false,
-          ai_mode: aiMode,
-          ai_depth: aiDepth,
-          default_ai_depth: defaultAiDepth,
-          auto_run_ai_after_import: autoRunAiAfterImport,
-          fetch_website_homepage: fetchWebsiteHomepage,
-          min_data_quality_for_ai: minDataQualityForAi ? Number(minDataQualityForAi) : null,
-          full_ai_min_solution_score: fullAiMinSolutionScore ? Number(fullAiMinSolutionScore) : null,
-          allow_deep_ai: allowDeepAi,
-          require_manual_approval_for_deep_ai: requireManualApprovalForDeepAi,
-          status: 'draft'
-        })
+        .insert(campaignInsertPayload)
         .select()
         .single();
+
+      if (campError && String(campError.message || '').toLowerCase().includes('allow_risky_emails')) {
+        const legacyPayload = { ...campaignInsertPayload } as Record<string, unknown>;
+        delete legacyPayload.allow_risky_emails;
+
+        const legacyResponse = await supabase
+          .from('campaigns')
+          .insert(legacyPayload)
+          .select()
+          .single();
+
+        campaign = legacyResponse.data;
+        campError = legacyResponse.error;
+      }
 
       if (campError) throw campError;
 
@@ -1028,6 +1046,19 @@ export default function CampaignWizardPage() {
                 <label className="flex items-start gap-3 p-4 bg-white/40 border border-[var(--border)] rounded-lg cursor-pointer">
                   <input
                     type="checkbox"
+                    checked={allowRiskyEmails}
+                    onChange={(e) => setAllowRiskyEmails(e.target.checked)}
+                    className="rounded border-[var(--border)] bg-white text-violet-500 focus:ring-0 mt-0.5"
+                  />
+                  <div>
+                    <span className="block text-xs font-semibold text-zinc-950">Allow Risky Email Statuses</span>
+                    <span className="block text-[10px] text-zinc-500">When off, automation skips `not_checked`, `unknown`, `risky`, and failed-verification leads.</span>
+                  </div>
+                </label>
+
+                <label className="flex items-start gap-3 p-4 bg-white/40 border border-[var(--border)] rounded-lg cursor-pointer">
+                  <input
+                    type="checkbox"
                     checked={allowDeepAi}
                     onChange={(e) => setAllowDeepAi(e.target.checked)}
                     className="rounded border-[var(--border)] bg-white text-violet-500 focus:ring-0 mt-0.5"
@@ -1225,6 +1256,7 @@ export default function CampaignWizardPage() {
                   <div>Lead Depth: <span className="text-zinc-900 font-medium capitalize">{defaultAiDepth}</span></div>
                   <div>Fetch Website Homepage: <span className="text-zinc-900 font-medium">{fetchWebsiteHomepage ? 'Yes' : 'No'}</span></div>
                   <div>Require Manual Approval: <span className="text-zinc-900 font-medium">{requireApprovalBeforeSend ? 'Yes' : 'No'}</span></div>
+                  <div>Allow Risky Emails: <span className="text-zinc-900 font-medium">{allowRiskyEmails ? 'Yes' : 'No'}</span></div>
                   <div>Auto-run AI After Import: <span className="text-zinc-900 font-medium">{autoRunAiAfterImport ? 'Yes' : 'No'}</span></div>
                   <div>Deep AI Allowed: <span className="text-zinc-900 font-medium">{allowDeepAi ? 'Yes' : 'No'}</span></div>
                   <div>Deep AI Needs Approval: <span className="text-zinc-900 font-medium">{requireManualApprovalForDeepAi ? 'Yes' : 'No'}</span></div>

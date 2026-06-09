@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 import { createAuditLog } from '@/lib/audit/create-audit-log';
 import { buildLeadEmailVerificationFields, verifyEmailLocally, type EmailVerificationStatus } from '@/lib/email-verification/local-verify';
+import { updateLeadWithVerificationFallback } from '@/lib/email-verification/persist';
 import { isMissingTableError } from '@/lib/supabase/schema-errors';
 import { createServiceClient } from '@/utils/supabase/service';
 import { createClient } from '@/utils/supabase/server';
@@ -119,6 +120,7 @@ export async function POST(request: Request) {
 
     const summary = createSummary();
     summary.total = leads.length;
+    const strippedVerificationColumns = new Set<string>();
 
     for (const lead of leads) {
       const verification = await verifyEmailLocally({
@@ -129,17 +131,19 @@ export async function POST(request: Request) {
 
       const verificationFields = buildLeadEmailVerificationFields(verification);
 
-      const { error: updateError } = await serviceSupabase
-        .from('leads')
-        .update({
+      const { error: updateError, strippedColumns } = await updateLeadWithVerificationFallback({
+        supabase: serviceSupabase,
+        leadId: lead.id,
+        payload: {
           ...verificationFields,
           updated_at: new Date().toISOString(),
-        })
-        .eq('id', lead.id);
+        },
+      });
 
       if (updateError) {
         throw new Error(updateError.message);
       }
+      strippedColumns.forEach((column) => strippedVerificationColumns.add(column));
 
       summary[verification.status] += 1;
 
@@ -174,6 +178,10 @@ export async function POST(request: Request) {
         unknown: summary.unknown,
         failed: summary.failed,
       },
+      warning:
+        strippedVerificationColumns.size > 0
+          ? `Lead verification columns are missing in this database: ${Array.from(strippedVerificationColumns).join(', ')}. Run the latest migration to persist full verification data.`
+          : null,
     });
   } catch (error: unknown) {
     return NextResponse.json(

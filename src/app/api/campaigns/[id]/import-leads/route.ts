@@ -3,6 +3,7 @@ import { createClient } from '@/utils/supabase/server';
 import { calculateLeadDataQuality } from '@/utils/data-quality';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
 import { buildLeadEmailVerificationFields, verifyEmailLocally } from '@/lib/email-verification/local-verify';
+import { insertLeadsWithVerificationFallback } from '@/lib/email-verification/persist';
 
 function toNullableNumber(value: unknown): number | null {
   if (value === undefined || value === null || value === '') return null;
@@ -60,6 +61,7 @@ export async function POST(
     let disposableEmails = 0;
     let suppressedEmails = 0;
     let missingCompanyNames = 0;
+    let verificationWarning: string | null = null;
     const leadsToInsert = [];
     const processedEmailsInBatch = new Set<string>();
 
@@ -145,16 +147,20 @@ export async function POST(
     }
 
     if (leadsToInsert.length > 0) {
-      const { data: insertedLeads, error: insertError } = await supabase
-        .from('leads')
-        .insert(leadsToInsert)
-        .select('id, email, company_name, company');
+      const { data: insertedLeads, error: insertError, strippedColumns } = await insertLeadsWithVerificationFallback({
+        supabase,
+        rows: leadsToInsert,
+        select: 'id, email, company_name, company',
+      });
 
       if (insertError) throw insertError;
       imported = insertedLeads?.length || leadsToInsert.length;
+      if (strippedColumns.length > 0) {
+        verificationWarning = `Lead verification columns are missing in this database: ${strippedColumns.join(', ')}. Run the latest migration to persist full verification data.`;
+      }
 
       await Promise.all(
-        (insertedLeads || []).map((lead) =>
+        ((insertedLeads || []) as Array<{ id: string; email: string; company_name?: string | null; company?: string | null }>).map((lead) =>
           createAuditLog({
             userId: user.id,
             campaignId,
@@ -179,7 +185,8 @@ export async function POST(
       roleBasedEmails,
       disposableEmails,
       suppressedEmails,
-      missingCompanyNames
+      missingCompanyNames,
+      warning: verificationWarning,
     });
   } catch (err: unknown) {
     console.error('Batch import leads crash:', err);

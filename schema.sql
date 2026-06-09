@@ -123,6 +123,7 @@ create table public.campaigns (
   allow_deep_ai boolean default true not null,
   require_manual_approval_for_deep_ai boolean default false not null,
   require_approval_before_send boolean default true not null,
+  allow_risky_emails boolean default false not null,
   allow_template_fallback boolean default false not null,
   use_template_fallback boolean default false not null,
   auto_generate_ai_before_send boolean default false not null,

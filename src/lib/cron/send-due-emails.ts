@@ -26,6 +26,21 @@ type SequenceStep = {
   body: string;
 };
 
+const BLOCKED_VERIFICATION_STATUSES = new Set(['invalid', 'disposable', 'suppressed']);
+const SKIPPED_VERIFICATION_STATUSES = new Set(['not_checked', 'unknown', 'risky', 'failed']);
+
+const VERIFICATION_STATUS_LABELS: Record<string, string> = {
+  not_checked: 'not checked',
+  valid: 'valid',
+  risky: 'risky',
+  invalid: 'invalid',
+  role_based: 'role-based',
+  disposable: 'disposable',
+  suppressed: 'suppressed',
+  unknown: 'unknown',
+  failed: 'failed',
+};
+
 function isSupportedProvider(provider: string): provider is EmailProviderType {
   return ['smtp', 'mailgun', 'resend', 'amazon_ses'].includes(provider);
 }
@@ -64,6 +79,8 @@ type QueueLead = {
   personalized_subject?: string | null;
   ai_email_body?: string | null;
   personalized_body?: string | null;
+  email_verification_status?: string | null;
+  email_verification_reason?: string | null;
   variables?: Record<string, unknown> | null;
 };
 
@@ -123,11 +140,32 @@ export async function sendDueEmails() {
   const summary: CronResult[] = [];
   let totalSent = 0;
 
-  const { data: campaigns, error } = await supabase
+  const campaignSelect =
+    'id, user_id, name, sender_name, status, daily_limit, require_approval_before_send, allow_template_fallback, allow_risky_emails, email_account_id, email_accounts (id, provider, email_address, sender_name, config, daily_send_limit, daily_sent_count, last_sent_reset_date, status)';
+  const legacyCampaignSelect =
+    'id, user_id, name, sender_name, status, daily_limit, require_approval_before_send, allow_template_fallback, email_account_id, email_accounts (id, provider, email_address, sender_name, config, daily_send_limit, daily_sent_count, last_sent_reset_date, status)';
+
+  let campaigns: Array<Record<string, any>> | null = null;
+  let error: { message?: string } | null = null;
+
+  const campaignResponse = await supabase
     .from('campaigns')
-    .select('id, user_id, name, sender_name, status, daily_limit, require_approval_before_send, allow_template_fallback, email_account_id, email_accounts (id, provider, email_address, sender_name, config, daily_send_limit, daily_sent_count, last_sent_reset_date, status)')
+    .select(campaignSelect)
     .eq('status', 'active')
     .not('email_account_id', 'is', null);
+
+  campaigns = campaignResponse.data as Array<Record<string, any>> | null;
+  error = campaignResponse.error as { message?: string } | null;
+
+  if (error && String(error.message || '').toLowerCase().includes('allow_risky_emails')) {
+    const legacyResponse = await supabase
+      .from('campaigns')
+      .select(legacyCampaignSelect)
+      .eq('status', 'active')
+      .not('email_account_id', 'is', null);
+    campaigns = legacyResponse.data as Array<Record<string, any>> | null;
+    error = legacyResponse.error as { message?: string } | null;
+  }
 
   if (error) {
     throw new Error(error.message);
@@ -159,6 +197,7 @@ export async function sendDueEmails() {
 
     const senderName = emailAccount.sender_name || campaign.sender_name || emailAccount.email_address;
     const senderEmail = emailAccount.email_address;
+    const allowRiskyEmails = Boolean((campaign as { allow_risky_emails?: boolean | null }).allow_risky_emails);
 
     const campaignDailySent = await getCampaignDailySendCount(campaign.id);
     const campaignRemaining = Math.max(0, (campaign.daily_limit || 0) - campaignDailySent);
@@ -250,6 +289,47 @@ export async function sendDueEmails() {
       const bodyWithSignature = appendEmailSignature(body, emailAccount.config || {}, senderName, true);
       const { html, text } = buildEmailMessageBodies(bodyWithSignature, unsubscribeUrl);
       const replyTo = emailAccount.email_address;
+      const verificationStatus = String((lead as QueueLead & { email_verification_status?: string | null }).email_verification_status || 'not_checked').trim().toLowerCase();
+      const verificationReason = String((lead as QueueLead & { email_verification_reason?: string | null }).email_verification_reason || '').trim();
+
+      if (BLOCKED_VERIFICATION_STATUSES.has(verificationStatus)) {
+        skipped++;
+        reasons.push(`Lead ${lead.email}: blocked by email verification (${VERIFICATION_STATUS_LABELS[verificationStatus] || verificationStatus})`);
+        await createAuditLog({
+          userId: campaign.user_id,
+          campaignId: campaign.id,
+          leadId: lead.id,
+          action: verificationStatus === 'suppressed' ? 'send_blocked_suppressed' : 'send_blocked_invalid_email',
+          message: `Blocked automated email to ${lead.email}`,
+          metadata: {
+            email: lead.email,
+            verification_status: verificationStatus,
+            verification_reason: verificationReason || null,
+            policy: 'campaign_verification_block',
+          },
+        });
+        continue;
+      }
+
+      if (!allowRiskyEmails && SKIPPED_VERIFICATION_STATUSES.has(verificationStatus)) {
+        skipped++;
+        reasons.push(`Lead ${lead.email}: skipped by email verification (${VERIFICATION_STATUS_LABELS[verificationStatus] || verificationStatus})`);
+        await createAuditLog({
+          userId: campaign.user_id,
+          campaignId: campaign.id,
+          leadId: lead.id,
+          action: 'send_skipped_email_verification',
+          message: `Skipped automated email to ${lead.email}`,
+          metadata: {
+            email: lead.email,
+            verification_status: verificationStatus,
+            verification_reason: verificationReason || null,
+            allow_risky_emails: allowRiskyEmails,
+          },
+        });
+        continue;
+      }
+
       const suppression = await checkSuppression(campaign.user_id, lead.email);
 
       if (suppression) {

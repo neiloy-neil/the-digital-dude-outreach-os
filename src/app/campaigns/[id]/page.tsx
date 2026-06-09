@@ -168,6 +168,27 @@ export default function CampaignDetailPage({ params }: PageProps) {
     }
   };
 
+  const handleAllowRiskyEmailsChange = async (nextValue: boolean) => {
+    try {
+      const { error: updateError } = await supabase
+        .from('campaigns')
+        .update({ allow_risky_emails: nextValue, updated_at: new Date().toISOString() })
+        .eq('id', campaignId);
+
+      if (updateError) {
+        if (String(updateError.message || '').toLowerCase().includes('allow_risky_emails')) {
+          throw new Error('Apply the latest database migration to save the risky-email campaign setting.');
+        }
+        throw updateError;
+      }
+
+      setCampaign((prev: any) => (prev ? { ...prev, allow_risky_emails: nextValue } : prev));
+      setSuccess(nextValue ? 'Campaign will allow risky or unchecked emails during automation.' : 'Campaign will now skip risky or unchecked emails during automation.');
+    } catch (err: any) {
+      setError(err.message || 'Error saving risky-email setting');
+    }
+  };
+
   // --- CSV PARSING AND UPLOAD ---
   const handleCSVUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -706,7 +727,7 @@ export default function CampaignDetailPage({ params }: PageProps) {
     },
     {
       label: 'Safety stops enabled',
-      detail: 'Replies, bounces, unsubscribes, and suppression matches stop future sends.',
+      detail: 'Replies, bounces, unsubscribes, suppression matches, and email-verification rules stop unsafe sends.',
       ok: true,
       required: false,
     },
@@ -873,6 +894,29 @@ export default function CampaignDetailPage({ params }: PageProps) {
                   ))
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {!loading && campaign && (
+          <div className="mb-6 rounded-xl border border-[var(--border)] bg-white/20 p-4 backdrop-blur-sm">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-zinc-950">Email Verification Safety</h3>
+                <p className="text-xs text-zinc-500">Automation always blocks `invalid`, `disposable`, and `suppressed` leads. This setting controls whether `not_checked`, `unknown`, and `risky` leads are skipped or allowed.</p>
+              </div>
+              <label className="inline-flex items-center gap-3 rounded-xl border border-[var(--border)] bg-white px-4 py-3 text-sm font-semibold text-zinc-800">
+                <input
+                  type="checkbox"
+                  checked={Boolean(campaign.allow_risky_emails)}
+                  onChange={(e) => handleAllowRiskyEmailsChange(e.target.checked)}
+                  className="rounded border-zinc-300 text-violet-600 focus:ring-violet-500"
+                />
+                Allow risky email statuses
+              </label>
+            </div>
+            <div className="mt-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-xs text-zinc-600">
+              Current policy: <span className="font-semibold text-zinc-900">{campaign.allow_risky_emails ? 'Allow risky/unchecked campaign sends' : 'Skip risky/unchecked campaign sends'}</span>
             </div>
           </div>
         )}
