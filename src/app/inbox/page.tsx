@@ -43,7 +43,7 @@ export default function InboxPage() {
     setLoading(true);
     try {
       if (forceSync) {
-        toast.success('Syncing inbox...', { icon: <RefreshCcw className="h-4 w-4 animate-spin text-violet-500" /> });
+        toast.success('Syncing inbox...');
         await fetch('/api/cron/check-replies', { method: 'POST' });
       }
       const res = await fetch('/api/inbox');
