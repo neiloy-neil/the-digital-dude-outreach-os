@@ -249,7 +249,7 @@ export default function SettingsPage() {
           setOutreachProofPoints(data.outreach_proof_points || '');
         }
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Error loading settings profile');
+        toast.error(err instanceof Error ? err.message : 'Error loading settings profile');
       } finally {
         setLoading(false);
       }
