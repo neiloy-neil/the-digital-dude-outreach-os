@@ -10,6 +10,7 @@ import PageHeader from '@/components/reachmira/PageHeader';
 import MetricCard from '@/components/reachmira/MetricCard';
 import EmptyState from '@/components/reachmira/EmptyState';
 import NextActionCard from '@/components/reachmira/NextActionCard';
+import AnalyticsCharts from '@/components/reachmira/AnalyticsCharts';
 import { getLeadStatusLabel, isRepliedStatus } from '@/lib/leads/status';
 import { getLeadReadiness } from '@/lib/leads/library';
 import {
@@ -78,6 +79,7 @@ export default function Dashboard() {
   const [sentEmails, setSentEmails] = useState<SentEmailRow[]>([]);
   const [hasEmailAccount, setHasEmailAccount] = useState(false);
   const [aiStats, setAiStats] = useState({ callsToday: 0, cached: 0, skipped: 0 });
+  const [dateRange, setDateRange] = useState<'7d' | '30d' | 'this_month' | 'all_time'>('30d');
 
   useEffect(() => {
     const loadDashboard = async () => {
@@ -132,6 +134,17 @@ export default function Dashboard() {
     loadDashboard();
   }, [supabase]);
 
+  const filteredSentEmails = useMemo(() => {
+    if (dateRange === 'all_time') return sentEmails;
+    const now = new Date();
+    let startDate = now;
+    if (dateRange === '7d') startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    else if (dateRange === '30d') startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    else if (dateRange === 'this_month') startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    
+    return sentEmails.filter(email => new Date(email.sent_at) >= startDate);
+  }, [sentEmails, dateRange]);
+
   const metrics = useMemo(() => {
     const totalLeads = leads.length;
     const readyToSend = leads.filter((lead) => {
@@ -158,10 +171,10 @@ export default function Dashboard() {
     }).length;
 
     const repliedLeads = leads.filter((lead) => isRepliedStatus(lead.status)).length;
-    const sentEmailReplies = sentEmails.filter((email) => Boolean(email.replied_at) || email.status === 'replied').length;
+    const sentEmailReplies = filteredSentEmails.filter((email) => Boolean(email.replied_at) || email.status === 'replied').length;
     const replies = Math.max(repliedLeads, sentEmailReplies);
-    const bounces = sentEmails.filter((email) => Boolean(email.bounced_at) || email.status === 'bounced').length;
-    const bounceRate = sentEmails.length > 0 ? Math.round((bounces / sentEmails.length) * 100) : 0;
+    const bounces = filteredSentEmails.filter((email) => Boolean(email.bounced_at) || email.status === 'bounced').length;
+    const bounceRate = filteredSentEmails.length > 0 ? Math.round((bounces / filteredSentEmails.length) * 100) : 0;
     const followUpsDue = leads.filter((lead) => {
       const nextFollowUp = lead.next_follow_up_at || lead.next_follow_up_date;
       if (!nextFollowUp) return false;
@@ -228,7 +241,7 @@ export default function Dashboard() {
       readyToSend,
       needsVerification,
       missingSolution,
-      emailsSent: sentEmails.length,
+      emailsSent: filteredSentEmails.length,
       replies,
       followUpsDue,
       bounceRate,
@@ -238,7 +251,7 @@ export default function Dashboard() {
       mostUsedOffer,
       bestUsedTemplate,
     };
-  }, [leads, sentEmails, nowIso]);
+  }, [leads, filteredSentEmails, nowIso]);
 
   const needsAction = [
     {
@@ -379,16 +392,45 @@ export default function Dashboard() {
             </section>
           )}
 
+          <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <h2 className="text-xl font-semibold tracking-tight text-zinc-950">Overview</h2>
+            <div className="flex shrink-0 items-center gap-2 rounded-xl bg-white p-1 border border-[var(--border)] shadow-sm">
+              {(['7d', '30d', 'this_month', 'all_time'] as const).map((range) => {
+                const labels: Record<string, string> = {
+                  '7d': '7 Days',
+                  '30d': '30 Days',
+                  'this_month': 'This Month',
+                  'all_time': 'All Time'
+                };
+                return (
+                  <button
+                    key={range}
+                    onClick={() => setDateRange(range)}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                      dateRange === range
+                        ? 'bg-violet-100 text-violet-700 shadow-sm'
+                        : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900'
+                    }`}
+                  >
+                    {labels[range]}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
             <MetricCard label="Total Leads" value={metrics.totalLeads} description="All leads in your workspace" icon={Users} tone="slate" trend={`${campaignCount} campaigns`} />
             <MetricCard label="Ready to Send" value={metrics.readyToSend} description="Approved or draft-ready leads" icon={Mail} tone="violet" trend="Manual-first" />
-            <MetricCard label="Emails Sent" value={metrics.emailsSent} description="Tracked sent messages" icon={Send} tone="teal" trend={`${metrics.replies} replies`} />
-            <MetricCard label="Replies" value={metrics.replies} description="Replies detected in history" icon={Reply} tone="sky" trend="Keep conversations warm" />
+            <MetricCard label="Emails Sent" value={metrics.emailsSent} description="In selected period" icon={Send} tone="teal" trend={`${metrics.replies} replies`} />
+            <MetricCard label="Replies" value={metrics.replies} description="In selected period" icon={Reply} tone="sky" trend="Keep conversations warm" />
             <MetricCard label="Follow-ups Due" value={metrics.followUpsDue} description="Needs a next step today" icon={CalendarClock} tone="amber" trend="High priority" />
             <MetricCard label="Bounce Rate" value={`${metrics.bounceRate}%`} description="Delivery issues to review" icon={TrendingUp} tone="rose" trend={`${aiStats.callsToday} AI calls today`} />
           </div>
 
-          <section>
+          <AnalyticsCharts leads={leads} sentEmails={filteredSentEmails} dateRange={dateRange} />
+
+          <section className="mt-8">
             <div className="mb-4 flex items-end justify-between gap-4">
               <div>
                 <h2 className="text-xl font-semibold tracking-tight text-zinc-950">What needs action</h2>

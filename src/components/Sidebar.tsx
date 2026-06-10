@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
+import { useToast } from '@/lib/toast/toast-context';
 import {
   Activity,
   CalendarClock,
@@ -32,6 +33,8 @@ export default function Sidebar() {
   const [workspaceName, setWorkspaceName] = useState<string>('Connected workspace');
   const [emailAddress, setEmailAddress] = useState<string>('Connected workspace');
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
+  const toast = useToast();
 
   const navItems: NavItem[] = useMemo(() => {
     const items = [
@@ -76,6 +79,8 @@ export default function Sidebar() {
   };
 
   useEffect(() => {
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+
     const fetchUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
@@ -84,6 +89,43 @@ export default function Sidebar() {
       }
 
       setEmailAddress(user.email || 'Connected workspace');
+
+      const fetchUnreadCount = async () => {
+        const { count: unreadCountRes } = await supabase
+          .from('inbox_messages')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .eq('status', 'unread');
+
+        if (unreadCountRes !== null) {
+          setUnreadCount(unreadCountRes);
+        }
+      };
+
+      await fetchUnreadCount();
+
+      // Realtime subscription
+      channel = supabase
+        .channel('inbox-changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*', // Listen to INSERT, UPDATE, DELETE
+            schema: 'public',
+            table: 'inbox_messages',
+            filter: `user_id=eq.${user.id}`,
+          },
+          (payload) => {
+            fetchUnreadCount();
+            if (payload.eventType === 'INSERT') {
+              const msg = payload.new as any;
+              if (msg.status === 'unread') {
+                toast.success('New reply received!');
+              }
+            }
+          }
+        )
+        .subscribe();
 
       let { data, error } = await supabase
         .from('profiles')
@@ -122,7 +164,13 @@ export default function Sidebar() {
     };
 
     fetchUser();
-  }, [router, supabase]);
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+    };
+  }, [router, supabase, toast]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -182,7 +230,7 @@ export default function Sidebar() {
               key={item.name}
               href={item.href}
               title={item.name}
-              className={`flex items-center gap-3 rounded-xl px-2.5 py-3 text-sm font-medium transition-all ${
+              className={`relative flex items-center gap-3 rounded-xl px-2.5 py-3 text-sm font-medium transition-all ${
                 isActive
                   ? 'bg-violet-50 text-violet-700 ring-1 ring-violet-100'
                   : 'text-zinc-600 hover:bg-zinc-50 hover:text-zinc-900'
@@ -190,6 +238,14 @@ export default function Sidebar() {
             >
               <Icon className={`h-[18px] w-[18px] shrink-0 ${isActive ? 'text-violet-600' : 'text-zinc-400'}`} />
               <span className="hidden lg:block group-hover:block whitespace-nowrap overflow-hidden">{item.name}</span>
+              {item.name === 'Inbox' && unreadCount > 0 && (
+                <span className="ml-auto hidden lg:inline-flex group-hover:inline-flex items-center justify-center rounded-full bg-rose-500 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm ring-1 ring-white">
+                  {unreadCount}
+                </span>
+              )}
+              {item.name === 'Inbox' && unreadCount > 0 && (
+                <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-rose-500 lg:hidden group-hover:hidden" />
+              )}
             </Link>
           );
         })}
