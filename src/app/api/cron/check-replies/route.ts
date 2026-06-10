@@ -209,11 +209,11 @@ function checkIMAPRepliesForUser(profile: any, supabase: any): Promise<any[]> {
           return reject(err);
         }
 
-        // Search for all messages (including SEEN) received in the last 7 days to keep scanning fast and bounded
-        const last7Days = new Date();
-        last7Days.setDate(last7Days.getDate() - 7);
+        // Search for all messages (including SEEN) received in the last 30 days to keep scanning fast and bounded
+        const last30Days = new Date();
+        last30Days.setDate(last30Days.getDate() - 30);
 
-        imap.search(['ALL', ['SINCE', last7Days]], (searchErr, uids) => {
+        imap.search(['ALL', ['SINCE', last30Days]], (searchErr, uids) => {
           if (searchErr || !uids || uids.length === 0) {
             imap.end();
             return resolve([]);
