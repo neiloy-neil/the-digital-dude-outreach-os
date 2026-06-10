@@ -37,8 +37,8 @@ export default function HomePage() {
             <Link href="/login" className="text-sm font-medium text-[#6B7280] hover:text-[#111827] transition-colors">
               Login
             </Link>
-            <Link href="/register" className="text-sm font-medium bg-[#7C3AED] hover:bg-[#6D28D9] text-white px-5 py-2 rounded-full transition-colors shadow-sm">
-              Start Free
+            <Link href="/waitlist" className="text-sm font-medium bg-[#7C3AED] hover:bg-[#6D28D9] text-white px-5 py-2 rounded-full transition-colors shadow-sm">
+              Join Early Access
             </Link>
           </div>
 
@@ -63,8 +63,8 @@ export default function HomePage() {
         </p>
 
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
-          <Link href="/register" className="w-full sm:w-auto text-base font-semibold bg-[#7C3AED] hover:bg-[#6D28D9] text-white px-8 py-4 rounded-full transition-colors shadow-lg shadow-[#7C3AED]/20">
-            Start Free
+          <Link href="/waitlist" className="w-full sm:w-auto text-base font-semibold bg-[#7C3AED] hover:bg-[#6D28D9] text-white px-8 py-4 rounded-full transition-colors shadow-lg shadow-[#7C3AED]/20">
+            Join Early Access
           </Link>
           <a href="#how-it-works" className="w-full sm:w-auto text-base font-medium bg-white border border-[#E5E7EB] hover:border-[#7C3AED]/50 hover:bg-[#F8FAFC] text-[#111827] px-8 py-4 rounded-full transition-colors">
             See How It Works
@@ -297,8 +297,8 @@ export default function HomePage() {
         <div className="max-w-3xl mx-auto px-6">
           <h2 className="text-4xl md:text-5xl font-extrabold text-[#111827] mb-6">Start organizing your outreach before it gets messy.</h2>
           <p className="text-xl text-[#6B7280] mb-10">Import your leads, verify emails, write personalized outreach, and track every follow-up from one simple workspace.</p>
-          <Link href="/register" className="inline-flex items-center gap-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold text-lg px-8 py-4 rounded-full transition-colors shadow-lg shadow-[#7C3AED]/20">
-            Start Free <ArrowRight className="w-5 h-5" />
+          <Link href="/waitlist" className="inline-flex items-center gap-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold text-lg px-8 py-4 rounded-full transition-colors shadow-lg shadow-[#7C3AED]/20">
+            Join Early Access <ArrowRight className="w-5 h-5" />
           </Link>
         </div>
       </section>
