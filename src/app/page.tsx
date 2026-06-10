@@ -17,16 +17,15 @@ export default function HomePage() {
       {/* 1. Navbar */}
       <nav className="sticky top-0 z-50 bg-[#FFFFFF]/80 backdrop-blur-md border-b border-[#E5E7EB]">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+          <Link href="/" className="flex items-center">
             <Image 
               src="/reachmira-logo.png" 
               alt="ReachMira Logo" 
-              width={32} 
-              height={32} 
-              className="w-8 h-8 object-contain"
+              width={160} 
+              height={40} 
+              className="h-10 w-auto object-contain"
             />
-            <span className="font-bold text-xl tracking-tight text-[#111827]">ReachMira</span>
-          </div>
+          </Link>
           
           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-[#6B7280]">
             <a href="#features" className="hover:text-[#7C3AED] transition-colors">Features</a>
@@ -308,10 +307,9 @@ export default function HomePage() {
       <footer className="bg-[#F8FAFC] border-t border-[#E5E7EB] py-12">
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex flex-col items-center md:items-start">
-            <div className="flex items-center gap-2 mb-2">
-              <Image src="/reachmira-logo.png" alt="Logo" width={24} height={24} className="w-6 h-6 object-contain grayscale opacity-60" />
-              <span className="font-bold text-[#111827]">ReachMira</span>
-            </div>
+            <Link href="/" className="flex items-center mb-4">
+              <Image src="/reachmira-logo.png" alt="ReachMira Logo" width={140} height={32} className="h-8 w-auto object-contain grayscale opacity-60" />
+            </Link>
             <p className="text-sm text-[#6B7280]">Simple outreach workspace for early-stage teams.</p>
           </div>
           <div className="flex gap-6 text-sm font-medium text-[#6B7280]">
