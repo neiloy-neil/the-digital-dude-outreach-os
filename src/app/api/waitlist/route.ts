@@ -4,34 +4,49 @@ import { createClient } from '@/utils/supabase/server';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
+    
+    // Validate basics
     const email = body.email?.trim()?.toLowerCase();
+    const fullName = body.full_name?.trim();
 
     if (!email || !email.includes('@')) {
       return NextResponse.json({ error: 'Invalid email address' }, { status: 400 });
     }
+    if (!fullName) {
+      return NextResponse.json({ error: 'Full name is required' }, { status: 400 });
+    }
 
     const supabase = await createClient();
 
-    // Check if the email already exists to return a friendly message
+    // Check existing
     const { data: existing } = await supabase
-      .from('waitlist')
+      .from('waitlist_signups')
       .select('id')
       .eq('email', email)
       .single();
 
     if (existing) {
-      return NextResponse.json({ message: 'You are already on the waitlist!' });
+      return NextResponse.json({ message: 'You\'re already on the waitlist.' });
     }
 
-    // Insert new waitlist entry
+    // Insert new entry
     const { error } = await supabase
-      .from('waitlist')
-      .insert([{ email }]);
+      .from('waitlist_signups')
+      .insert([{ 
+        email,
+        full_name: fullName,
+        company_name: body.company_name?.trim() || null,
+        role: body.role?.trim() || null,
+        current_outreach_method: body.current_outreach_method?.trim() || null,
+        use_case: body.use_case?.trim() || null,
+        monthly_outreach_volume: body.monthly_outreach_volume?.trim() || null,
+        website_url: body.website_url?.trim() || null,
+        agreed_to_updates: !!body.agreed_to_updates
+      }]);
 
     if (error) {
-      // In case of race condition throwing unique constraint
       if (error.code === '23505') {
-        return NextResponse.json({ message: 'You are already on the waitlist!' });
+        return NextResponse.json({ message: 'You\'re already on the waitlist.' });
       }
       throw error;
     }
