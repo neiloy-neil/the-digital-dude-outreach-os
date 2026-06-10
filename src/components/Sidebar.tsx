@@ -14,6 +14,7 @@ import {
   Megaphone,
   Settings,
   Users,
+  Inbox,
 } from 'lucide-react';
 
 type NavItem = {
@@ -33,6 +34,7 @@ export default function Sidebar() {
   const navItems: NavItem[] = useMemo(
     () => [
       { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+      { name: 'Inbox', href: '/inbox', icon: Inbox },
       { name: 'Leads', href: '/leads', icon: Users },
       { name: 'Campaigns', href: '/campaigns', icon: Megaphone },
       { name: 'Manual Emails', href: '/manual-emails', icon: MailPlus },
@@ -59,6 +61,10 @@ export default function Sidebar() {
 
     if (href === '/campaigns') {
       return pathname === '/campaigns' || pathname.startsWith('/campaigns/');
+    }
+
+    if (href === '/inbox') {
+      return pathname === '/inbox' || pathname.startsWith('/inbox/');
     }
 
     return pathname === href || pathname.startsWith(`${href}/`);

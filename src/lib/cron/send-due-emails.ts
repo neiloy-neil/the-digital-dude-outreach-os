@@ -1,5 +1,6 @@
 import 'server-only';
 
+import { checkSendingLimits } from '@/lib/billing/limits';
 import { createServiceClient } from '@/utils/supabase/service';
 import { claimLeadsForEmailSending, getAvailableSendCapacity, getCampaignDailySendCount, incrementDailySentCount } from '@/lib/queue/queue';
 import { sendEmail } from '@/lib/mailers/send-email';
@@ -209,6 +210,12 @@ export async function sendDueEmails() {
     const accountRemaining = await getAvailableSendCapacity(emailAccount.id);
     if (accountRemaining <= 0) {
       summary.push({ campaignId: campaign.id, sent: 0, skipped: 0, failed: 0, reasons: ['Email account daily limit reached'] });
+      continue;
+    }
+
+    const billingLimits = await checkSendingLimits(supabase, campaign.user_id, 1);
+    if (!billingLimits.allowed) {
+      summary.push({ campaignId: campaign.id, sent: 0, skipped: 0, failed: 0, reasons: [`Billing limit: ${billingLimits.reason}`] });
       continue;
     }
 

@@ -85,6 +85,14 @@ const settingsCards: SettingsCard[] = [
     icon: Bot,
   },
   {
+    title: 'Billing & Subscriptions',
+    description: 'Manage your subscription plan, invoices, and limits.',
+    href: '/settings/billing',
+    tone: 'rose',
+    badge: 'Core',
+    icon: Building2,
+  },
+  {
     title: 'Suppression List',
     description: 'Manage blocked emails and domains.',
     href: '/suppression-list',

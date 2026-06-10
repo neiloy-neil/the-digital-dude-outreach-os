@@ -383,6 +383,25 @@ function checkIMAPRepliesForUser(profile: any, supabase: any): Promise<any[]> {
                         metadata: replyMetadata,
                       });
 
+                      // Insert into Inbox Messages
+                      const { error: inboxError } = await supabase.from('inbox_messages').insert({
+                        user_id: profile.id,
+                        lead_id: lead.id,
+                        campaign_id: campaignId || null,
+                        sender_email: senderEmail,
+                        recipient_email: profile.imap_user || '',
+                        subject,
+                        body_text: replyBody.bodyText,
+                        body_html: replyBody.bodyHtml,
+                        snippet: replyBody.snippet,
+                        received_at: repliedAt,
+                        status: 'unread'
+                      });
+
+                      if (inboxError) {
+                        console.error('Failed to insert into inbox_messages', inboxError);
+                      }
+
                       // Trigger Telegram Notification
                       if (profile.telegram_chat_id && profile.telegram_bot_token) {
                         const name = `${lead.first_name || ''} ${lead.last_name || ''}`.trim() || 'Someone';

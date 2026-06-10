@@ -614,11 +614,11 @@ Add filters:
 - [x] Risky emails
 - [x] Invalid emails
 - [x] Not checked emails
-- [ ] Ready to Send
-- [ ] Missing Solution Angle
-- [ ] Needs Personalization
-- [ ] Valid emails only
-- [ ] Interested
+- [x] Ready to Send
+- [x] Missing Solution Angle
+- [x] Needs Personalization
+- [x] Valid emails only
+- [x] Interested
 
 ### 5.5 Bulk actions
 
@@ -632,8 +632,8 @@ Add filters:
 - [x] Export selected
 - [x] Verify selected emails
 - [x] Deep verify selected emails
-- [ ] Mark as contacted
-- [ ] Assign to list
+- [x] Mark as contacted
+- [x] Assign to list
 
 ## Acceptance Criteria
 
@@ -646,7 +646,7 @@ Add filters:
 - [x] Imported leads show email verification status
 - [x] User can filter leads by email status
 - [x] User can bulk verify selected leads
-- [ ] Invalid/suppressed/disposable emails are visible before outreach
+- [x] Invalid/suppressed/disposable emails are visible before outreach
 
 ---
 
@@ -778,9 +778,9 @@ Show real counts:
 - [x] Leads missing pain point
 - [x] Replies waiting response
 - [x] Bounced leads to review
-- [ ] Leads needing email verification
-- [ ] Leads ready to send
-- [ ] Leads missing solution angle
+- [x] Leads needing email verification
+- [x] Leads ready to send
+- [x] Leads missing solution angle
 
 ### 7.3 CTA links
 
@@ -804,9 +804,9 @@ Show:
 - [x] Reply received
 - [x] Lead unsubscribed
 - [x] Email bounced
-- [ ] Email verified
-- [ ] Follow-up reminder due
-- [ ] Reply outcome updated
+- [x] Email verified
+- [x] Follow-up reminder due
+- [x] Reply outcome updated
 
 ## Acceptance Criteria
 
@@ -891,7 +891,7 @@ Variables:
 
 - [x] Insert template into manual email
 - [x] Use template in campaign sequence later
-- [ ] Link templates to offers
+- [x] Link templates to offers
 
 ## Acceptance Criteria
 

@@ -630,3 +630,35 @@ create index if not exists offers_user_id_idx on public.offers(user_id);
 -- Link email_templates_library to offers
 alter table public.email_templates_library add column if not exists offer_id uuid references public.offers(id) on delete set null;
 
+-- 18. Add Stripe Billing Columns to Profiles
+alter table public.profiles
+  add column if not exists stripe_customer_id text,
+  add column if not exists stripe_subscription_id text,
+  add column if not exists stripe_price_id text,
+  add column if not exists stripe_current_period_end timestamp with time zone,
+  add column if not exists subscription_status text default 'trialing',
+  add column if not exists trial_ends_at timestamp with time zone;
+
+-- 19. Inbox Messages
+create table public.inbox_messages (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  lead_id uuid references public.leads(id) on delete cascade,
+  campaign_id uuid references public.campaigns(id) on delete set null,
+  sender_email text not null,
+  recipient_email text not null,
+  subject text not null,
+  body_text text,
+  body_html text,
+  snippet text,
+  status text not null default 'unread',
+  received_at timestamp with time zone not null,
+  created_at timestamp with time zone default now() not null
+);
+
+alter table public.inbox_messages enable row level security;
+create policy "Users can manage own inbox messages" on public.inbox_messages
+  for all using (auth.uid() = user_id);
+
+create index if not exists inbox_messages_user_id_idx on public.inbox_messages(user_id);
+create index if not exists inbox_messages_lead_id_idx on public.inbox_messages(lead_id);

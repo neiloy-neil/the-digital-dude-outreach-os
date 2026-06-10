@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { checkSendingLimits } from '@/lib/billing/limits';
 import { createClient } from '@/utils/supabase/server';
 import { createServiceClient } from '@/utils/supabase/service';
 import { sendEmail } from '@/lib/mailers/send-email';
@@ -258,6 +259,11 @@ export async function POST(
     }
 
     if (mode !== 'test') {
+      const billingLimits = await checkSendingLimits(serviceSupabase, user.id, 1);
+      if (!billingLimits.allowed) {
+        return NextResponse.json({ error: billingLimits.reason }, { status: 402 });
+      }
+
       const availableCapacity = await getAvailableSendCapacity(emailAccount.id);
       if (availableCapacity <= 0) {
         return NextResponse.json(
