@@ -292,9 +292,9 @@ export async function sendDueEmails() {
         body = interpolateTemplate(sequence.body, lead, { name: senderName, email: senderEmail });
       }
 
-      const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL && !process.env.NEXT_PUBLIC_APP_URL.includes('localhost')
-        ? process.env.NEXT_PUBLIC_APP_URL
-        : 'https://reachmira.vercel.app';
+      const appBaseUrl = process.env.NODE_ENV === 'production'
+        ? 'https://reachmira.vercel.app'
+        : (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000');
       const unsubscribeUrl = `${appBaseUrl}/unsubscribe?token=${lead.unsubscribe_token}`;
       const bodyWithSignature = appendEmailSignature(body, emailAccount.config || {}, senderName, true);
       const { html, text } = buildEmailMessageBodies(bodyWithSignature, unsubscribeUrl);

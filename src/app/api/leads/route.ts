@@ -64,6 +64,7 @@ export async function GET(request: Request) {
   let query = (useListScopedServiceRead ? serviceSupabase : supabase)
     .from('leads')
     .select('*')
+    .order('last_email_sent_at', { ascending: true, nullsFirst: true })
     .order('created_at', { ascending: false });
 
   if (leadListId) {
