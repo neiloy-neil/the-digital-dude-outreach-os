@@ -159,10 +159,30 @@ export default function HomePage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.8 }}
-            className="mt-6 text-sm text-zinc-500 font-semibold uppercase tracking-widest"
+            className="mt-6 mb-20 text-sm text-zinc-500 font-semibold uppercase tracking-widest"
           >
             No credit card required
           </motion.p>
+
+          {/* Hero Mockup */}
+          <motion.div 
+            initial={{ opacity: 0, y: 100 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1, duration: 1, ease: "easeOut" as const }}
+            className="w-full max-w-6xl mx-auto relative group mt-12"
+          >
+            <div className="absolute -inset-4 bg-gradient-to-b from-fuchsia-600/30 via-cyan-600/20 to-transparent blur-3xl opacity-50 rounded-[3rem]"></div>
+            <div className="relative rounded-2xl border border-zinc-800/80 bg-zinc-900/50 p-2 md:p-4 backdrop-blur-xl shadow-2xl overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-tr from-fuchsia-500/5 to-cyan-500/5 z-10 pointer-events-none"></div>
+              <Image 
+                src="/hero_dashboard.png" 
+                alt="ReachMira Dashboard" 
+                width={1200} 
+                height={675} 
+                className="w-full h-auto rounded-xl shadow-2xl border border-zinc-800"
+              />
+            </div>
+          </motion.div>
         </main>
 
         {/* Why Manual First? */}
@@ -239,9 +259,15 @@ export default function HomePage() {
                   </div>
                 </div>
                 <div className="md:w-1/2 w-full">
-                  <motion.div whileHover={{ scale: 1.05, rotate: 2 }} className="aspect-video rounded-[2rem] bg-gradient-to-br from-zinc-800 to-zinc-900 border border-zinc-700 shadow-2xl overflow-hidden relative flex items-center justify-center group cursor-default">
-                    <Layers className="w-20 h-20 text-zinc-600 transition-transform group-hover:scale-110" />
-                    <div className="absolute inset-0 bg-gradient-to-tr from-violet-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                  <motion.div whileHover={{ scale: 1.02 }} className="rounded-[2rem] border border-zinc-800 shadow-2xl overflow-hidden relative group cursor-default">
+                    <div className="absolute inset-0 bg-gradient-to-tr from-violet-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-10 pointer-events-none" />
+                    <Image 
+                      src="/inbox_pipeline.png" 
+                      alt="Import Leads Pipeline" 
+                      width={800} 
+                      height={450} 
+                      className="w-full h-auto object-cover transform transition-transform duration-700 group-hover:scale-105"
+                    />
                   </motion.div>
                 </div>
               </motion.div>
@@ -256,9 +282,15 @@ export default function HomePage() {
                   </div>
                 </div>
                 <div className="md:w-1/2 w-full flex justify-end">
-                  <motion.div whileHover={{ scale: 1.05, rotate: -2 }} className="aspect-video w-full rounded-[2rem] bg-gradient-to-bl from-zinc-800 to-zinc-900 border border-zinc-700 shadow-2xl overflow-hidden relative flex items-center justify-center group cursor-default">
-                    <Bot className="w-20 h-20 text-zinc-600 transition-transform group-hover:scale-110" />
-                    <div className="absolute inset-0 bg-gradient-to-bl from-fuchsia-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                  <motion.div whileHover={{ scale: 1.02 }} className="w-full rounded-[2rem] border border-zinc-800 shadow-2xl overflow-hidden relative group cursor-default">
+                    <div className="absolute inset-0 bg-gradient-to-bl from-fuchsia-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-10 pointer-events-none" />
+                    <Image 
+                      src="/ai_research.png" 
+                      alt="AI Auto-Research" 
+                      width={800} 
+                      height={450} 
+                      className="w-full h-auto object-cover transform transition-transform duration-700 group-hover:scale-105"
+                    />
                   </motion.div>
                 </div>
               </motion.div>
@@ -273,9 +305,15 @@ export default function HomePage() {
                   </div>
                 </div>
                 <div className="md:w-1/2 w-full">
-                  <motion.div whileHover={{ scale: 1.05, rotate: 2 }} className="aspect-video w-full rounded-[2rem] bg-gradient-to-tr from-zinc-800 to-zinc-900 border border-zinc-700 shadow-2xl overflow-hidden relative flex items-center justify-center group cursor-default">
-                    <Clock className="w-20 h-20 text-zinc-600 transition-transform group-hover:scale-110" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-cyan-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                  <motion.div whileHover={{ scale: 1.02 }} className="w-full rounded-[2rem] border border-zinc-800 shadow-2xl overflow-hidden relative group cursor-default">
+                    <div className="absolute inset-0 bg-gradient-to-t from-cyan-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-10 pointer-events-none" />
+                    <Image 
+                      src="/inbox_pipeline.png" 
+                      alt="Send and Track Emails" 
+                      width={800} 
+                      height={450} 
+                      className="w-full h-auto object-cover transform transition-transform duration-700 group-hover:scale-105"
+                    />
                   </motion.div>
                 </div>
               </motion.div>
