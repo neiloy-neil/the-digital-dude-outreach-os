@@ -15,6 +15,7 @@ import {
   Settings,
   Users,
   Inbox,
+  ShieldAlert,
 } from 'lucide-react';
 
 type NavItem = {
@@ -30,9 +31,10 @@ export default function Sidebar() {
   const [displayName, setDisplayName] = useState<string>('ReachMira user');
   const [workspaceName, setWorkspaceName] = useState<string>('Connected workspace');
   const [emailAddress, setEmailAddress] = useState<string>('Connected workspace');
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
-  const navItems: NavItem[] = useMemo(
-    () => [
+  const navItems: NavItem[] = useMemo(() => {
+    const items = [
       { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
       { name: 'Inbox', href: '/inbox', icon: Inbox },
       { name: 'Leads', href: '/leads', icon: Users },
@@ -41,9 +43,12 @@ export default function Sidebar() {
       { name: 'Email Accounts', href: '/settings/email-accounts', icon: Mail },
       { name: 'Activity', href: '/activity', icon: Activity },
       { name: 'Settings', href: '/settings', icon: Settings },
-    ],
-    []
-  );
+    ];
+    if (isAdmin) {
+      items.push({ name: 'Admin Waitlist', href: '/admin/waitlist', icon: ShieldAlert });
+    }
+    return items;
+  }, [isAdmin]);
 
   const isNavItemActive = (href: string) => {
     if (!pathname) return false;
@@ -80,11 +85,25 @@ export default function Sidebar() {
 
       setEmailAddress(user.email || 'Connected workspace');
 
-      const { data } = await supabase
+      let { data, error } = await supabase
         .from('profiles')
-        .select('display_name, workspace_name, mailgun_from_name')
+        .select('display_name, workspace_name, mailgun_from_name, is_admin')
         .eq('id', user.id)
         .maybeSingle();
+
+      if (error) {
+        // Fallback before migration is applied
+        const { data: fallbackData } = await supabase
+          .from('profiles')
+          .select('display_name, workspace_name, mailgun_from_name')
+          .eq('id', user.id)
+          .maybeSingle();
+        data = fallbackData as any;
+      }
+
+      if (data?.is_admin) {
+        setIsAdmin(true);
+      }
 
       if (data?.workspace_name) {
         setWorkspaceName(data.workspace_name);
