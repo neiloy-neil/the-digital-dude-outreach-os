@@ -1,43 +1,10 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
-import { ArrowRight, Sparkles, Target, Clock, CheckCircle2, Bot, Layers, Send } from 'lucide-react';
+import Image from 'next/image';
+import { ArrowRight, Sparkles, Clock, Bot, Layers } from 'lucide-react';
 
 export default function HomePage() {
-  const [email, setEmail] = useState('');
-  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
-  const [message, setMessage] = useState('');
-
-  const handleJoinWaitlist = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!email) return;
-
-    setStatus('loading');
-    setMessage('');
-
-    try {
-      const res = await fetch('/api/waitlist', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
-      const data = await res.json();
-
-      if (res.ok) {
-        setStatus('success');
-        setMessage(data.message || 'Success! You have been added to the waitlist.');
-        setEmail('');
-      } else {
-        setStatus('error');
-        setMessage(data.error || data.message || 'Failed to join. Please try again.');
-      }
-    } catch (err) {
-      setStatus('error');
-      setMessage('Network error. Please try again.');
-    }
-  };
-
   return (
     <div className="min-h-screen bg-[#0A0A0A] text-zinc-100 selection:bg-violet-500/30">
       {/* Background gradients */}
@@ -49,10 +16,14 @@ export default function HomePage() {
       <div className="relative z-10">
         {/* Navigation */}
         <nav className="container mx-auto px-6 py-6 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 shadow-[0_0_20px_rgba(139,92,246,0.3)]">
-              <Sparkles className="h-4 w-4 text-white" />
-            </div>
+          <div className="flex items-center gap-3">
+            <Image 
+              src="/reachmira-logo.png" 
+              alt="ReachMira Logo" 
+              width={32} 
+              height={32} 
+              className="w-8 h-8 object-contain"
+            />
             <span className="text-xl font-bold tracking-tight text-white">ReachMira</span>
           </div>
           <Link href="/login" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">
@@ -76,32 +47,17 @@ export default function HomePage() {
             A manual-first CRM built for B2B agencies that value deep personalization over volume. Scrape websites, manage pipelines, and track follow-ups—all in one gorgeous workspace.
           </p>
 
-          <div className="w-full max-w-md relative">
+          <div className="w-full max-w-sm relative">
             <div className="absolute -inset-1 bg-gradient-to-r from-violet-500 to-teal-500 rounded-2xl blur opacity-20 transition duration-1000 group-hover:opacity-30"></div>
-            <form onSubmit={handleJoinWaitlist} className="relative flex flex-col sm:flex-row gap-3 p-2 rounded-2xl bg-zinc-900/80 border border-zinc-800 backdrop-blur-xl shadow-2xl">
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your email"
-                className="flex-1 bg-transparent px-4 py-3 text-sm text-white placeholder:text-zinc-500 outline-none"
-                disabled={status === 'loading' || status === 'success'}
-              />
-              <button
-                type="submit"
-                disabled={status === 'loading' || status === 'success'}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-6 py-3 text-sm font-semibold text-white transition hover:opacity-95 disabled:opacity-50"
+            <div className="relative p-2 rounded-2xl bg-zinc-900/80 border border-zinc-800 backdrop-blur-xl shadow-2xl">
+              <Link
+                href="/waitlist"
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-8 py-4 text-base font-semibold text-white transition hover:opacity-95"
               >
-                {status === 'loading' ? 'Joining...' : status === 'success' ? 'Joined!' : 'Join Waitlist'}
-                {status !== 'loading' && status !== 'success' && <ArrowRight className="h-4 w-4" />}
-              </button>
-            </form>
-            {message && (
-              <p className={`mt-4 text-sm font-medium ${status === 'success' ? 'text-teal-400' : 'text-rose-400'}`}>
-                {message}
-              </p>
-            )}
+                Join the Waitlist
+                <ArrowRight className="h-5 w-5" />
+              </Link>
+            </div>
           </div>
         </main>
 
