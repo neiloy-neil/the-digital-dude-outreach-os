@@ -1058,7 +1058,6 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                       { key: 'website', label: 'Website', multi: false },
                       { key: 'industry', label: 'Industry', multi: false },
                       { key: 'pain_points', label: 'Pain Points', multi: true },
-                      { key: 'solution', label: 'Solution / Target Outcome', multi: true },
                     ].map(({ key, label, multi }) => (
                       <div key={key} className={multi ? 'md:col-span-2' : ''}>
                         <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">{label}</label>
