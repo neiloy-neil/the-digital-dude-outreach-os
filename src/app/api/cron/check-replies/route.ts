@@ -209,11 +209,11 @@ function checkIMAPRepliesForUser(profile: any, supabase: any): Promise<any[]> {
           return reject(err);
         }
 
-        // Search for all messages received in the last 7 days to keep scanning fast and bounded
+        // Search for all messages (including SEEN) received in the last 7 days to keep scanning fast and bounded
         const last7Days = new Date();
         last7Days.setDate(last7Days.getDate() - 7);
 
-        imap.search([['SINCE', last7Days]], (searchErr, uids) => {
+        imap.search(['ALL', ['SINCE', last7Days]], (searchErr, uids) => {
           if (searchErr || !uids || uids.length === 0) {
             imap.end();
             return resolve([]);
@@ -242,6 +242,8 @@ function checkIMAPRepliesForUser(profile: any, supabase: any): Promise<any[]> {
                   const parsedHeaders = Imap.parseHeader(buffer);
                   from = parsedHeaders.from?.[0] || '';
                   subject = parsedHeaders.subject?.[0] || '';
+                  // Store the actual date from the email header instead of generating one later
+                  (msg as any).receivedDate = parsedHeaders.date?.[0] || new Date().toISOString();
                 } else {
                   rawBody += buffer;
                 }
@@ -291,7 +293,9 @@ function checkIMAPRepliesForUser(profile: any, supabase: any): Promise<any[]> {
                       const campaign = firstRelation(lead.campaigns as any);
                       const campaignId = owner.campaignId;
                       const campaignName = owner.campaignName || campaign?.name || 'ReachMira outreach';
-                      const repliedAt = new Date().toISOString();
+                      const receivedDateRaw = (msg as any).receivedDate;
+                      const receivedDate = receivedDateRaw ? new Date(receivedDateRaw) : new Date();
+                      const repliedAt = (isNaN(receivedDate.getTime()) ? new Date() : receivedDate).toISOString();
 
                       // Mark lead as replied
                       const { error: leadUpdateError } = await supabase
@@ -383,23 +387,33 @@ function checkIMAPRepliesForUser(profile: any, supabase: any): Promise<any[]> {
                         metadata: replyMetadata,
                       });
 
-                      // Insert into Inbox Messages
-                      const { error: inboxError } = await supabase.from('inbox_messages').insert({
-                        user_id: profile.id,
-                        lead_id: lead.id,
-                        campaign_id: campaignId || null,
-                        sender_email: senderEmail,
-                        recipient_email: profile.imap_user || '',
-                        subject,
-                        body_text: replyBody.bodyText,
-                        body_html: replyBody.bodyHtml,
-                        snippet: replyBody.snippet,
-                        received_at: repliedAt,
-                        status: 'unread'
-                      });
+                      // Insert into Inbox Messages (Deduplicate)
+                      const { data: existingMsg } = await supabase
+                        .from('inbox_messages')
+                        .select('id')
+                        .eq('lead_id', lead.id)
+                        .eq('sender_email', senderEmail)
+                        .eq('subject', subject)
+                        .maybeSingle();
 
-                      if (inboxError) {
-                        console.error('Failed to insert into inbox_messages', inboxError);
+                      if (!existingMsg) {
+                        const { error: inboxError } = await supabase.from('inbox_messages').insert({
+                          user_id: profile.id,
+                          lead_id: lead.id,
+                          campaign_id: campaignId || null,
+                          sender_email: senderEmail,
+                          recipient_email: profile.imap_user || '',
+                          subject,
+                          body_text: replyBody.bodyText,
+                          body_html: replyBody.bodyHtml,
+                          snippet: replyBody.snippet,
+                          received_at: repliedAt,
+                          status: 'unread'
+                        });
+
+                        if (inboxError) {
+                          console.error('Failed to insert into inbox_messages', inboxError);
+                        }
                       }
 
                       // Trigger Telegram Notification
