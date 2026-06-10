@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { motion } from 'framer-motion';
+import { motion, Variants } from 'framer-motion';
 import { 
   ArrowRight, Sparkles, Clock, Bot, Layers, 
   CheckCircle2, ChevronDown, ShieldCheck, Mail, 
@@ -11,12 +11,12 @@ import {
 } from 'lucide-react';
 
 // Animation Variants
-const fadeInUp = {
+const fadeInUp: Variants = {
   hidden: { opacity: 0, y: 40 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" } }
+  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" as const } }
 };
 
-const staggerContainer = {
+const staggerContainer: Variants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
@@ -24,9 +24,9 @@ const staggerContainer = {
   }
 };
 
-const bounceHover = {
+const bounceHover: Variants = {
   rest: { scale: 1 },
-  hover: { scale: 1.05, transition: { type: "spring", stiffness: 400, damping: 10 } }
+  hover: { scale: 1.05, transition: { type: "spring" as const, stiffness: 400, damping: 10 } }
 };
 
 export default function HomePage() {
