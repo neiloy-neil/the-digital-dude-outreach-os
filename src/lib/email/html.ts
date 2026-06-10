@@ -57,7 +57,7 @@ function appendUnsubscribeFooter(html: string, unsubscribeUrl: string): string {
 export function buildEmailMessageBodies(body: string, unsubscribeUrl: string) {
   const normalizedHtml = normalizeDraftHtml(body);
   const htmlWithUnsubscribe = normalizedHtml.includes('{{unsubscribe_url}}')
-    ? normalizedHtml.replace(/\{\{unsubscribe_url\}\}/g, unsubscribeUrl)
+    ? normalizedHtml.replace(/\{\{unsubscribe_url\}\}/g, `<span style="font-size:12px;color:#6b7280;display:block;margin-top:24px;">If you do not want more emails, you can <a href="${unsubscribeUrl.replace(/"/g, '&quot;')}">unsubscribe here</a>.</span>`)
     : /unsubscribe/i.test(normalizedHtml) || normalizedHtml.includes(unsubscribeUrl)
       ? normalizedHtml
       : appendUnsubscribeFooter(normalizedHtml, unsubscribeUrl);

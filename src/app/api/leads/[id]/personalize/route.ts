@@ -240,8 +240,8 @@ export async function POST(
       websiteText,
       companySummary,
       companyCacheHit: Boolean(companyCache),
-      sequenceSubject: 'Quick question',
-      sequenceBody: 'Hi {{first_name}},',
+      sequenceSubject: '',
+      sequenceBody: '',
       extraContext:
         body.customInstructions || 'Create a concise outreach email for a global lead in the library.',
     };

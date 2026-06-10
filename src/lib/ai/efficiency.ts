@@ -346,6 +346,7 @@ RULES:
 - Prefer concise, natural language.
 - If website text is missing, rely on lead and campaign context.
 - Use the lead's pain point and solution fields together when writing the personalized angle.
+- Generate a compelling, short, and highly relevant subject line tailored to the lead.
 - Keep the email conversational and low pressure.
 - The final email body must include the exact token {{unsubscribe_url}} at the very bottom.
 

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Ban, CheckCircle2, Copy, Database, Edit3, ExternalLink, History, Mail, MessageSquare, PlusCircle, Save, Send, Sparkles, WandSparkles, X, Clock3, AlertTriangle, Trash2, ShieldAlert } from 'lucide-react';
 import AppShell from '@/components/reachmira/AppShell';
+import Spinner from '@/components/reachmira/Spinner';
 import EmailVerificationBadge from '@/components/leads/EmailVerificationBadge';
 import StatusBadge from '@/components/leads/StatusBadge';
 import RichTextEditor from '@/components/leads/RichTextEditor';
@@ -15,6 +16,7 @@ import { buildEmailSignatureHtml, buildSendSignatureHtml } from '@/lib/email/sig
 import { applyTemplateVariables } from '@/lib/templates/template-helpers';
 import { EMAIL_TYPES, getLeadStatusLabel } from '@/lib/leads/status';
 import { createClient } from '@/utils/supabase/client';
+import { useToast } from '@/lib/toast/toast-context';
 import type { AuditLog, EmailAccount, Lead, SentEmail } from '@/types/database.types';
 
 type LeadDetail = Lead & {
@@ -152,8 +154,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
   const [verifyingEmail, setVerifyingEmail] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [lead, setLead] = useState<LeadDetail | null>(null);
   const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
@@ -293,7 +294,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
           reply_outcome: nextLead.reply_outcome || '',
         });
       } catch (loadError: unknown) {
-        setError(loadError instanceof Error ? loadError.message : 'Failed to load lead');
+        toast.error(loadError instanceof Error ? loadError.message : 'Failed to load lead');
       } finally {
         if (silent) setRefreshing(false);
         else setLoading(false);
@@ -309,8 +310,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
 
   const handleCheckRepliesNow = async () => {
     setCheckingReplies(true);
-    setError(null);
-    setSuccess(null);
+
 
     try {
       const response = await fetch('/api/cron/check-replies', { method: 'POST' });
@@ -320,13 +320,13 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
       }
 
       await loadLead({ silent: true });
-      setSuccess(
+      toast.success(
         (payload.repliesProcessed || 0) > 0
           ? `Inbox checked and ${payload.repliesProcessed} repl${payload.repliesProcessed === 1 ? 'y was' : 'ies were'} synced.`
           : 'Inbox checked. No new matching replies found.'
       );
     } catch (replyError: unknown) {
-      setError(replyError instanceof Error ? replyError.message : 'Failed to check replies');
+      toast.error(replyError instanceof Error ? replyError.message : 'Failed to check replies');
     } finally {
       setCheckingReplies(false);
     }
@@ -514,12 +514,10 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
 
   const copySentEmail = async (email: SentEmail) => {
     await navigator.clipboard.writeText(`Subject: ${email.subject}\n\n${getSentEmailBodyText(email)}`);
-    setSuccess('Sent email copied.');
   };
 
   const copyReply = async (reply: ReplyEvent) => {
     await navigator.clipboard.writeText(`From: ${reply.sender || 'Unknown'}\nSubject: ${reply.subject}\nReceived: ${formatDate(reply.createdAt)}\n\n${getReplyBodyText(reply) || 'No reply body available.'}`);
-    setSuccess('Reply copied.');
   };
 
   const handleUseReplyAsFollowUpContext = (reply: ReplyEvent) => {
@@ -545,7 +543,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
     }));
     setManualEmailType('reply_follow_up');
     setActiveTab('manual');
-    setSuccess('Reply loaded as follow-up context.');
+    toast.info('Reply loaded as follow-up context.');
   };
 
   const handleUseEmailAsFollowUpContext = (email: SentEmail) => {
@@ -572,19 +570,16 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
     setSelectedEmailAccountId(email.email_account_id || selectedEmailAccountId);
     setSelectedEmail(null);
     setActiveTab('manual');
-    setSuccess('Previous email loaded as follow-up context.');
+    toast.info('Previous email loaded as follow-up context.');
   };
 
   const copyPreviousEmailPrompt = async (email: SentEmail) => {
     await navigator.clipboard.writeText(buildFollowUpPrompt({ ...lead, ...form } as Partial<Lead>, email, companyContext));
-    setSuccess('Follow-up prompt copied.');
   };
 
   const handleResendEmail = async (email: SentEmail) => {
     if (!window.confirm(`Resend "${email.subject}" to ${email.recipient_email}?`)) return;
     setSending(true);
-    setError(null);
-    setSuccess(null);
     try {
       const response = await fetch(`/api/leads/${leadId}/manual-send`, {
         method: 'POST',
@@ -602,10 +597,10 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
       const payload = (await response.json()) as { error?: string; to?: string };
       if (!response.ok) throw new Error(payload.error || 'Failed to resend email');
       setSelectedEmail(null);
-      setSuccess(`Email resent to ${payload.to || email.recipient_email}.`);
+      toast.success(`Email resent to ${payload.to || email.recipient_email}.`);
       await loadLead({ silent: true });
     } catch (resendError: unknown) {
-      setError(resendError instanceof Error ? resendError.message : 'Failed to resend email');
+      toast.error(resendError instanceof Error ? resendError.message : 'Failed to resend email');
     } finally {
       setSending(false);
     }
@@ -613,8 +608,6 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
 
   const handleSaveLead = async () => {
     setSaving(true);
-    setError(null);
-    setSuccess(null);
     try {
       const nextStatus =
         form.manual_email_subject.trim() || manualEmailBodyText
@@ -640,10 +633,10 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
       });
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(payload.error || 'Failed to save lead');
-      setSuccess('Lead changes saved.');
+      toast.success('Lead changes saved.');
       await loadLead({ silent: true });
     } catch (saveError: unknown) {
-      setError(saveError instanceof Error ? saveError.message : 'Failed to save lead');
+      toast.error(saveError instanceof Error ? saveError.message : 'Failed to save lead');
     } finally {
       setSaving(false);
     }
@@ -651,8 +644,6 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
 
   const handleApproveManualEmail = async () => {
     setSaving(true);
-    setError(null);
-    setSuccess(null);
     try {
       const response = await fetch(`/api/leads/${leadId}`, {
         method: 'PATCH',
@@ -670,10 +661,10 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
       });
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(payload.error || 'Failed to approve manual email');
-      setSuccess('Manual email approved.');
+      toast.success('Manual email approved.');
       await loadLead({ silent: true });
     } catch (approveError: unknown) {
-      setError(approveError instanceof Error ? approveError.message : 'Failed to approve manual email');
+      toast.error(approveError instanceof Error ? approveError.message : 'Failed to approve manual email');
     } finally {
       setSaving(false);
     }
@@ -685,8 +676,6 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
       if (!confirmed) return;
     }
     setSaving(true);
-    setError(null);
-    setSuccess(null);
     try {
       const response = await fetch(`/api/leads/${leadId}/personalize`, {
         method: 'POST',
@@ -699,11 +688,11 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
       });
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(payload.error || 'Failed to generate AI');
-      setSuccess('AI draft refreshed.');
+      toast.success('AI draft refreshed.');
       setActiveTab('intelligence');
       await loadLead({ silent: true });
     } catch (generateError: unknown) {
-      setError(generateError instanceof Error ? generateError.message : 'Failed to generate AI');
+      toast.error(generateError instanceof Error ? generateError.message : 'Failed to generate AI');
     } finally {
       setSaving(false);
     }
@@ -717,8 +706,6 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
     }
 
     setSending(true);
-    setError(null);
-    setSuccess(null);
     try {
       const sendRequest = async (confirmVerificationRisk = false) =>
         fetch(`/api/leads/${leadId}/manual-send`, {
@@ -747,7 +734,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
       if (mode === 'send_now' && response.status === 409 && payload.requiresConfirmation) {
         const confirmedRisk = window.confirm(payload.warning?.message || payload.error || 'This email has a verification warning. Send anyway?');
         if (!confirmedRisk) {
-          setSuccess('Send canceled.');
+          toast.info('Send canceled.');
           return;
         }
 
@@ -761,11 +748,11 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
       }
 
       if (!response.ok) throw new Error(payload.error || 'Failed to send email');
-      setSuccess(mode === 'test' ? `Test email sent to ${payload.to}.` : 'Email sent successfully.');
+      toast.success(mode === 'test' ? `Test email sent to ${payload.to}.` : 'Email sent successfully.');
       setActiveTab('history');
       await loadLead({ silent: true });
     } catch (sendError: unknown) {
-      setError(sendError instanceof Error ? sendError.message : 'Failed to send email');
+      toast.error(sendError instanceof Error ? sendError.message : 'Failed to send email');
     } finally {
       setSending(false);
     }
@@ -774,7 +761,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
   const handleInsertTemplate = () => {
     const template = templateOptions.find((item) => item.id === selectedTemplateId);
     if (!template) {
-      setError('Select a template to insert.');
+      toast.error('Select a template to insert.');
       return;
     }
 
@@ -785,13 +772,11 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
       manual_email_body: normalizeDraftHtml(applyTemplateVariables(template.body || '', leadForVariables)),
       manual_email_approved: false,
     }));
-    setSuccess(`Template inserted: ${template.name}`);
+    toast.success(`Template inserted: ${template.name}`);
   };
 
   const handleSkipAi = async () => {
     setSaving(true);
-    setError(null);
-    setSuccess(null);
     try {
       const { error: updateError } = await supabase
         .from('leads')
@@ -804,10 +789,10 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
         .eq('id', leadId);
 
       if (updateError) throw updateError;
-      setSuccess('This lead has poor data. AI skipped to save credits.');
+      toast.info('This lead has poor data. AI skipped to save credits.');
       await loadLead({ silent: true });
     } catch (skipError: unknown) {
-      setError(skipError instanceof Error ? skipError.message : 'Failed to skip AI');
+      toast.error(skipError instanceof Error ? skipError.message : 'Failed to skip AI');
     } finally {
       setSaving(false);
     }
@@ -816,8 +801,6 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
   const handleMarkDoNotContact = async () => {
     if (!window.confirm('Mark this lead as do not contact?')) return;
     setSaving(true);
-    setError(null);
-    setSuccess(null);
     try {
       const response = await fetch(`/api/leads/${leadId}`, {
         method: 'PATCH',
@@ -834,10 +817,10 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
       });
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(payload.error || 'Failed to update lead');
-      setSuccess('Lead marked do not contact.');
+      toast.success('Lead marked do not contact.');
       await loadLead({ silent: true });
     } catch (markError: unknown) {
-      setError(markError instanceof Error ? markError.message : 'Failed to mark lead do not contact');
+      toast.error(markError instanceof Error ? markError.message : 'Failed to mark lead do not contact');
     } finally {
       setSaving(false);
     }
@@ -847,9 +830,6 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
     if (!lead?.id) return;
 
     setVerifyingEmail(true);
-    setError(null);
-    setSuccess(null);
-
     try {
       const response = await fetch('/api/leads/verify-bulk', {
         method: 'POST',
@@ -863,9 +843,9 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
       if (!response.ok) throw new Error(payload.error || 'Failed to verify email');
 
       await loadLead({ silent: true });
-      setSuccess('Email verification refreshed.');
+      toast.success('Email verification refreshed.');
     } catch (verifyError: unknown) {
-      setError(verifyError instanceof Error ? verifyError.message : 'Failed to verify email');
+      toast.error(verifyError instanceof Error ? verifyError.message : 'Failed to verify email');
     } finally {
       setVerifyingEmail(false);
     }
@@ -877,8 +857,6 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
     if (!confirmed) return;
 
     setSaving(true);
-    setError(null);
-    setSuccess(null);
     try {
       const response = await fetch(`/api/leads/${leadId}`, {
         method: 'DELETE',
@@ -888,7 +866,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
       router.push(backHref);
       router.refresh();
     } catch (deleteError: unknown) {
-      setError(deleteError instanceof Error ? deleteError.message : 'Failed to delete lead');
+      toast.error(deleteError instanceof Error ? deleteError.message : 'Failed to delete lead');
     } finally {
       setSaving(false);
     }
@@ -896,13 +874,11 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
 
   const handleAddToCampaign = async () => {
     if (!selectedCampaignId) {
-      setError('Select a campaign before adding this lead.');
+      toast.warning('Select a campaign before adding this lead.');
       return;
     }
 
     setSaving(true);
-    setError(null);
-    setSuccess(null);
     try {
       const response = await fetch('/api/lead-campaigns', {
         method: 'POST',
@@ -911,10 +887,10 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
       });
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(payload.error || 'Failed to add lead to campaign');
-      setSuccess('Lead added to campaign.');
+      toast.success('Lead added to campaign.');
       await loadLead({ silent: true });
     } catch (campaignError: unknown) {
-      setError(campaignError instanceof Error ? campaignError.message : 'Failed to add lead to campaign');
+      toast.error(campaignError instanceof Error ? campaignError.message : 'Failed to add lead to campaign');
     } finally {
       setSaving(false);
     }
@@ -1004,8 +980,6 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
           </div>
         </div>
 
-        {error && <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
-        {success && <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{success}</div>}
 
         {isInitialLoading ? (
           <div className="flex h-64 items-center justify-center rounded-3xl border border-[var(--border)] bg-white">
@@ -1040,7 +1014,8 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                   <div className="mb-5 flex flex-col gap-3 border-b border-[var(--border)] pb-4 sm:flex-row sm:items-center sm:justify-between">
                     <h3 className="text-base font-semibold text-zinc-950">Overview</h3>
                     <button onClick={handleSaveLead} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:opacity-50">
-                      <Save className="h-4 w-4" /> Save Lead
+                      {saving ? <Spinner size={16} className="text-white" /> : <Save className="h-4 w-4" />}
+                      {saving ? 'Saving...' : 'Save Lead'}
                     </button>
                   </div>
                   <div className="grid gap-4 md:grid-cols-2">
@@ -1111,7 +1086,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                               const d = new Date();
                               d.setDate(d.getDate() + 1);
                               setForm((current) => ({ ...current, next_follow_up_at: d.toISOString().substring(0, 16) }));
-                              setSuccess('Snoozed 1 day. Click "Save Lead" to persist.');
+                              toast.info('Snoozed 1 day. Click "Save Lead" to persist.');
                             }}
                             className="rounded-xl border border-violet-200 bg-violet-50 px-3.5 py-2.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-100"
                           >
@@ -1123,7 +1098,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                               const d = new Date();
                               d.setDate(d.getDate() + 3);
                               setForm((current) => ({ ...current, next_follow_up_at: d.toISOString().substring(0, 16) }));
-                              setSuccess('Snoozed 3 days. Click "Save Lead" to persist.');
+                              toast.info('Snoozed 3 days. Click "Save Lead" to persist.');
                             }}
                             className="rounded-xl border border-violet-200 bg-violet-50 px-3.5 py-2.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-100"
                           >
@@ -1133,7 +1108,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                             type="button"
                             onClick={() => {
                               setForm((current) => ({ ...current, next_follow_up_at: '' }));
-                              setSuccess('Follow-up cleared. Click "Save Lead" to persist.');
+                              toast.info('Follow-up cleared. Click "Save Lead" to persist.');
                             }}
                             className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
                           >
@@ -1320,10 +1295,12 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                       <h3 className="text-base font-semibold text-zinc-950">Manual Email</h3>
                       <div className="flex flex-wrap items-center gap-2">
                         <button onClick={() => handleSendManual('test')} disabled={sending} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 disabled:opacity-50">
-                          <Send className="h-4 w-4" /> Send Test
+                          {sending ? <Spinner size={16} className="text-violet-600" /> : <Send className="h-4 w-4" />}
+                          {sending ? 'Sending...' : 'Send Test'}
                         </button>
                         <button onClick={() => handleSendManual('send_now')} disabled={sending} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:opacity-50">
-                          <CheckCircle2 className="h-4 w-4" /> Send Now
+                          {sending ? <Spinner size={16} className="text-white" /> : <CheckCircle2 className="h-4 w-4" />}
+                          {sending ? 'Sending...' : 'Send Now'}
                         </button>
                         <button onClick={() => navigator.clipboard.writeText(`Subject: ${form.manual_email_subject}\n\n${manualEmailBodyText}`)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
                           <Copy className="h-4 w-4" /> Copy Email

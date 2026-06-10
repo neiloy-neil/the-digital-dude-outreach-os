@@ -6,6 +6,8 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/reachmira/AppShell';
 import PageHeader from '@/components/reachmira/PageHeader';
+import Spinner from '@/components/reachmira/Spinner';
+import { useToast } from '@/lib/toast/toast-context';
 import { createClient } from '@/utils/supabase/client';
 import {
   Settings as SettingsIcon,
@@ -143,8 +145,7 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [success, setSuccess] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const [displayName, setDisplayName] = useState('');
   const [workspaceName, setWorkspaceName] = useState('');
@@ -179,11 +180,27 @@ export default function SettingsPage() {
 
   const [testEmail, setTestEmail] = useState('');
   const [sendingTest, setSendingTest] = useState(false);
-  const [testSuccess, setTestSuccess] = useState<string | null>(null);
-  const [testError, setTestError] = useState<string | null>(null);
   const [testingImap, setTestingImap] = useState(false);
-  const [imapTestSuccess, setImapTestSuccess] = useState<string | null>(null);
-  const [imapTestError, setImapTestError] = useState<string | null>(null);
+
+  // Offers state
+  const [localOffers, setLocalOffers] = useState<any[]>([]);
+  const [offersLoading, setOffersLoading] = useState(true);
+  const [editingOfferId, setEditingOfferId] = useState<string | null>(null);
+  const [newOfferName, setNewOfferName] = useState('');
+  const [newOfferDesc, setNewOfferDesc] = useState('');
+
+  const fetchOffers = async () => {
+    const { data } = await supabase
+      .from('offers')
+      .select('*')
+      .order('created_at', { ascending: false });
+    setLocalOffers(data || []);
+    setOffersLoading(false);
+  };
+
+  useEffect(() => {
+    fetchOffers();
+  }, []);
 
   const activeTabMeta = useMemo(() => tabs.find((tab) => tab.id === activeTab) || tabs[0], [activeTab]);
 
@@ -244,8 +261,6 @@ export default function SettingsPage() {
   const handleSave = async (e?: React.FormEvent) => {
     e?.preventDefault();
     setSaving(true);
-    setSuccess(false);
-    setError(null);
 
     try {
       const {
@@ -290,10 +305,9 @@ export default function SettingsPage() {
         .eq('id', user.id);
 
       if (updateError) throw updateError;
-      setSuccess(true);
-      setTimeout(() => setSuccess(false), 3000);
+      toast.success('Settings saved successfully.');
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Error saving settings');
+      toast.error(err instanceof Error ? err.message : 'Error saving settings');
     } finally {
       setSaving(false);
     }
@@ -304,9 +318,6 @@ export default function SettingsPage() {
     if (!testEmail) return;
 
     setSendingTest(true);
-    setTestSuccess(null);
-    setTestError(null);
-
     try {
       const response = await fetch('/api/settings/test-email', {
         method: 'POST',
@@ -327,10 +338,10 @@ export default function SettingsPage() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Failed to send test email');
 
-      setTestSuccess(data.message || 'Test email dispatched successfully!');
+      toast.success(data.message || 'Test email sent successfully!');
       setTestEmail('');
     } catch (err: unknown) {
-      setTestError(err instanceof Error ? err.message : 'Error sending test email');
+      toast.error(err instanceof Error ? err.message : 'Error sending test email');
     } finally {
       setSendingTest(false);
     }
@@ -338,8 +349,6 @@ export default function SettingsPage() {
 
   const handleTestImapConnection = async () => {
     setTestingImap(true);
-    setImapTestSuccess(null);
-    setImapTestError(null);
 
     try {
       const response = await fetch('/api/settings/test-imap', {
@@ -355,9 +364,9 @@ export default function SettingsPage() {
 
       const data = (await response.json()) as { message?: string; error?: string };
       if (!response.ok) throw new Error(data.error || 'Failed to test IMAP connection');
-      setImapTestSuccess(data.message || 'IMAP connection verified successfully.');
+      toast.success(data.message || 'IMAP connection verified successfully.');
     } catch (err: unknown) {
-      setImapTestError(err instanceof Error ? err.message : 'Error testing IMAP connection');
+      toast.error(err instanceof Error ? err.message : 'Error testing IMAP connection');
     } finally {
       setTestingImap(false);
     }
@@ -487,17 +496,7 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {(error || success) && (
-            <div className="space-y-3">
-              {error && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{error}</div>}
-              {success && (
-                <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">
-                  <CheckCircle className="h-4 w-4 text-emerald-600" />
-                  Configurations saved successfully!
-                </div>
-              )}
-            </div>
-          )}
+          {/* errors/success are now shown as toasts — inline banners removed */}
 
           <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
             <div className="mb-6 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
@@ -556,26 +555,6 @@ export default function SettingsPage() {
             )}
 
             {activeTab === 'company' && (() => {
-              // Local state for offers CRUD inside settings page
-              const [localOffers, setLocalOffers] = useState<any[]>([]);
-              const [offersLoading, setOffersLoading] = useState(true);
-              const [editingOfferId, setEditingOfferId] = useState<string | null>(null);
-              const [newOfferName, setNewOfferName] = useState('');
-              const [newOfferDesc, setNewOfferDesc] = useState('');
-
-              const fetchOffers = async () => {
-                const { data } = await supabase
-                  .from('offers')
-                  .select('*')
-                  .order('created_at', { ascending: false });
-                setLocalOffers(data || []);
-                setOffersLoading(false);
-              };
-
-              useEffect(() => {
-                fetchOffers();
-              }, []);
-
               const handleAddOffer = async (e: React.MouseEvent) => {
                 e.preventDefault();
                 if (!newOfferName.trim()) return;
@@ -830,17 +809,9 @@ export default function SettingsPage() {
                   <p className="mt-1 text-teal-800/80">Use port 993 with SSL/TLS for most inboxes. Gmail and Microsoft accounts often require an app password, not your normal login password.</p>
                 </div>
 
-                {imapTestError && <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{imapTestError}</div>}
-                {imapTestSuccess && (
-                  <div className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">
-                    <CheckCircle className="h-4 w-4 text-emerald-600" />
-                    {imapTestSuccess}
-                  </div>
-                )}
-
                 <div className="mt-4 flex flex-wrap items-center gap-3">
                   <button type="button" onClick={handleTestImapConnection} disabled={testingImap || !imapHost || !imapUser || !imapPass} className="inline-flex items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-4 py-2.5 text-sm font-semibold text-teal-700 transition hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-50">
-                    {testingImap ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Inbox className="h-4 w-4" />}
+                    {testingImap ? <Spinner size={16} className="text-teal-600" /> : <Inbox className="h-4 w-4" />}
                     {testingImap ? 'Testing IMAP...' : 'Test IMAP Connection'}
                   </button>
                   <p className="text-xs text-zinc-500">Save after a successful test so the reply-checking cron can use these credentials.</p>
@@ -889,11 +860,9 @@ export default function SettingsPage() {
                     <label className="block text-xs font-semibold uppercase text-zinc-500">Recipient Email Address</label>
                     <input type="email" required value={testEmail} onChange={(e) => setTestEmail(e.target.value)} placeholder="receiver@example.com" className={inputClass} />
                   </div>
-                  {testError && <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">{testError}</div>}
-                  {testSuccess && <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-700">{testSuccess}</div>}
                   <button type="button" onClick={(event) => void handleSendTestEmail(event as unknown as React.FormEvent)} disabled={sendingTest || !testEmail} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-6 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-50">
-                    {sendingTest ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
-                    {sendingTest ? 'Sending test...' : 'Send Test Email'}
+                    {sendingTest ? <Spinner size={16} className="text-violet-500" /> : <Mail className="h-4 w-4" />}
+                    {sendingTest ? 'Sending...' : 'Send Test Email'}
                   </button>
                 </div>
               </div>
@@ -907,7 +876,7 @@ export default function SettingsPage() {
                 <p className="text-xs text-zinc-500">Applies changes across all tabs. Test actions can be run before or after saving.</p>
               </div>
               <button type="submit" disabled={saving} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-6 py-2.5 font-semibold text-white shadow-lg shadow-violet-600/20 transition hover:opacity-95 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50">
-                {saving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {saving ? <Spinner size={16} className="text-white" /> : <Save className="h-4 w-4" />}
                 {saving ? 'Saving...' : 'Save Settings'}
               </button>
             </div>

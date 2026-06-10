@@ -223,6 +223,7 @@ export async function PATCH(
         ai_outreach_strategy: payload.ai_outreach_strategy || null,
         ai_personalized_first_line: payload.ai_personalized_first_line || null,
         ai_solution_angle: payload.ai_solution_angle || null,
+        recommended_offer: payload.recommended_offer || null,
         lead_owner: payload.lead_owner || null,
         deal_size: payload.deal_size ? Number(payload.deal_size) : null,
         pipeline_stage: payload.pipeline_stage || 'New',

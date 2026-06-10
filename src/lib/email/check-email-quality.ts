@@ -37,7 +37,10 @@ export function checkEmailQuality(input: {
     issues.push({ severity: 'warning', message: 'No unsubscribe language found. ReachMira will append it on send.' });
   }
 
-  if (VARIABLE_PATTERN.test(combinedBody) || VARIABLE_PATTERN.test(subject)) {
+  const bodyWithoutUnsubscribe = combinedBody.replace(/\{\{unsubscribe_url\}\}/gi, '');
+  const subjectWithoutUnsubscribe = subject.replace(/\{\{unsubscribe_url\}\}/gi, '');
+
+  if (VARIABLE_PATTERN.test(bodyWithoutUnsubscribe) || VARIABLE_PATTERN.test(subjectWithoutUnsubscribe)) {
     issues.push({ severity: 'error', message: 'Unreplaced template variables are still present.' });
   }
 

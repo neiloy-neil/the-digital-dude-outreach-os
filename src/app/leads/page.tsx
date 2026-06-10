@@ -13,7 +13,9 @@ import AppShell from '@/components/reachmira/AppShell';
 import PageHeader from '@/components/reachmira/PageHeader';
 import EmptyState from '@/components/reachmira/EmptyState';
 import QualityScoreBadge from '@/components/reachmira/QualityScoreBadge';
+import Spinner from '@/components/reachmira/Spinner';
 import { getLeadReadiness } from '@/lib/leads/library';
+import { useToast } from '@/lib/toast/toast-context';
 
 type LeadRow = {
   id: string;
@@ -119,6 +121,9 @@ function LeadsPageContent() {
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(12);
   const [error, setError] = useState<string | null>(null);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [savingView, setSavingView] = useState(false);
+  const toast = useToast();
 
   // Saved Views State
   const [savedViews, setSavedViews] = useState<Array<{ id: string; name: string; filters: Record<string, unknown>; is_default: boolean }>>([]);
@@ -278,10 +283,11 @@ function LeadsPageContent() {
       setLeadLists(Array.isArray(leadListsResponse.data?.leadLists) ? leadListsResponse.data.leadLists : []);
       setCampaignId(campaignResponse.data?.[0]?.id || '');
     } catch (loadError: unknown) {
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load leads');
+      toast.error(loadError instanceof Error ? loadError.message : 'Failed to load leads');
     } finally {
       setLoading(false);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiStatusFilter, contactGuardFilter, countryFilter, emailStatusFilter, emailTypeFilter, followUpDueFilter, industryFilter, lastContactedFrom, lastContactedTo, leadListFilter, missingPainFilter, missingSolutionFilter, notContactedFilter, priorityFilter, readinessFilter, repliedFilter, search, statusFilter, supabase, followUpStageFilter, tagFilter]);
 
   useEffect(() => {
@@ -324,39 +330,45 @@ function LeadsPageContent() {
     const confirmed = window.confirm(`Apply "${label}" to ${selected.length} selected lead${selected.length === 1 ? '' : 's'}?`);
     if (!confirmed) return;
 
-    setError(null);
+    setBulkLoading(true);
+    try {
+      if (action === 'verify_selected' || action === 'deep_verify_selected') {
+        const response = await fetch('/api/leads/verify-bulk', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lead_ids: selected,
+            checkMx: action === 'deep_verify_selected',
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          toast.error(payload.error || 'Bulk verification failed');
+          return;
+        }
+        const s = payload.summary;
+        toast.success(`Verified ${s?.total ?? selected.length} leads — ${s?.valid ?? 0} valid, ${s?.unknown ?? 0} unknown.`);
+        setSelected([]);
+        await loadData();
+        return;
+      }
 
-    if (action === 'verify_selected' || action === 'deep_verify_selected') {
-      const response = await fetch('/api/leads/verify-bulk', {
+      const response = await fetch('/api/leads/bulk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          lead_ids: selected,
-          checkMx: action === 'deep_verify_selected',
-        }),
+        body: JSON.stringify({ action, leadIds: selected, campaignId, ...extras }),
       });
       const payload = await response.json();
       if (!response.ok) {
-        setError(payload.error || 'Bulk verification failed');
+        toast.error(payload.error || 'Bulk update failed');
         return;
       }
+      toast.success(`Applied "${label}" to ${selected.length} lead${selected.length === 1 ? '' : 's'}.`);
       setSelected([]);
       await loadData();
-      return;
+    } finally {
+      setBulkLoading(false);
     }
-
-    const response = await fetch('/api/leads/bulk', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, leadIds: selected, campaignId, ...extras }),
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      setError(payload.error || 'Bulk update failed');
-      return;
-    }
-    setSelected([]);
-    await loadData();
   };
 
   const exportSelectedLeads = () => {
@@ -411,6 +423,7 @@ function LeadsPageContent() {
 
   const saveCurrentView = async () => {
     if (!newViewName.trim()) return;
+    setSavingView(true);
     try {
       const filters = {
         search,
@@ -439,12 +452,17 @@ function LeadsPageContent() {
       });
 
       if (response.ok) {
+        toast.success(`View "${newViewName}" saved.`);
         setNewViewName('');
         setShowSaveViewModal(false);
         await loadSavedViews();
+      } else {
+        toast.error('Failed to save view.');
       }
     } catch {
-      // ignore
+      toast.error('Failed to save view.');
+    } finally {
+      setSavingView(false);
     }
   };
 
@@ -488,7 +506,7 @@ function LeadsPageContent() {
         }
       />
 
-      {error && <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
+      {/* errors are now shown as toasts — inline banner removed */}
 
       {/* Saved Views Preset Bar */}
       <div className="mb-6 rounded-3xl border border-[var(--border)] bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.02)]">
@@ -629,9 +647,11 @@ function LeadsPageContent() {
               </button>
               <button
                 onClick={saveCurrentView}
-                className="rounded-xl bg-violet-600 px-4 py-2 text-xs font-semibold text-white hover:bg-violet-700"
+                disabled={savingView}
+                className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-70 disabled:cursor-not-allowed"
               >
-                Save View
+                {savingView && <Spinner size={12} className="text-white" />}
+                {savingView ? 'Saving...' : 'Save View'}
               </button>
             </div>
           </div>
@@ -911,18 +931,30 @@ function LeadsPageContent() {
 
         {selected.length > 0 && (
           <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]/60 p-3">
-            <span className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-400">{selected.length} selected</span>
-            <button onClick={() => runBulkAction('mark_interested')} className="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 cursor-pointer">Mark Interested</button>
-            <button onClick={() => runBulkAction('mark_not_interested')} className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 cursor-pointer">Mark Not Interested</button>
-            <button onClick={() => runBulkAction('mark_do_not_contact')} className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 cursor-pointer">Mark Do Not Contact</button>
-            <button onClick={() => runBulkAction('mark_excluded')} className="rounded-xl bg-zinc-100 px-3 py-2 text-xs font-semibold text-zinc-700 cursor-pointer">Mark Excluded</button>
-            <button onClick={() => runBulkAction('mark_contacted')} className="rounded-xl bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 cursor-pointer">Mark as Contacted</button>
-            <button onClick={() => runBulkAction('add_to_campaign')} className="rounded-xl bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 cursor-pointer">Add to Campaign</button>
-            <button onClick={() => runBulkAction('verify_selected')} className="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 cursor-pointer">Verify Emails</button>
-            <button onClick={() => runBulkAction('deep_verify_selected')} className="rounded-xl bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-700 cursor-pointer">Deep Verify</button>
+            <span className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-400">
+              {bulkLoading ? (
+                <span className="inline-flex items-center gap-1.5"><Spinner size={12} className="text-violet-500" /> Processing...</span>
+              ) : (
+                `${selected.length} selected`
+              )}
+            </span>
+            <button onClick={() => runBulkAction('mark_interested')} disabled={bulkLoading} className="rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">Mark Interested</button>
+            <button onClick={() => runBulkAction('mark_not_interested')} disabled={bulkLoading} className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">Mark Not Interested</button>
+            <button onClick={() => runBulkAction('mark_do_not_contact')} disabled={bulkLoading} className="rounded-xl bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">Mark Do Not Contact</button>
+            <button onClick={() => runBulkAction('mark_excluded')} disabled={bulkLoading} className="rounded-xl bg-zinc-100 px-3 py-2 text-xs font-semibold text-zinc-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">Mark Excluded</button>
+            <button onClick={() => runBulkAction('mark_contacted')} disabled={bulkLoading} className="rounded-xl bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">Mark as Contacted</button>
+            <button onClick={() => runBulkAction('add_to_campaign')} disabled={bulkLoading} className="rounded-xl bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">Add to Campaign</button>
+            <button onClick={() => runBulkAction('verify_selected')} disabled={bulkLoading} className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+              {bulkLoading ? <Spinner size={12} className="text-emerald-600" /> : null}
+              Verify Emails
+            </button>
+            <button onClick={() => runBulkAction('deep_verify_selected')} disabled={bulkLoading} className="inline-flex items-center gap-1.5 rounded-xl bg-sky-50 px-3 py-2 text-xs font-semibold text-sky-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
+              {bulkLoading ? <Spinner size={12} className="text-sky-600" /> : null}
+              Deep Verify
+            </button>
             <div className="flex items-center gap-2 rounded-xl bg-white px-2 py-1 ring-1 ring-[var(--border)]">
               <input value={bulkTag} onChange={(e) => setBulkTag(e.target.value)} placeholder="Tag" className="w-28 bg-transparent px-2 py-1 text-xs outline-none placeholder:text-zinc-400" />
-              <button onClick={() => runBulkAction('add_tag', { tag: bulkTag })} className="rounded-lg bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-700 cursor-pointer">Add Tag</button>
+              <button onClick={() => runBulkAction('add_tag', { tag: bulkTag })} disabled={bulkLoading} className="rounded-lg bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">Add Tag</button>
             </div>
             <div className="flex items-center gap-2 rounded-xl bg-white px-2 py-1 ring-1 ring-[var(--border)]">
               <select value={bulkPriority} onChange={(e) => setBulkPriority(e.target.value)} className="bg-transparent px-2 py-1 text-xs text-zinc-700 outline-none">
@@ -931,20 +963,21 @@ function LeadsPageContent() {
                 <option value="medium">Medium</option>
                 <option value="high">High</option>
               </select>
-              <button onClick={() => runBulkAction('change_priority', { priority: bulkPriority })} className="rounded-lg bg-sky-50 px-2.5 py-1.5 text-xs font-semibold text-sky-700 cursor-pointer">Change Priority</button>
+              <button onClick={() => runBulkAction('change_priority', { priority: bulkPriority })} disabled={bulkLoading} className="rounded-lg bg-sky-50 px-2.5 py-1.5 text-xs font-semibold text-sky-700 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">Change Priority</button>
             </div>
             <div className="flex items-center gap-2 rounded-xl bg-white px-2 py-1 ring-1 ring-[var(--border)]">
               <select value={bulkListId} onChange={(e) => setBulkListId(e.target.value)} className="bg-transparent px-2 py-1 text-xs text-zinc-700 outline-none">
                 <option value="">-- Select List --</option>
                 {leadLists.map((list) => <option key={list.id} value={list.id}>{list.name}</option>)}
               </select>
-              <button onClick={() => runBulkAction('assign_to_list', { leadListId: bulkListId })} disabled={!bulkListId} className="rounded-lg bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-700 disabled:opacity-50 cursor-pointer">Assign to List</button>
+              <button onClick={() => runBulkAction('assign_to_list', { leadListId: bulkListId })} disabled={!bulkListId || bulkLoading} className="rounded-lg bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-700 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed">Assign to List</button>
             </div>
-            <button onClick={exportSelectedLeads} className="inline-flex items-center gap-1 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-zinc-700 ring-1 ring-[var(--border)] cursor-pointer">
+            <button onClick={exportSelectedLeads} disabled={bulkLoading} className="inline-flex items-center gap-1 rounded-xl bg-white px-3 py-2 text-xs font-semibold text-zinc-700 ring-1 ring-[var(--border)] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
               <Download className="h-3.5 w-3.5" /> Export Selected
             </button>
           </div>
         )}
+
       </section>
 
       <section className="mt-6 rounded-3xl border border-[var(--border)] bg-white shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
