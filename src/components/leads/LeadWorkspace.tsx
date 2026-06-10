@@ -1676,7 +1676,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
         ) : (
           <div className="rounded-3xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-700">
             <div className="font-semibold text-rose-800">Lead could not be loaded</div>
-            <p className="mt-2 text-rose-700/80">{error || 'Please go back and try again.'}</p>
+            <p className="mt-2 text-rose-700/80">Please go back and try again.</p>
           </div>
         )}
 
