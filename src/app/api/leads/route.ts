@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { createServiceClient } from '@/utils/supabase/service';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
-import { calculateLeadQuality } from '@/lib/leads/library';
+import { calculateLeadQuality, getLeadReadiness } from '@/lib/leads/library';
 import { getFollowUpStage, isBlockedLeadStatus, isRepliedStatus } from '@/lib/leads/status';
 import { isMissingTableError } from '@/lib/supabase/schema-errors';
 
@@ -30,6 +30,7 @@ export async function GET(request: Request) {
   const filter = url.searchParams.get('filter');
   const missing = url.searchParams.get('missing');
   const contacted = url.searchParams.get('contacted');
+  const readiness = url.searchParams.get('readiness');
   const leadListId = url.searchParams.get('leadListId');
   const lastEmailType = url.searchParams.get('lastEmailType');
   const replied = url.searchParams.get('replied');
@@ -197,6 +198,10 @@ export async function GET(request: Request) {
       return false;
     }
 
+    if (missing === 'solution_angle' && (String(lead.solution || '').trim() || String(lead.recommended_offer || '').trim())) {
+      return false;
+    }
+
     if (contacted === 'false' && (lead.last_email_sent_at || lead.last_contacted_at || lead.last_contacted || Number(lead.emails_sent_count || 0) > 0)) {
       return false;
     }
@@ -210,6 +215,10 @@ export async function GET(request: Request) {
     }
 
     if (unsubscribed === 'yes' && lead.status !== 'unsubscribed') {
+      return false;
+    }
+
+    if (readiness && readiness !== 'all' && getLeadReadiness(lead) !== readiness) {
       return false;
     }
 

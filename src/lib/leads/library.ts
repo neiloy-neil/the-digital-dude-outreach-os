@@ -33,7 +33,15 @@ export const LEAD_DESTINATION_FIELDS = [
 ] as const;
 
 export type LeadQualityLabel = 'poor' | 'fair' | 'good' | 'excellent';
-export type LeadReadiness = 'Not Ready' | 'Needs Data' | 'AI Ready' | 'Approved' | 'Ready to Send' | 'Sent' | 'Replied' | 'Do Not Contact';
+export type LeadReadiness =
+  | 'ready_to_send'
+  | 'needs_email_verification'
+  | 'missing_pain_point'
+  | 'missing_solution_angle'
+  | 'needs_personalization'
+  | 'follow_up_due'
+  | 'already_contacted'
+  | 'do_not_contact';
 
 export function parseCSVLine(line: string): string[] {
   const result: string[] = [];
@@ -109,28 +117,71 @@ export function calculateLeadQuality(lead: {
   return { score, label };
 }
 
-export function getLeadReadiness(params: {
+export function getLeadReadiness(lead: {
   status?: string | null;
-  aiStatus?: string | null;
-  approvalStatus?: string | null;
-  manualApproved?: boolean | null;
-  unsubscribed?: boolean | null;
-  bounced?: boolean | null;
+  email_verification_status?: string | null;
+  pain_points?: string | null;
+  solution?: string | null;
+  recommended_offer?: string | null;
+  manual_email_subject?: string | null;
+  manual_email_body?: string | null;
+  manual_email_approved?: boolean | null;
+  emails_sent_count?: number | null;
+  next_follow_up_at?: string | null;
+  next_follow_up_date?: string | null;
+  next_email_at?: string | null;
 }): LeadReadiness {
-  if (params.unsubscribed || params.bounced) return 'Do Not Contact';
+  const status = String(lead.status || '').toLowerCase();
+  
+  // 1. Do Not Contact
   if (
-    ['mail_sent', 'manual_email_sent', 'follow_up_1_sent', 'follow_up_2_sent', 'follow_up_3_sent', 'sent', 'manually_sent'].includes(
-      String(params.status || '')
-    )
+    ['do_not_contact', 'unsubscribed', 'bounced', 'excluded'].includes(status)
   ) {
-    return 'Sent';
+    return 'do_not_contact';
   }
-  if (params.status === 'replied') return 'Replied';
-  if (params.status === 'email_approved' || params.approvalStatus === 'approved' || params.manualApproved) return 'Ready to Send';
-  if (params.aiStatus === 'generated' || params.aiStatus === 'edited') return 'AI Ready';
-  if (params.aiStatus === 'approved') return 'Approved';
-  if (params.aiStatus === 'failed') return 'Needs Data';
-  return 'Not Ready';
+
+  // 2. Follow-up Due
+  const nextFollowUp = lead.next_follow_up_at || lead.next_follow_up_date || lead.next_email_at;
+  const hasSent = lead.emails_sent_count && lead.emails_sent_count > 0;
+  const isSentStatus = ['mail_sent', 'manual_email_sent', 'follow_up_1_sent', 'follow_up_2_sent', 'follow_up_3_sent', 'sent', 'manually_sent'].includes(status);
+  
+  if ((hasSent || isSentStatus) && nextFollowUp && new Date(nextFollowUp).getTime() <= Date.now() && status !== 'replied') {
+    return 'follow_up_due';
+  }
+
+  // 3. Already Contacted
+  if (hasSent || isSentStatus || status === 'replied') {
+    return 'already_contacted';
+  }
+
+  // 4. Needs Email Verification
+  if (
+    !lead.email_verification_status ||
+    ['not_checked', 'unknown', 'failed'].includes(lead.email_verification_status)
+  ) {
+    return 'needs_email_verification';
+  }
+
+  // 5. Missing Pain Point
+  if (!lead.pain_points || !lead.pain_points.trim()) {
+    return 'missing_pain_point';
+  }
+
+  // 6. Missing Solution Angle
+  if ((!lead.solution || !lead.solution.trim()) && (!lead.recommended_offer || !lead.recommended_offer.trim())) {
+    return 'missing_solution_angle';
+  }
+
+  // 7. Needs Personalization
+  const hasPersonalizedDraft = lead.manual_email_subject && lead.manual_email_body;
+  const isApproved = lead.manual_email_approved || status === 'email_approved';
+  
+  if (!hasPersonalizedDraft || !isApproved) {
+    return 'needs_personalization';
+  }
+
+  // 8. Ready to Send
+  return 'ready_to_send';
 }
 
 export function dedupeLeadRows(rows: Record<string, unknown>[]) {

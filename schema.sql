@@ -28,6 +28,12 @@ create table public.profiles (
   smtp_port integer,
   smtp_user text,
   smtp_pass text,
+  display_name text,
+  workspace_name text,
+  role_title text,
+  phone text,
+  timezone text,
+  avatar_url text,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
@@ -239,8 +245,8 @@ create table public.leads (
   next_email_at timestamp with time zone,
   last_email_sent_at timestamp with time zone,
   processing_started_at timestamp with time zone,
-  processing_error text,
   unsubscribe_token text not null default encode(gen_random_bytes(16), 'hex') unique,
+  reply_outcome text,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
@@ -565,3 +571,62 @@ create index if not exists lead_campaigns_campaign_id_idx on public.lead_campaig
 create index if not exists outbox_scheduled_at_status_idx on public.outbox(scheduled_at, status);
 create index if not exists activity_logs_campaign_id_idx on public.activity_logs(campaign_id);
 create index if not exists suppressions_user_id_email_idx on public.suppressions(user_id, email);
+
+-- 15. Email Templates Library Table
+create table public.email_templates_library (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  name text not null,
+  category text,
+  subject text not null,
+  body text not null,
+  offer_type text,
+  is_default boolean default false not null,
+  created_at timestamp with time zone default now() not null,
+  updated_at timestamp with time zone default now() not null
+);
+
+alter table public.email_templates_library enable row level security;
+create policy "Users can manage own email templates" on public.email_templates_library
+  for all using (auth.uid() = user_id);
+
+create index if not exists email_templates_library_user_id_idx on public.email_templates_library(user_id);
+create index if not exists email_templates_library_category_idx on public.email_templates_library(category);
+
+-- 16. Saved Views Table
+create table public.saved_views (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  name text not null,
+  filters jsonb default '{}'::jsonb not null,
+  is_default boolean default false not null,
+  created_at timestamp with time zone default now() not null,
+  updated_at timestamp with time zone default now() not null
+);
+
+alter table public.saved_views enable row level security;
+create policy "Users can manage own saved views" on public.saved_views
+  for all using (auth.uid() = user_id);
+
+create index if not exists saved_views_user_id_idx on public.saved_views(user_id);
+
+-- 17. Offers Table
+create table public.offers (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete cascade not null,
+  name text not null,
+  description text,
+  details text,
+  created_at timestamp with time zone default now() not null,
+  updated_at timestamp with time zone default now() not null
+);
+
+alter table public.offers enable row level security;
+create policy "Users can manage own offers" on public.offers
+  for all using (auth.uid() = user_id);
+
+create index if not exists offers_user_id_idx on public.offers(user_id);
+
+-- Link email_templates_library to offers
+alter table public.email_templates_library add column if not exists offer_id uuid references public.offers(id) on delete set null;
+

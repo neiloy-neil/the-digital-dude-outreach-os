@@ -24,9 +24,10 @@ import {
   Send,
   Bell,
   TestTube2,
+  User,
 } from 'lucide-react';
 
-type SettingsTab = 'company' | 'sending' | 'replies' | 'ai' | 'notifications' | 'testing';
+type SettingsTab = 'profile' | 'company' | 'sending' | 'replies' | 'ai' | 'notifications' | 'testing';
 
 type SettingsCard = {
   title: string;
@@ -39,6 +40,7 @@ type SettingsCard = {
 };
 
 const tabs: Array<{ id: SettingsTab; label: string; description: string; icon: typeof SettingsIcon }> = [
+  { id: 'profile', label: 'User Profile', description: 'Personal and workspace identity', icon: User },
   { id: 'company', label: 'Company Context', description: 'Offers, services, and proof points', icon: Building2 },
   { id: 'sending', label: 'Sending', description: 'Mailgun and legacy SMTP', icon: Send },
   { id: 'replies', label: 'Reply Detection', description: 'IMAP inbox scanning', icon: Inbox },
@@ -48,6 +50,14 @@ const tabs: Array<{ id: SettingsTab; label: string; description: string; icon: t
 ];
 
 const settingsCards: SettingsCard[] = [
+  {
+    title: 'User Profile',
+    description: 'Update display name, role/title, and timezone settings.',
+    href: '#profile',
+    tone: 'violet',
+    badge: 'Core',
+    icon: User,
+  },
   {
     title: 'Company Context',
     description: 'Save your offers, services, and proof points for better copied prompts.',
@@ -87,15 +97,6 @@ const settingsCards: SettingsCard[] = [
     tone: 'violet',
     badge: 'Beta',
     icon: Sparkles,
-  },
-  {
-    title: 'Sending Rules',
-    description: 'Control follow-ups and send limits.',
-    href: '/settings/sending-rules',
-    tone: 'zinc',
-    badge: 'Coming soon',
-    icon: SlidersHorizontal,
-    disabled: true,
   },
 ];
 
@@ -139,11 +140,19 @@ function SectionHeader({
 
 export default function SettingsPage() {
   const supabase = createClient();
-  const [activeTab, setActiveTab] = useState<SettingsTab>('company');
+  const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [displayName, setDisplayName] = useState('');
+  const [workspaceName, setWorkspaceName] = useState('');
+  const [roleTitle, setRoleTitle] = useState('');
+  const [phone, setPhone] = useState('');
+  const [timezone, setTimezone] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [accountEmail, setAccountEmail] = useState('');
 
   const [mailgunApiKey, setMailgunApiKey] = useState('');
   const [mailgunDomain, setMailgunDomain] = useState('');
@@ -186,10 +195,19 @@ export default function SettingsPage() {
         } = await supabase.auth.getUser();
         if (!user) return;
 
+        setAccountEmail(user.email || '');
+
         const { data, error: profileError } = await supabase.from('profiles').select('*').eq('id', user.id).single();
         if (profileError) throw profileError;
 
         if (data) {
+          setDisplayName(data.display_name || '');
+          setWorkspaceName(data.workspace_name || '');
+          setRoleTitle(data.role_title || '');
+          setPhone(data.phone || '');
+          setTimezone(data.timezone || '');
+          setAvatarUrl(data.avatar_url || '');
+
           setMailgunApiKey(data.mailgun_api_key || '');
           setMailgunDomain(data.mailgun_domain || '');
           setMailgunFromEmail(data.mailgun_from_email || '');
@@ -238,6 +256,13 @@ export default function SettingsPage() {
       const { error: updateError } = await supabase
         .from('profiles')
         .update({
+          display_name: displayName || null,
+          workspace_name: workspaceName || null,
+          role_title: roleTitle || null,
+          phone: phone || null,
+          timezone: timezone || null,
+          avatar_url: avatarUrl || null,
+
           mailgun_api_key: mailgunApiKey || null,
           mailgun_domain: mailgunDomain || null,
           mailgun_from_email: mailgunFromEmail || null,
@@ -390,7 +415,15 @@ export default function SettingsPage() {
 
     if (card.href === '#company-context') {
       return (
-        <button key={card.title} type="button" onClick={() => setActiveTab('company')} className="block text-left">
+        <button key={card.title} type="button" onClick={() => setActiveTab('company')} className="block text-left w-full">
+          {cardContent}
+        </button>
+      );
+    }
+
+    if (card.href === '#profile') {
+      return (
+        <button key={card.title} type="button" onClick={() => setActiveTab('profile')} className="block text-left w-full">
           {cardContent}
         </button>
       );
@@ -477,55 +510,242 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            {activeTab === 'company' && (
-              <div id="company-context">
+            {activeTab === 'profile' && (
+              <div id="profile">
                 <SectionHeader
-                  icon={Building2}
-                  title="Company Prompt Context"
-                  description="Used when you copy lead context or follow-up prompts, so AI has your company, offers, and proof points."
-                  badge="Prompt memory"
-                  tone="teal"
+                  icon={User}
+                  title="User Profile & Workspace"
+                  description="Customize your personal details and workspace settings."
+                  badge="Workspace Identity"
+                  tone="violet"
                 />
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
-                    <label className="block text-xs font-semibold uppercase text-zinc-500">Company Name</label>
-                    <input type="text" value={outreachCompanyName} onChange={(e) => setOutreachCompanyName(e.target.value)} placeholder="ReachMira" className={tealInputClass} />
+                    <label className="block text-xs font-semibold uppercase text-zinc-500">Display Name</label>
+                    <input type="text" value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="John Doe" className={inputClass} />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold uppercase text-zinc-500">Website</label>
-                    <input type="text" value={outreachCompanyWebsite} onChange={(e) => setOutreachCompanyWebsite(e.target.value)} placeholder="https://yourcompany.com" className={tealInputClass} />
-                  </div>
-                </div>
-                <div className="mt-4 grid gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold uppercase text-zinc-500">What Your Company Does</label>
-                    <textarea rows={3} value={outreachCompanyDescription} onChange={(e) => setOutreachCompanyDescription(e.target.value)} placeholder="Short description of your company, positioning, and the kind of work you do." className={tealInputClass} />
+                    <label className="block text-xs font-semibold uppercase text-zinc-500">Workspace Name</label>
+                    <input type="text" value={workspaceName} onChange={(e) => setWorkspaceName(e.target.value)} placeholder="John's Outreach Workspace" className={inputClass} />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold uppercase text-zinc-500">Offers and Services</label>
-                    <textarea rows={4} value={outreachOffersServices} onChange={(e) => setOutreachOffersServices(e.target.value)} placeholder="Example: Custom web apps, AI automation, CRM workflows, lead generation systems, website optimization." className={tealInputClass} />
+                    <label className="block text-xs font-semibold uppercase text-zinc-500">Role / Title</label>
+                    <input type="text" value={roleTitle} onChange={(e) => setRoleTitle(e.target.value)} placeholder="Growth Marketer" className={inputClass} />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold uppercase text-zinc-500">Value Proposition</label>
-                    <textarea rows={3} value={outreachValueProposition} onChange={(e) => setOutreachValueProposition(e.target.value)} placeholder="What outcome do you help customers create? What changes after they work with you?" className={tealInputClass} />
+                    <label className="block text-xs font-semibold uppercase text-zinc-500">Phone / WhatsApp</label>
+                    <input type="text" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+1 (555) 019-2834" className={inputClass} />
                   </div>
                 </div>
                 <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
-                    <label className="block text-xs font-semibold uppercase text-zinc-500">Best-Fit Customers</label>
-                    <textarea rows={3} value={outreachTargetCustomers} onChange={(e) => setOutreachTargetCustomers(e.target.value)} placeholder="Industries, company sizes, roles, or situations where your offer fits best." className={tealInputClass} />
+                    <label className="block text-xs font-semibold uppercase text-zinc-500">Timezone</label>
+                    <input type="text" value={timezone} onChange={(e) => setTimezone(e.target.value)} placeholder="America/New_York" className={inputClass} />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold uppercase text-zinc-500">Proof Points / Differentiators</label>
-                    <textarea rows={3} value={outreachProofPoints} onChange={(e) => setOutreachProofPoints(e.target.value)} placeholder="Results, case studies, speed, niche expertise, guarantees, or reasons prospects should trust you." className={tealInputClass} />
+                    <label className="block text-xs font-semibold uppercase text-zinc-500">Avatar URL</label>
+                    <input type="text" value={avatarUrl} onChange={(e) => setAvatarUrl(e.target.value)} placeholder="https://example.com/avatar.jpg" className={inputClass} />
                   </div>
                 </div>
-                <div className="mt-4 rounded-2xl border border-teal-100 bg-teal-50/70 p-4 text-sm text-teal-900">
-                  <div className="font-semibold">How this is used</div>
-                  <p className="mt-1 text-teal-800/80">When you copy a lead context or follow-up prompt, ReachMira includes this company context before the lead details so AI can recommend copy based on your real offers and services.</p>
+                <div className="mt-4">
+                  <label className="block text-xs font-semibold uppercase text-zinc-500">Account Email (Read-Only)</label>
+                  <input type="email" readOnly disabled value={accountEmail} className="mt-1 w-full rounded-xl border border-[var(--border)] bg-zinc-50 px-3 py-2.5 text-sm text-zinc-400 outline-none cursor-not-allowed" />
+                  <p className="mt-1 text-xs text-zinc-400">Account email is managed by your auth provider and cannot be changed here.</p>
                 </div>
               </div>
             )}
+
+            {activeTab === 'company' && (() => {
+              // Local state for offers CRUD inside settings page
+              const [localOffers, setLocalOffers] = useState<any[]>([]);
+              const [offersLoading, setOffersLoading] = useState(true);
+              const [editingOfferId, setEditingOfferId] = useState<string | null>(null);
+              const [newOfferName, setNewOfferName] = useState('');
+              const [newOfferDesc, setNewOfferDesc] = useState('');
+
+              const fetchOffers = async () => {
+                const { data } = await supabase
+                  .from('offers')
+                  .select('*')
+                  .order('created_at', { ascending: false });
+                setLocalOffers(data || []);
+                setOffersLoading(false);
+              };
+
+              useEffect(() => {
+                fetchOffers();
+              }, []);
+
+              const handleAddOffer = async (e: React.MouseEvent) => {
+                e.preventDefault();
+                if (!newOfferName.trim()) return;
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+
+                if (editingOfferId) {
+                  const { error: err } = await supabase
+                    .from('offers')
+                    .update({ name: newOfferName, description: newOfferDesc })
+                    .eq('id', editingOfferId);
+                  if (!err) {
+                    setEditingOfferId(null);
+                    setNewOfferName('');
+                    setNewOfferDesc('');
+                    fetchOffers();
+                  }
+                } else {
+                  const { error: err } = await supabase
+                    .from('offers')
+                    .insert({ name: newOfferName, description: newOfferDesc, user_id: user.id });
+                  if (!err) {
+                    setNewOfferName('');
+                    setNewOfferDesc('');
+                    fetchOffers();
+                  }
+                }
+              };
+
+              const handleDeleteOffer = async (id: string, e: React.MouseEvent) => {
+                e.preventDefault();
+                if (!confirm('Are you sure you want to delete this offer?')) return;
+                const { error: err } = await supabase
+                  .from('offers')
+                  .delete()
+                  .eq('id', id);
+                if (!err) {
+                  fetchOffers();
+                }
+              };
+
+              return (
+                <div id="company-context" className="space-y-6">
+                  <SectionHeader
+                    icon={Building2}
+                    title="Company Prompt Context & Offers"
+                    description="Used when you copy lead context or follow-up prompts, so AI has your company, offers, and proof points."
+                    badge="Prompt memory"
+                    tone="teal"
+                  />
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-zinc-500">Company Name</label>
+                      <input type="text" value={outreachCompanyName} onChange={(e) => setOutreachCompanyName(e.target.value)} placeholder="ReachMira" className={tealInputClass} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-zinc-500">Website</label>
+                      <input type="text" value={outreachCompanyWebsite} onChange={(e) => setOutreachCompanyWebsite(e.target.value)} placeholder="https://yourcompany.com" className={tealInputClass} />
+                    </div>
+                  </div>
+                  <div className="mt-4 grid gap-4">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-zinc-500">What Your Company Does</label>
+                      <textarea rows={3} value={outreachCompanyDescription} onChange={(e) => setOutreachCompanyDescription(e.target.value)} placeholder="Short description of your company, positioning, and the kind of work you do." className={tealInputClass} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-zinc-500">Value Proposition</label>
+                      <textarea rows={3} value={outreachValueProposition} onChange={(e) => setOutreachValueProposition(e.target.value)} placeholder="What outcome do you help customers create? What changes after they work with you?" className={tealInputClass} />
+                    </div>
+                  </div>
+                  <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-zinc-500">Best-Fit Customers</label>
+                      <textarea rows={3} value={outreachTargetCustomers} onChange={(e) => setOutreachTargetCustomers(e.target.value)} placeholder="Industries, company sizes, roles, or situations where your offer fits best." className={tealInputClass} />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold uppercase text-zinc-500">Proof Points / Differentiators</label>
+                      <textarea rows={3} value={outreachProofPoints} onChange={(e) => setOutreachProofPoints(e.target.value)} placeholder="Results, case studies, speed, niche expertise, guarantees, or reasons prospects should trust you." className={tealInputClass} />
+                    </div>
+                  </div>
+
+                  {/* Offers / Services Library Section */}
+                  <div className="border-t border-[var(--border)] pt-6 mt-6">
+                    <h4 className="text-sm font-bold text-zinc-950 mb-2">Offer Library</h4>
+                    <p className="text-xs text-zinc-500 mb-4">Manage custom service offers (e.g. Website redesign, AI automation, custom CRM) that you recommend to your leads.</p>
+
+                    <div className="bg-[var(--surface-muted)] p-4 rounded-2xl border border-[var(--border)] mb-4 space-y-3">
+                      <div className="text-xs font-bold text-zinc-600">{editingOfferId ? 'Edit Offer' : 'Add New Offer'}</div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <input
+                          type="text"
+                          value={newOfferName}
+                          onChange={(e) => setNewOfferName(e.target.value)}
+                          placeholder="Offer Name (e.g. AI Automation Consulting)"
+                          className="w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs text-zinc-950 outline-none focus:border-teal-300 focus:ring-2 focus:ring-teal-100"
+                        />
+                        <input
+                          type="text"
+                          value={newOfferDesc}
+                          onChange={(e) => setNewOfferDesc(e.target.value)}
+                          placeholder="Brief Description / Pricing / Details"
+                          className="w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs text-zinc-950 outline-none focus:border-teal-300 focus:ring-2 focus:ring-teal-100"
+                        />
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleAddOffer}
+                          className="rounded-lg bg-teal-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-teal-700"
+                        >
+                          {editingOfferId ? 'Update Offer' : 'Save to Library'}
+                        </button>
+                        {editingOfferId && (
+                          <button
+                            onClick={() => {
+                              setEditingOfferId(null);
+                              setNewOfferName('');
+                              setNewOfferDesc('');
+                            }}
+                            className="rounded-lg bg-zinc-200 px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:bg-zinc-300"
+                          >
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {offersLoading ? (
+                      <div className="text-xs text-zinc-500">Loading offer library...</div>
+                    ) : localOffers.length === 0 ? (
+                      <div className="text-xs text-zinc-500 italic p-3 border border-dashed rounded-xl">No offers stored yet. Add custom ones like "Website redesign" or "AI automation" above.</div>
+                    ) : (
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {localOffers.map((offer) => (
+                          <div key={offer.id} className="bg-white p-3 rounded-xl border border-[var(--border)] flex justify-between items-start">
+                            <div>
+                              <div className="text-xs font-bold text-zinc-900">{offer.name}</div>
+                              <div className="text-[11px] text-zinc-500 mt-1">{offer.description || 'No description'}</div>
+                            </div>
+                            <div className="flex gap-2 ml-4">
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  setEditingOfferId(offer.id);
+                                  setNewOfferName(offer.name || '');
+                                  setNewOfferDesc(offer.description || '');
+                                }}
+                                className="text-[10px] font-semibold text-teal-700 hover:underline"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={(e) => handleDeleteOffer(offer.id, e)}
+                                className="text-[10px] font-semibold text-rose-700 hover:underline"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="mt-4 rounded-2xl border border-teal-100 bg-teal-50/70 p-4 text-sm text-teal-900">
+                    <div className="font-semibold">How this is used</div>
+                    <p className="mt-1 text-teal-800/80">When you copy a lead context or follow-up prompt, ReachMira includes this company context before the lead details so AI can recommend copy based on your real offers and services.</p>
+                  </div>
+                </div>
+              );
+            })()}
 
             {activeTab === 'sending' && (
               <div className="space-y-6">

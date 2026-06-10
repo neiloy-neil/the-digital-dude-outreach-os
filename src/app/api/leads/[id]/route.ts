@@ -238,6 +238,10 @@ export async function PATCH(
         manual_email_approved: Boolean(payload.manual_email_approved),
         last_manual_email_account_id: payload.last_manual_email_account_id || null,
         last_email_sent_at: payload.last_email_sent_at || null,
+        next_follow_up_at: payload.next_follow_up_at || null,
+        next_follow_up_date: payload.next_follow_up_date || payload.next_follow_up_at || null,
+        next_email_at: payload.next_email_at || null,
+        reply_outcome: payload.reply_outcome || null,
         updated_at: nowIso,
       })
       .eq('id', id);

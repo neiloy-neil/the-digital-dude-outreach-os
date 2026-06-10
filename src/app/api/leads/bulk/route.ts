@@ -14,7 +14,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { leadIds, action, campaignId, tag, priority } = await request.json();
+    const { leadIds, action, campaignId, tag, priority, leadListId } = await request.json();
     if (!Array.isArray(leadIds) || leadIds.length === 0 || !action) {
       return NextResponse.json({ error: 'leadIds and action are required' }, { status: 400 });
     }
@@ -89,6 +89,56 @@ export async function POST(request: Request) {
       });
 
       return NextResponse.json({ success: true, updated: leadIds.length, priority: nextPriority });
+    }
+
+    if (action === 'assign_to_list') {
+      if (!leadListId) {
+        return NextResponse.json({ error: 'leadListId is required for assign_to_list action' }, { status: 400 });
+      }
+      const { error } = await supabase
+        .from('leads')
+        .update({ lead_list_id: leadListId, updated_at: new Date().toISOString() })
+        .in('id', leadIds)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      await createAuditLog({
+        userId: user.id,
+        action: 'bulk_lead_list_assign',
+        message: `Assigned ${leadIds.length} lead(s) to lead list: ${leadListId}`,
+        metadata: { lead_ids: leadIds, lead_list_id: leadListId },
+      });
+
+      return NextResponse.json({ success: true, updated: leadIds.length, leadListId });
+    }
+
+    if (action === 'mark_contacted') {
+      const now = new Date().toISOString();
+      const threeDaysFromNow = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+      const { error } = await supabase
+        .from('leads')
+        .update({
+          status: 'mail_sent',
+          emails_sent_count: 1,
+          last_email_type: 'first_email',
+          last_contacted_at: now,
+          next_follow_up_at: threeDaysFromNow,
+          updated_at: now,
+        })
+        .in('id', leadIds)
+        .eq('user_id', user.id);
+
+      if (error) throw error;
+
+      await createAuditLog({
+        userId: user.id,
+        action: 'bulk_lead_contacted_update',
+        message: `Marked ${leadIds.length} lead(s) as contacted`,
+        metadata: { lead_ids: leadIds },
+      });
+
+      return NextResponse.json({ success: true, updated: leadIds.length, status: 'mail_sent' });
     }
 
     const statusMap: Record<string, string> = {

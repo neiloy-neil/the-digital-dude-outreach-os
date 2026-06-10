@@ -24,6 +24,12 @@ export interface Profile {
   outreach_value_proposition?: string | null;
   outreach_target_customers?: string | null;
   outreach_proof_points?: string | null;
+  display_name?: string | null;
+  workspace_name?: string | null;
+  role_title?: string | null;
+  phone?: string | null;
+  timezone?: string | null;
+  avatar_url?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -220,6 +226,7 @@ export interface Lead {
   // Queue and Error logs
   processing_started_at?: string | null;
   processing_error?: string | null;
+  reply_outcome?: string | null;
 }
 
 export interface LeadList {
@@ -394,7 +401,29 @@ export interface EmailTemplateLibrary {
   subject: string;
   body: string;
   offer_type?: string | null;
+  offer_id?: string | null;
   is_default: boolean;
   created_at: string;
   updated_at: string;
 }
+
+export interface SavedView {
+  id: string;
+  user_id: string;
+  name: string;
+  filters: Record<string, unknown>;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Offer {
+  id: string;
+  user_id: string;
+  name: string;
+  description?: string | null;
+  details?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+

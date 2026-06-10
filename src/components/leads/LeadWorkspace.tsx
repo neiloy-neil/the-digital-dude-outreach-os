@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Ban, CheckCircle2, Copy, Database, Edit3, ExternalLink, History, Mail, MessageSquare, PlusCircle, Save, Send, Sparkles, WandSparkles, X, Clock3, AlertTriangle, Trash2 } from 'lucide-react';
+import { ArrowLeft, Ban, CheckCircle2, Copy, Database, Edit3, ExternalLink, History, Mail, MessageSquare, PlusCircle, Save, Send, Sparkles, WandSparkles, X, Clock3, AlertTriangle, Trash2, ShieldAlert } from 'lucide-react';
 import AppShell from '@/components/reachmira/AppShell';
 import EmailVerificationBadge from '@/components/leads/EmailVerificationBadge';
 import StatusBadge from '@/components/leads/StatusBadge';
@@ -169,6 +169,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
   const [selectedCampaignId, setSelectedCampaignId] = useState('');
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
   const [includeSignature, setIncludeSignature] = useState(true);
+  const [offers, setOffers] = useState<any[]>([]);
 
   const [form, setForm] = useState({
     lead_list_id: '',
@@ -201,6 +202,8 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
     manual_email_subject: '',
     manual_email_body: '',
     manual_email_approved: false,
+    next_follow_up_at: '',
+    reply_outcome: '',
   });
 
   const loadLead = useCallback(
@@ -213,7 +216,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
       }
 
       try {
-        const [leadResponse, accountsResponse, campaignsResponse, templatesResponse] = await Promise.all([
+        const [leadResponse, accountsResponse, campaignsResponse, templatesResponse, offersResponse] = await Promise.all([
           fetch(`/api/leads/${leadId}`),
           fetch('/api/email-accounts'),
           supabase
@@ -221,6 +224,10 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
             .select('id, name')
             .order('created_at', { ascending: false }),
           fetch('/api/templates'),
+          supabase
+            .from('offers')
+            .select('id, name, description')
+            .order('created_at', { ascending: false }),
         ]);
 
         const leadPayload = (await leadResponse.json()) as { lead?: LeadDetail; auditLogs?: AuditLog[]; activityLogs?: ActivityLog[]; companyContext?: CompanyPromptContext; error?: string };
@@ -245,6 +252,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
         setEmailAccounts(activeAccounts);
         setCampaignOptions((campaignsResponse.data as CampaignOption[]) || []);
         setTemplateOptions(templatesPayload.templates || []);
+        setOffers(offersResponse.data || []);
         setSelectedEmailAccountId(nextLead.last_manual_email_account_id || activeAccounts[0]?.id || '');
         setTargetEmail(nextLead.email || '');
         setManualEmailType((nextLead.manual_email_type as (typeof EMAIL_TYPES)[number]) || (nextLead.sent_emails?.[0]?.email_type as (typeof EMAIL_TYPES)[number]) || 'custom_email');
@@ -281,6 +289,8 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
           manual_email_subject: nextLead.manual_email_subject || nextLead.ai_subject || nextLead.personalized_subject || '',
           manual_email_body: normalizeDraftHtml(nextLead.manual_email_body || nextLead.ai_email_body || nextLead.personalized_body || ''),
           manual_email_approved: Boolean(nextLead.manual_email_approved),
+          next_follow_up_at: nextLead.next_follow_up_at ? nextLead.next_follow_up_at.substring(0, 16) : '',
+          reply_outcome: nextLead.reply_outcome || '',
         });
       } catch (loadError: unknown) {
         setError(loadError instanceof Error ? loadError.message : 'Failed to load lead');
@@ -343,8 +353,16 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
       metadata: log.metadata,
     }));
 
-    return [...emailEvents, ...auditEvents].sort((a, b) => new Date(eventTimestamp(b)).getTime() - new Date(eventTimestamp(a)).getTime());
-  }, [auditLogs, lead?.sent_emails]);
+    const outcomeEvents = lead?.reply_outcome ? [{
+      id: `outcome-${lead.id}`,
+      title: 'Reply Outcome Classified',
+      message: `Manually classified prospect reply outcome as: ${lead.reply_outcome}`,
+      created_at: lead.updated_at || new Date().toISOString(),
+      metadata: { outcome: lead.reply_outcome }
+    }] : [];
+
+    return [...emailEvents, ...auditEvents, ...outcomeEvents].sort((a, b) => new Date(eventTimestamp(b)).getTime() - new Date(eventTimestamp(a)).getTime());
+  }, [auditLogs, lead?.sent_emails, lead?.reply_outcome, lead?.updated_at, lead?.id]);
 
   const replyEvents = useMemo<ReplyEvent[]>(() => {
     const auditReplyEvents = auditLogs
@@ -469,15 +487,25 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
     return [];
   }, [emailVerificationStatus, lead?.email, lead?.email_verification_reason]);
   const sendChecklist = useMemo(
-    () => [
-      { label: 'Subject added', ok: Boolean(form.manual_email_subject.trim()) },
-      { label: 'Body added', ok: Boolean(manualEmailBodyText.trim()) },
-      { label: 'Email approved', ok: Boolean(form.manual_email_approved) },
-      { label: 'Lead is sendable', ok: !['unsubscribed', 'bounced', 'do_not_contact'].includes(String(lead?.status || '')) },
-      { label: 'Email verification cleared', ok: emailVerificationIssues.length === 0 },
-      { label: 'No blocking quality issues', ok: !hasBlockingEmailQualityIssue(emailQualityIssues) },
-    ],
-    [emailQualityIssues, emailVerificationIssues.length, form.manual_email_approved, form.manual_email_subject, manualEmailBodyText, lead?.status]
+    () => {
+      const isAccountConnected = Boolean(selectedEmailAccountId);
+      const isDailyLimitSet = Boolean(selectedEmailAccount?.daily_send_limit && selectedEmailAccount.daily_send_limit > 0);
+      const isUnsubscribeLinkEnabled = Boolean(form.manual_email_body.toLowerCase().includes('unsubscribe') || form.manual_email_body.toLowerCase().includes('opt-out') || form.manual_email_body.toLowerCase().includes('opt out'));
+      const isLeadNotSuppressed = !['unsubscribed', 'bounced', 'do_not_contact'].includes(String(lead?.status || ''));
+      
+      return [
+        { label: 'Subject added', ok: Boolean(form.manual_email_subject.trim()) },
+        { label: 'Body added', ok: Boolean(manualEmailBodyText.trim()) },
+        { label: 'Email approved', ok: Boolean(form.manual_email_approved) },
+        { label: 'Email account connected', ok: isAccountConnected },
+        { label: 'Daily limit configured (>0)', ok: isDailyLimitSet },
+        { label: 'Unsubscribe check (contains "unsubscribe")', ok: isUnsubscribeLinkEnabled },
+        { label: 'Lead is not suppressed/opted-out', ok: isLeadNotSuppressed },
+        { label: 'Email verification cleared', ok: emailVerificationIssues.length === 0 },
+        { label: 'No blocking quality issues', ok: !hasBlockingEmailQualityIssue(emailQualityIssues) },
+      ];
+    },
+    [emailQualityIssues, emailVerificationIssues.length, form.manual_email_approved, form.manual_email_subject, form.manual_email_body, manualEmailBodyText, lead?.status, selectedEmailAccountId, selectedEmailAccount]
   );
   const isInitialLoading = loading && !lead;
 
@@ -607,6 +635,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
           manual_email_type: manualEmailType,
           manual_email_approved: false,
           manual_personalization_status: form.manual_email_subject || manualEmailBodyText ? 'drafted' : 'not_started',
+          reply_outcome: form.reply_outcome || null,
         }),
       });
       const payload = (await response.json()) as { error?: string };
@@ -1023,8 +1052,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                       { key: 'website', label: 'Website', multi: false },
                       { key: 'industry', label: 'Industry', multi: false },
                       { key: 'pain_points', label: 'Pain Points', multi: true },
-                      { key: 'solution', label: 'Solution', multi: true },
-                      { key: 'recommended_offer', label: 'Recommended Offer', multi: true },
+                      { key: 'solution', label: 'Solution / Target Outcome', multi: true },
                     ].map(({ key, label, multi }) => (
                       <div key={key} className={multi ? 'md:col-span-2' : ''}>
                         <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">{label}</label>
@@ -1035,6 +1063,25 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                         )}
                       </div>
                     ))}
+                    <div className="md:col-span-2">
+                      <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500 font-bold text-violet-600">Recommended Offer / Service</label>
+                      <select
+                        value={form.recommended_offer}
+                        onChange={(e) => setForm((current) => ({ ...current, recommended_offer: e.target.value }))}
+                        className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
+                      >
+                        <option value="">-- Select or type below --</option>
+                        {offers.map((offer) => (
+                          <option key={offer.id} value={offer.name}>{offer.name} {offer.description ? `(${offer.description})` : ''}</option>
+                        ))}
+                      </select>
+                      <input
+                        value={form.recommended_offer}
+                        onChange={(e) => setForm((current) => ({ ...current, recommended_offer: e.target.value }))}
+                        placeholder="Or type custom offer here..."
+                        className="mt-2 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
+                      />
+                    </div>
                     <div>
                       <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Status</label>
                       <input value={form.status} onChange={(e) => setForm((current) => ({ ...current, status: e.target.value }))} className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100" />
@@ -1047,6 +1094,53 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                         <option value="medium">Medium</option>
                         <option value="high">High</option>
                       </select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500 font-bold text-violet-600">Next Follow-up Reminder & Snooze</label>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <input
+                          type="datetime-local"
+                          value={form.next_follow_up_at}
+                          onChange={(e) => setForm((current) => ({ ...current, next_follow_up_at: e.target.value }))}
+                          className="flex-1 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const d = new Date();
+                              d.setDate(d.getDate() + 1);
+                              setForm((current) => ({ ...current, next_follow_up_at: d.toISOString().substring(0, 16) }));
+                              setSuccess('Snoozed 1 day. Click "Save Lead" to persist.');
+                            }}
+                            className="rounded-xl border border-violet-200 bg-violet-50 px-3.5 py-2.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-100"
+                          >
+                            +1 Day
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const d = new Date();
+                              d.setDate(d.getDate() + 3);
+                              setForm((current) => ({ ...current, next_follow_up_at: d.toISOString().substring(0, 16) }));
+                              setSuccess('Snoozed 3 days. Click "Save Lead" to persist.');
+                            }}
+                            className="rounded-xl border border-violet-200 bg-violet-50 px-3.5 py-2.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-100"
+                          >
+                            +3 Days
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setForm((current) => ({ ...current, next_follow_up_at: '' }));
+                              setSuccess('Follow-up cleared. Click "Save Lead" to persist.');
+                            }}
+                            className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      </div>
                     </div>
                     <div className="md:col-span-2">
                       <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Notes</label>
@@ -1362,6 +1456,17 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                           </div>
                         </div>
                       )}
+
+                      {/* DNS / Authentication Guidance Box */}
+                      <div className="rounded-2xl border border-violet-100 bg-violet-50/70 p-4">
+                        <div className="flex items-center gap-2 text-sm font-semibold text-violet-900 mb-1">
+                          <ShieldAlert className="h-4 w-4 text-violet-600" />
+                          DNS & Sending Domain Authentication Guidance
+                        </div>
+                        <p className="text-xs text-violet-800/80 leading-relaxed">
+                          To protect domain reputation and avoid spam folders, verify that your sending domain has correct **SPF**, **DKIM**, and **DMARC** records set up in your DNS provider (e.g. Cloudflare, GoDaddy). If using custom SMTP, matching tracking records with custom bounce domains prevents SPF alignment errors.
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1483,6 +1588,37 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                     <span className="rounded-full bg-teal-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-teal-700 ring-1 ring-teal-100">
                       {replyEvents.length} replies
                     </span>
+                  </div>
+                </div>
+
+                {/* Reply Outcome Classifier Box */}
+                <div className="mb-6 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                    <div>
+                      <div className="text-sm font-semibold text-zinc-950">Reply Outcome Classification</div>
+                      <p className="text-xs text-zinc-500 mt-1">Classify the prospect's interest level manually for tracking.</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={form.reply_outcome}
+                        onChange={(e) => setForm((current) => ({ ...current, reply_outcome: e.target.value }))}
+                        className="rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs text-zinc-950 outline-none focus:border-violet-500"
+                      >
+                        <option value="">-- Unclassified --</option>
+                        <option value="Interested">Interested</option>
+                        <option value="Not interested">Not interested</option>
+                        <option value="Asked for details">Asked for details</option>
+                        <option value="Demo requested">Demo requested</option>
+                        <option value="Proposal requested">Proposal requested</option>
+                      </select>
+                      <button
+                        onClick={handleSaveLead}
+                        disabled={saving}
+                        className="rounded-xl bg-violet-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-violet-700 transition"
+                      >
+                        Save Outcome
+                      </button>
+                    </div>
                   </div>
                 </div>
 

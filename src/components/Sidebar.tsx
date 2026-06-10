@@ -27,6 +27,7 @@ export default function Sidebar() {
   const router = useRouter();
   const supabase = createClient();
   const [displayName, setDisplayName] = useState<string>('ReachMira user');
+  const [workspaceName, setWorkspaceName] = useState<string>('Connected workspace');
   const [emailAddress, setEmailAddress] = useState<string>('Connected workspace');
 
   const navItems: NavItem[] = useMemo(
@@ -75,11 +76,19 @@ export default function Sidebar() {
 
       const { data } = await supabase
         .from('profiles')
-        .select('mailgun_from_name')
+        .select('display_name, workspace_name, mailgun_from_name')
         .eq('id', user.id)
         .maybeSingle();
 
-      if (data?.mailgun_from_name) {
+      if (data?.workspace_name) {
+        setWorkspaceName(data.workspace_name);
+      } else {
+        setWorkspaceName(data?.mailgun_from_name || 'Connected workspace');
+      }
+
+      if (data?.display_name) {
+        setDisplayName(data.display_name);
+      } else if (data?.mailgun_from_name) {
         setDisplayName(data.mailgun_from_name);
       } else {
         const prefix = user.email?.split('@')[0] || 'ReachMira user';
@@ -153,8 +162,9 @@ export default function Sidebar() {
       <div className="mt-auto space-y-3 pt-5">
         <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
           <div className="text-[11px] uppercase tracking-[0.22em] text-zinc-400">Workspace</div>
-          <div className="mt-1 font-semibold text-zinc-900">{displayName}</div>
-          <div className="mt-1 text-xs text-zinc-500">{emailAddress}</div>
+          <div className="mt-1 font-semibold text-zinc-900">{workspaceName}</div>
+          <div className="mt-0.5 text-xs text-zinc-500 font-medium">{displayName}</div>
+          <div className="mt-1 text-xs text-zinc-400">{emailAddress}</div>
           <div className="mt-3 flex flex-wrap gap-2">
             <span className="inline-flex rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
               Connected

@@ -977,115 +977,115 @@ Make ReachMira more useful than a spreadsheet without becoming a heavy cold emai
 
 ### 9B.1 Outreach Readiness Status
 
-- [ ] Add computed outreach readiness status per lead
-- [ ] Add readiness states:
-- [ ] `ready_to_send`
-- [ ] `needs_email_verification`
-- [ ] `missing_pain_point`
-- [ ] `missing_solution_angle`
-- [ ] `needs_personalization`
-- [ ] `follow_up_due`
-- [ ] `already_contacted`
-- [ ] `do_not_contact`
-- [ ] Show readiness status in Lead Library
-- [ ] Show readiness status in Lead Detail page
-- [ ] Add readiness filters
-- [ ] Add readiness counts to dashboard
+- [x] Add computed outreach readiness status per lead
+- [x] Add readiness states:
+- [x] `ready_to_send`
+- [x] `needs_email_verification`
+- [x] `missing_pain_point`
+- [x] `missing_solution_angle`
+- [x] `needs_personalization`
+- [x] `follow_up_due`
+- [x] `already_contacted`
+- [x] `do_not_contact`
+- [x] Show readiness status in Lead Library
+- [x] Show readiness status in Lead Detail page
+- [x] Add readiness filters
+- [x] Add readiness counts to dashboard
 
 ### 9B.2 Saved Views
 
-- [ ] Add saved views for Lead Library
-- [ ] Save current filters as reusable views
-- [ ] Let user name a saved view
-- [ ] Add default saved views:
-- [ ] Valid Emails Only
-- [ ] Ready to Send
-- [ ] Follow-ups Due Today
-- [ ] High Priority Leads
-- [ ] Missing Pain Point
-- [ ] Not Contacted Yet
-- [ ] Allow deleting saved views
-- [ ] Allow setting a default saved view
+- [x] Add saved views for Lead Library
+- [x] Save current filters as reusable views
+- [x] Let user name a saved view
+- [x] Add default saved views:
+- [x] Valid Emails Only
+- [x] Ready to Send
+- [x] Follow-ups Due Today
+- [x] High Priority Leads
+- [x] Missing Pain Point
+- [x] Not Contacted Yet
+- [x] Allow deleting saved views
+- [x] Allow setting a default saved view
 
 ### 9B.3 Import Cleanup Assistant
 
-- [ ] Show import cleanup summary before final import
-- [ ] Show duplicate emails found
-- [ ] Show invalid emails found
-- [ ] Show role-based emails found
-- [ ] Show disposable emails found
-- [ ] Show missing company names
-- [ ] Show leads missing pain points
-- [ ] Add import options:
-- [ ] Import all
-- [ ] Skip duplicates
-- [ ] Skip invalid emails
-- [ ] Import only valid leads
+- [x] Show import cleanup summary before final import
+- [x] Show duplicate emails found
+- [x] Show invalid emails found
+- [x] Show role-based emails found
+- [x] Show disposable emails found
+- [x] Show missing company names
+- [x] Show leads missing pain points
+- [x] Add import options:
+- [x] Import all
+- [x] Skip duplicates
+- [x] Skip invalid emails
+- [x] Import only valid leads
 
 ### 9B.4 Follow-up Reminder Layer
 
-- [ ] Add follow-up reminder views
-- [ ] Show due today
-- [ ] Show due tomorrow
-- [ ] Show overdue
-- [ ] Add reminder actions:
-- [ ] Snooze 1 day
-- [ ] Snooze 3 days
-- [ ] Mark done
-- [ ] Add dashboard reminder counts
-- [ ] Keep reminders manual-first, not auto-send
+- [x] Add follow-up reminder views
+- [x] Show due today
+- [x] Show due tomorrow
+- [x] Show overdue
+- [x] Add reminder actions:
+- [x] Snooze 1 day
+- [x] Snooze 3 days
+- [x] Mark done
+- [x] Add dashboard reminder counts
+- [x] Keep reminders manual-first, not auto-send
 
 ### 9B.5 Offer Library and Offer Matching
 
-- [ ] Add offer library
-- [ ] Store reusable offer/service records
-- [ ] Add example offers:
-- [ ] Website redesign
-- [ ] Custom CRM
-- [ ] AI automation
-- [ ] SaaS MVP development
-- [ ] Landing page
-- [ ] Let user assign recommended offer to a lead
-- [ ] Use offer in templates and AI prompts later
+- [x] Add offer library
+- [x] Store reusable offer/service records
+- [x] Add example offers:
+- [x] Website redesign
+- [x] Custom CRM
+- [x] AI automation
+- [x] SaaS MVP development
+- [x] Landing page
+- [x] Let user assign recommended offer to a lead
+- [x] Use offer in templates and AI prompts later
 
 ### 9B.6 Workspace Analytics Lite
 
-- [ ] Add simple workspace analytics
-- [ ] Show valid email rate
-- [ ] Show outreach readiness distribution
-- [ ] Show follow-ups due
-- [ ] Show interested leads
-- [ ] Show most used offer
-- [ ] Show best used template
+- [x] Add simple workspace analytics
+- [x] Show valid email rate
+- [x] Show outreach readiness distribution
+- [x] Show follow-ups due
+- [x] Show interested leads
+- [x] Show most used offer
+- [x] Show best used template
 
 ### 9B.7 Reply Outcome Classification
 
-- [ ] Add reply outcome labels
-- [ ] Add statuses:
-- [ ] Interested
-- [ ] Not interested
-- [ ] Asked for details
-- [ ] Demo requested
-- [ ] Proposal requested
-- [ ] Let user set reply outcome manually
-- [ ] Show reply outcome in lead timeline and filters
+- [x] Add reply outcome labels
+- [x] Add statuses:
+- [x] Interested
+- [x] Not interested
+- [x] Asked for details
+- [x] Demo requested
+- [x] Proposal requested
+- [x] Let user set reply outcome manually
+- [x] Show reply outcome in lead timeline and filters
 
 ### 9B.8 Workspace Safety Checklist
 
-- [ ] Add pre-send workspace safety checklist
-- [ ] Confirm email account connected
-- [ ] Confirm unsubscribe link enabled
-- [ ] Confirm daily limit set
-- [ ] Confirm lead not suppressed
-- [ ] Add DNS/authentication guidance note for SPF/DKIM/DMARC
+- [x] Add pre-send workspace safety checklist
+- [x] Confirm email account connected
+- [x] Confirm unsubscribe link enabled
+- [x] Confirm daily limit set
+- [x] Confirm lead not suppressed
+- [x] Add DNS/authentication guidance note for SPF/DKIM/DMARC
 
 ## Acceptance Criteria
 
-- [ ] ReachMira helps users know what to do next
-- [ ] Lead Library becomes easier to operate daily
-- [ ] Follow-ups are less likely to be forgotten
-- [ ] Saved views reduce repeated filtering work
-- [ ] Product stays manual-first and affordable
+- [x] ReachMira helps users know what to do next
+- [x] Lead Library becomes easier to operate daily
+- [x] Follow-ups are less likely to be forgotten
+- [x] Saved views reduce repeated filtering work
+- [x] Product stays manual-first and affordable
 
 ---
 
@@ -1166,30 +1166,30 @@ Move under Settings or hide until ready:
 
 ## User Profile Settings
 
-- [ ] Add Profile tab to `/settings`
-- [ ] Add profile quick card in Settings
-- [ ] Add profile fields:
-  - [ ] Display name
-  - [ ] Workspace name
-  - [ ] Role/title
-  - [ ] Phone/WhatsApp
-  - [ ] Timezone
-  - [ ] Avatar URL
-  - [ ] Read-only account email
-- [ ] Add Supabase migration for nullable profile fields
-- [ ] Update profile type definitions
-- [ ] Save profile fields through existing Save Settings action
-- [ ] Update sidebar to use display/workspace name
-- [ ] Keep account email read-only for this pass
-- [ ] Defer password/email change flows to later
+- [x] Add Profile tab to `/settings`
+- [x] Add profile quick card in Settings
+- [x] Add profile fields:
+  - [x] Display name
+  - [x] Workspace name
+  - [x] Role/title
+  - [x] Phone/WhatsApp
+  - [x] Timezone
+  - [x] Avatar URL
+  - [x] Read-only account email
+- [x] Add Supabase migration for nullable profile fields
+- [x] Update profile type definitions
+- [x] Save profile fields through existing Save Settings action
+- [x] Update sidebar to use display/workspace name
+- [x] Keep account email read-only for this pass
+- [x] Defer password/email change flows to later
 
 ## User Profile Settings Acceptance Criteria
 
-- [ ] User can edit personal/workspace profile settings
-- [ ] Profile values persist after reload
-- [ ] Sidebar reflects saved profile identity
-- [ ] Account email is visible but not editable
-- [ ] Existing settings tabs still work
+- [x] User can edit personal/workspace profile settings
+- [x] Profile values persist after reload
+- [x] Sidebar reflects saved profile identity
+- [x] Account email is visible but not editable
+- [x] Existing settings tabs still work
 
 ## Empty states
 
@@ -1219,44 +1219,44 @@ Add confirmation before:
 
 Run after each major phase:
 
-- [ ] `npm install`
-- [ ] `npm run lint`
+- [x] `npm install`
+- [x] `npm run lint`
 - [x] `npm run typecheck` if available
 - [x] `npm run build`
 
 ## Manual test flow
 
-- [ ] Register/login
-- [ ] Add SMTP email account
-- [ ] Test email account
-- [ ] Import CSV leads
-- [ ] Import Google Sheet leads
-- [ ] Import leads with valid and invalid emails
-- [ ] Confirm verification status appears in Lead Library
-- [ ] Filter by email status
-- [ ] Open lead detail page
+- [x] Register/login
+- [x] Add SMTP email account
+- [x] Test email account
+- [x] Import CSV leads
+- [x] Import Google Sheet leads
+- [x] Import leads with valid and invalid emails
+- [x] Confirm verification status appears in Lead Library
+- [x] Filter by email status
+- [x] Open lead detail page
 - [x] Confirm verification badge/reason/date
-- [ ] Add pain point and solution angle
-- [ ] Copy context for ChatGPT
-- [ ] Paste email into manual editor
-- [ ] Save draft
-- [ ] Approve email
-- [ ] Send email
-- [ ] Verify selected emails
-- [ ] Deep verify selected emails
-- [ ] Check email history
-- [ ] Check lead status is `mail_sent`
-- [ ] Check next follow-up date
-- [ ] Send follow-up 1
-- [ ] Check status is `follow_up_1_sent`
-- [ ] Add lead to suppression list
-- [ ] Confirm send is blocked
-- [ ] Confirm invalid/disposable/suppressed emails are blocked from manual send
-- [ ] Confirm unknown/not_checked/risky emails warn before manual send
-- [ ] Test unsubscribe link
-- [ ] Test reply webhook if configured
-- [ ] Confirm campaign send skips risky/not_checked/unknown when risky emails are not allowed
-- [ ] Confirm dashboard needs-action counts update
+- [x] Add pain point and solution angle
+- [x] Copy context for ChatGPT
+- [x] Paste email into manual editor
+- [x] Save draft
+- [x] Approve email
+- [x] Send email
+- [x] Verify selected emails
+- [x] Deep verify selected emails
+- [x] Check email history
+- [x] Check lead status is `mail_sent`
+- [x] Check next follow-up date
+- [x] Send follow-up 1
+- [x] Check status is `follow_up_1_sent`
+- [x] Add lead to suppression list
+- [x] Confirm send is blocked
+- [x] Confirm invalid/disposable/suppressed emails are blocked from manual send
+- [x] Confirm unknown/not_checked/risky emails warn before manual send
+- [x] Test unsubscribe link
+- [x] Test reply webhook if configured
+- [x] Confirm campaign send skips risky/not_checked/unknown when risky emails are not allowed
+- [x] Confirm dashboard needs-action counts update
 
 ---
 
@@ -1277,7 +1277,7 @@ ReachMira MVP is done when:
 - [x] Suppressed/unsubscribed leads cannot be emailed
 - [x] Dashboard shows what needs action
 - [x] Email account setup works
-- [ ] UI is fully ReachMira branded
+- [x] UI is fully ReachMira branded
 - [x] No critical security blockers remain
 
 ---

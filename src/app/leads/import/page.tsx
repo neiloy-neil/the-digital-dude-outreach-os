@@ -268,54 +268,147 @@ function LeadImportPageInner() {
 
         {loadingPreview && <div className="py-10 text-center text-zinc-500">Loading preview...</div>}
 
-        {headers.length > 0 && (
-          <div className="space-y-6">
-            <div className="overflow-x-auto rounded-3xl border border-[var(--border)] bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
-              <table className="w-full text-left text-xs">
-                <thead className="uppercase text-zinc-500">
-                  <tr>{headers.map((h) => <th key={h} className="px-3 py-2">{h}</th>)}</tr>
-                </thead>
-                <tbody className="divide-y divide-[var(--border)]">
-                  {rows.slice(0, 5).map((row, idx) => (
-                    <tr key={idx}>{headers.map((_, i) => <td key={i} className="px-3 py-2 text-zinc-700">{String(row[i] || '-')}</td>)}</tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        {headers.length > 0 && (() => {
+          // Calculate preview cleanup metrics locally based on mappings
+          const emailMappedHeader = mappings['email'];
+          const emailIdx = emailMappedHeader ? headers.indexOf(emailMappedHeader) : -1;
+          const companyMappedHeader = mappings['company_name'] || mappings['company'];
+          const companyIdx = companyMappedHeader ? headers.indexOf(companyMappedHeader) : -1;
+          const painMappedHeader = mappings['pain_points'];
+          const painIdx = painMappedHeader ? headers.indexOf(painMappedHeader) : -1;
 
-            <div className="space-y-4 rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
-              <div>
-                <h3 className="font-bold text-zinc-950">Map Columns</h3>
-                <p className="text-xs text-zinc-400">Unmapped columns go into raw_data automatically.</p>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {LEAD_DESTINATION_FIELDS.map((field) => (
-                  <div key={field.key} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-3">
-                    <label className="block text-[10px] font-bold uppercase text-zinc-500">{field.label}</label>
-                    <select value={mappings[field.key] || ''} onChange={(e) => setMappings({ ...mappings, [field.key]: e.target.value })} className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-2 py-1.5 text-xs text-zinc-900 outline-none focus:border-violet-500">
-                      <option value="">-- Ignore --</option>
-                      {headers.map((h) => <option key={h} value={h}>{h}</option>)}
-                    </select>
+          let localDuplicates = 0;
+          let localInvalidEmails = 0;
+          let localDisposable = 0;
+          let localRole = 0;
+          let localMissingCompany = 0;
+          let localMissingPain = 0;
+          const seenEmails = new Set<string>();
+
+          rows.forEach((row) => {
+            const rawEmail = emailIdx !== -1 ? String(row[emailIdx] || '').trim().toLowerCase() : '';
+            const rawCompany = companyIdx !== -1 ? String(row[companyIdx] || '').trim() : '';
+            const rawPain = painIdx !== -1 ? String(row[painIdx] || '').trim() : '';
+
+            if (rawEmail) {
+              if (seenEmails.has(rawEmail)) {
+                localDuplicates++;
+              } else {
+                seenEmails.add(rawEmail);
+              }
+
+              // Simple syntax check
+              if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail)) {
+                localInvalidEmails++;
+              }
+
+              // Role based check
+              const localPart = rawEmail.split('@')[0];
+              if (['admin', 'info', 'support', 'contact', 'sales', 'jobs', 'careers', 'help', 'office', 'marketing'].includes(localPart)) {
+                localRole++;
+              }
+
+              // Disposable check
+              const domain = rawEmail.split('@')[1];
+              if (['mailinator.com', 'trashmail.com', 'tempmail.com', '10minutemail.com', 'yopmail.com'].includes(domain)) {
+                localDisposable++;
+              }
+            } else {
+              localInvalidEmails++;
+            }
+
+            if (!rawCompany) {
+              localMissingCompany++;
+            }
+            if (!rawPain) {
+              localMissingPain++;
+            }
+          });
+
+          return (
+            <div className="space-y-6">
+              {/* Import Cleanup Assistant Panel */}
+              <div className="rounded-3xl border border-amber-200 bg-amber-50/50 p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-100 text-amber-800 text-xs font-bold">✨</span>
+                  <h3 className="font-bold text-zinc-950">Import Cleanup Assistant Preview</h3>
+                </div>
+                <p className="text-xs text-zinc-600 mb-4">We analyzed your {rows.length} rows using the selected mappings. Choose which leads to exclude or skip below.</p>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4 text-center">
+                  <div className="rounded-2xl bg-white p-3 border border-amber-200">
+                    <div className="text-lg font-bold text-amber-700">{localDuplicates}</div>
+                    <div className="text-[10px] uppercase font-bold text-zinc-500">Duplicate Emails</div>
                   </div>
-                ))}
+                  <div className="rounded-2xl bg-white p-3 border border-amber-200">
+                    <div className="text-lg font-bold text-amber-700">{localInvalidEmails}</div>
+                    <div className="text-[10px] uppercase font-bold text-zinc-500">Invalid Syntax</div>
+                  </div>
+                  <div className="rounded-2xl bg-white p-3 border border-amber-200">
+                    <div className="text-lg font-bold text-amber-700">{localRole}</div>
+                    <div className="text-[10px] uppercase font-bold text-zinc-500">Role-Based</div>
+                  </div>
+                  <div className="rounded-2xl bg-white p-3 border border-amber-200">
+                    <div className="text-lg font-bold text-amber-700">{localDisposable}</div>
+                    <div className="text-[10px] uppercase font-bold text-zinc-500">Disposable</div>
+                  </div>
+                  <div className="rounded-2xl bg-white p-3 border border-amber-200">
+                    <div className="text-lg font-bold text-amber-700">{localMissingCompany}</div>
+                    <div className="text-[10px] uppercase font-bold text-zinc-500">Missing Company</div>
+                  </div>
+                  <div className="rounded-2xl bg-white p-3 border border-amber-200">
+                    <div className="text-lg font-bold text-amber-700">{localMissingPain}</div>
+                    <div className="text-[10px] uppercase font-bold text-zinc-500">Missing Pain</div>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center justify-between border-t border-[var(--border)] pt-4">
-                <label className="inline-flex items-center gap-2 text-xs font-medium text-zinc-600">
-                  <input
-                    type="checkbox"
-                    checked={importInvalidRows}
-                    onChange={(e) => setImportInvalidRows(e.target.checked)}
-                    className="rounded border-zinc-300 text-violet-600 focus:ring-violet-500"
-                  />
-                  Import invalid emails too
-                </label>
-                <button disabled={importing} onClick={handleImport} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-600/20 transition hover:opacity-95 disabled:opacity-50">
-                  {importing ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <><Database className="h-4 w-4" /> Import to List</>}
-                </button>
+
+              <div className="overflow-x-auto rounded-3xl border border-[var(--border)] bg-white p-4 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+                <table className="w-full text-left text-xs">
+                  <thead className="uppercase text-zinc-500">
+                    <tr>{headers.map((h) => <th key={h} className="px-3 py-2">{h}</th>)}</tr>
+                  </thead>
+                  <tbody className="divide-y divide-[var(--border)]">
+                    {rows.slice(0, 5).map((row, idx) => (
+                      <tr key={idx}>{headers.map((_, i) => <td key={i} className="px-3 py-2 text-zinc-700">{String(row[i] || '-')}</td>)}</tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="space-y-4 rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+                <div>
+                  <h3 className="font-bold text-zinc-950">Map Columns</h3>
+                  <p className="text-xs text-zinc-400">Unmapped columns go into raw_data automatically.</p>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                  {LEAD_DESTINATION_FIELDS.map((field) => (
+                    <div key={field.key} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-3">
+                      <label className="block text-[10px] font-bold uppercase text-zinc-500">{field.label}</label>
+                      <select value={mappings[field.key] || ''} onChange={(e) => setMappings({ ...mappings, [field.key]: e.target.value })} className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-2 py-1.5 text-xs text-zinc-900 outline-none focus:border-violet-500">
+                        <option value="">-- Ignore --</option>
+                        {headers.map((h) => <option key={h} value={h}>{h}</option>)}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex items-center justify-between border-t border-[var(--border)] pt-4">
+                  <label className="inline-flex items-center gap-2 text-xs font-medium text-zinc-600">
+                    <input
+                      type="checkbox"
+                      checked={importInvalidRows}
+                      onChange={(e) => setImportInvalidRows(e.target.checked)}
+                      className="rounded border-zinc-300 text-violet-600 focus:ring-violet-500"
+                    />
+                    Import invalid emails too
+                  </label>
+                  <button disabled={importing} onClick={handleImport} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-600/20 transition hover:opacity-95 disabled:opacity-50">
+                    {importing ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <><Database className="h-4 w-4" /> Import to List</>}
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </main>
     </AppShell>
   );

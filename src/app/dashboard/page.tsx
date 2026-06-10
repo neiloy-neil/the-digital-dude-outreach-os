@@ -11,6 +11,7 @@ import MetricCard from '@/components/reachmira/MetricCard';
 import EmptyState from '@/components/reachmira/EmptyState';
 import NextActionCard from '@/components/reachmira/NextActionCard';
 import { getLeadStatusLabel, isRepliedStatus } from '@/lib/leads/status';
+import { getLeadReadiness } from '@/lib/leads/library';
 import {
   ArrowUpRight,
   Activity,
@@ -41,6 +42,15 @@ type LeadRow = {
   decision_maker_name?: string | null;
   first_name?: string | null;
   last_name?: string | null;
+  email_verification_status?: string | null;
+  recommended_offer?: string | null;
+  last_email_type?: string | null;
+  solution?: string | null;
+  manual_email_subject?: string | null;
+  manual_email_body?: string | null;
+  manual_email_approved?: boolean | null;
+  emails_sent_count?: number | null;
+  next_email_at?: string | null;
 };
 
 type AuditRow = {
@@ -121,7 +131,29 @@ export default function Dashboard() {
 
   const metrics = useMemo(() => {
     const totalLeads = leads.length;
-    const readyToSend = leads.filter((lead) => ['manual_email_draft', 'ai_generated', 'email_approved'].includes(String(lead.status || ''))).length;
+    const readyToSend = leads.filter((lead) => {
+      // 8 readiness states mapping
+      const status = String(lead.status || '').toLowerCase();
+      if (['do_not_contact', 'unsubscribed', 'bounced', 'excluded'].includes(status)) return false;
+      if (['mail_sent', 'manual_email_sent', 'follow_up_1_sent', 'follow_up_2_sent', 'follow_up_3_sent', 'sent', 'manually_sent', 'replied'].includes(status)) return false;
+      const emailStatus = String(lead.email_verification_status || 'not_checked').toLowerCase();
+      if (['invalid', 'disposable', 'suppressed'].includes(emailStatus)) return false;
+      if (['role_based', 'risky', 'unknown', 'not_checked', 'failed'].includes(emailStatus)) return false;
+      if (!String(lead.pain_points || '').trim()) return false;
+      return true;
+    }).length;
+    const needsVerification = leads.filter((lead) => {
+      const status = String(lead.status || '').toLowerCase();
+      if (['do_not_contact', 'unsubscribed', 'bounced', 'excluded'].includes(status)) return false;
+      const emailStatus = String(lead.email_verification_status || 'not_checked').toLowerCase();
+      return ['role_based', 'risky', 'unknown', 'not_checked', 'failed'].includes(emailStatus);
+    }).length;
+    const missingSolution = leads.filter((lead) => {
+      const status = String(lead.status || '').toLowerCase();
+      if (['do_not_contact', 'unsubscribed', 'bounced', 'excluded'].includes(status)) return false;
+      return !String(lead.pain_points || '').trim();
+    }).length;
+
     const repliedLeads = leads.filter((lead) => isRepliedStatus(lead.status)).length;
     const sentEmailReplies = sentEmails.filter((email) => Boolean(email.replied_at) || email.status === 'replied').length;
     const replies = Math.max(repliedLeads, sentEmailReplies);
@@ -133,17 +165,103 @@ export default function Dashboard() {
       return nextFollowUp <= nowIso;
     }).length;
 
+    // Workspace Analytics Lite
+    const validEmailsCount = leads.filter((lead) => lead.email_verification_status === 'valid').length;
+    const validEmailRate = totalLeads ? Math.round((validEmailsCount / totalLeads) * 100) : 0;
+
+    const readinessDistribution = {
+      ready_to_send: 0,
+      needs_email_verification: 0,
+      missing_pain_point: 0,
+      missing_solution_angle: 0,
+      needs_personalization: 0,
+      follow_up_due: 0,
+      already_contacted: 0,
+      do_not_contact: 0,
+    };
+    leads.forEach((lead) => {
+      const r = getLeadReadiness(lead as Parameters<typeof getLeadReadiness>[0]);
+      if (readinessDistribution[r] !== undefined) {
+        readinessDistribution[r]++;
+      }
+    });
+
+    const interestedCount = leads.filter((lead) =>
+      ['interested', 'demo_scheduled', 'proposal_sent', 'won'].includes(String(lead.status || '').toLowerCase())
+    ).length;
+
+    const offerCounts: Record<string, number> = {};
+    leads.forEach((lead) => {
+      if (lead.recommended_offer) {
+        offerCounts[lead.recommended_offer] = (offerCounts[lead.recommended_offer] || 0) + 1;
+      }
+    });
+    let mostUsedOffer = 'None';
+    let maxOfferCount = 0;
+    Object.entries(offerCounts).forEach(([offer, count]) => {
+      if (count > maxOfferCount) {
+        maxOfferCount = count;
+        mostUsedOffer = offer;
+      }
+    });
+
+    const templateCounts: Record<string, number> = {};
+    leads.forEach((lead) => {
+      if (lead.last_email_type) {
+        templateCounts[lead.last_email_type] = (templateCounts[lead.last_email_type] || 0) + 1;
+      }
+    });
+    let bestUsedTemplate = 'None';
+    let maxTemplateCount = 0;
+    Object.entries(templateCounts).forEach(([template, count]) => {
+      if (count > maxTemplateCount) {
+        maxTemplateCount = count;
+        bestUsedTemplate = template;
+      }
+    });
+
     return {
       totalLeads,
       readyToSend,
+      needsVerification,
+      missingSolution,
       emailsSent: sentEmails.length,
       replies,
       followUpsDue,
       bounceRate,
+      validEmailRate,
+      readinessDistribution,
+      interestedCount,
+      mostUsedOffer,
+      bestUsedTemplate,
     };
   }, [leads, sentEmails, nowIso]);
 
   const needsAction = [
+    {
+      title: 'Leads Ready to Send',
+      description: 'Leads fully verified, with pain points, ready for outreach.',
+      count: metrics.readyToSend,
+      actionLabel: 'View ready leads',
+      actionHref: '/leads?readiness=ready_to_send',
+      tone: 'violet' as const,
+    },
+    {
+      title: 'Needing email verification',
+      description: 'Leads with unchecked or risky email status needing check.',
+      count: metrics.needsVerification,
+      actionLabel: 'Verify emails',
+      actionHref: '/leads?readiness=needs_email_verification',
+      tone: 'amber' as const,
+    },
+    {
+      title: 'Leads missing solution angle',
+      description: 'Leads missing pain points or recommended offer tags.',
+      count: metrics.missingSolution,
+      actionLabel: 'Add context',
+      actionHref: '/leads?readiness=missing_pain_point',
+      tone: 'sky' as const,
+    },
     {
       title: 'Follow-ups due today',
       description: 'Leads with a follow-up date that is due now.',
@@ -166,30 +284,6 @@ export default function Dashboard() {
       count: leads.filter((lead) => lead.priority === 'high' && !lead.status?.includes('sent')).length,
       actionLabel: 'Review leads',
       actionHref: '/leads?priority=high&contacted=false',
-      tone: 'rose' as const,
-    },
-    {
-      title: 'Leads missing pain point',
-      description: 'These leads need richer context before outreach.',
-      count: leads.filter((lead) => !lead.pain_points?.trim()).length,
-      actionLabel: 'Improve context',
-      actionHref: '/leads?missing=pain_points',
-      tone: 'sky' as const,
-    },
-    {
-      title: 'Replies waiting response',
-      description: 'Use the timeline to reply or update lead state.',
-      count: metrics.replies,
-      actionLabel: 'Open replied leads',
-      actionHref: '/leads?status=replied',
-      tone: 'teal' as const,
-    },
-    {
-      title: 'Bounced leads to review',
-      description: 'Check delivery issues and suppression list entries.',
-      count: sentEmails.filter((email) => Boolean(email.bounced_at) || email.status === 'bounced').length,
-      actionLabel: 'Review bounces',
-      actionHref: '/leads?status=bounced',
       tone: 'rose' as const,
     },
   ];
@@ -244,6 +338,74 @@ export default function Dashboard() {
               {needsAction.map((item) => (
                 <NextActionCard key={item.title} {...item} />
               ))}
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+            <div className="mb-6">
+              <h2 className="text-xl font-semibold tracking-tight text-zinc-950">Workspace Analytics Lite</h2>
+              <p className="mt-1 text-sm text-zinc-500">A simple, high-level summary of lead quality, template usage, and readiness distribution.</p>
+            </div>
+            
+            <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="rounded-2xl border border-[var(--border)] bg-zinc-50/50 p-4 text-center">
+                <div className="text-2xl font-bold text-violet-700">{metrics.validEmailRate}%</div>
+                <div className="mt-1 text-xs font-bold uppercase tracking-wider text-zinc-400">Valid Email Rate</div>
+                <p className="mt-1 text-[11px] text-zinc-500">Percentage of leads verified as safe to send</p>
+              </div>
+              <div className="rounded-2xl border border-[var(--border)] bg-zinc-50/50 p-4 text-center">
+                <div className="text-2xl font-bold text-teal-700">{metrics.interestedCount}</div>
+                <div className="mt-1 text-xs font-bold uppercase tracking-wider text-zinc-400">Interested Leads</div>
+                <p className="mt-1 text-[11px] text-zinc-500">Leads tagged with an interested stage</p>
+              </div>
+              <div className="rounded-2xl border border-[var(--border)] bg-zinc-50/50 p-4 text-center">
+                <div className="text-sm font-bold text-zinc-800 truncate px-2" title={metrics.mostUsedOffer}>{metrics.mostUsedOffer}</div>
+                <div className="mt-1 text-xs font-bold uppercase tracking-wider text-zinc-400">Most Used Offer</div>
+                <p className="mt-1 text-[11px] text-zinc-500">Top offer assigned to lead records</p>
+              </div>
+              <div className="rounded-2xl border border-[var(--border)] bg-zinc-50/50 p-4 text-center">
+                <div className="text-sm font-bold text-zinc-800 truncate px-2" title={metrics.bestUsedTemplate}>{metrics.bestUsedTemplate.replace(/_/g, ' ')}</div>
+                <div className="mt-1 text-xs font-bold uppercase tracking-wider text-zinc-400">Best Used Template</div>
+                <p className="mt-1 text-[11px] text-zinc-500">Most frequent cold or follow-up email type</p>
+              </div>
+            </div>
+
+            <div className="mt-6 border-t border-[var(--border)] pt-6">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-4">Outreach Readiness Distribution</h3>
+              <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 text-center">
+                <div className="rounded-xl bg-emerald-50 p-3 border border-emerald-100">
+                  <div className="text-lg font-bold text-emerald-700">{metrics.readinessDistribution.ready_to_send}</div>
+                  <div className="text-[10px] uppercase font-bold text-zinc-500">Ready to Send</div>
+                </div>
+                <div className="rounded-xl bg-yellow-50 p-3 border border-yellow-100">
+                  <div className="text-lg font-bold text-yellow-700">{metrics.readinessDistribution.needs_email_verification}</div>
+                  <div className="text-[10px] uppercase font-bold text-zinc-500">Needs Verif.</div>
+                </div>
+                <div className="rounded-xl bg-orange-50 p-3 border border-orange-100">
+                  <div className="text-lg font-bold text-orange-700">{metrics.readinessDistribution.missing_pain_point}</div>
+                  <div className="text-[10px] uppercase font-bold text-zinc-500">Missing Pain</div>
+                </div>
+                <div className="rounded-xl bg-amber-50 p-3 border border-amber-100">
+                  <div className="text-lg font-bold text-amber-700">{metrics.readinessDistribution.missing_solution_angle}</div>
+                  <div className="text-[10px] uppercase font-bold text-zinc-500">Missing Offer</div>
+                </div>
+                <div className="rounded-xl bg-violet-50 p-3 border border-violet-100">
+                  <div className="text-lg font-bold text-violet-700">{metrics.readinessDistribution.needs_personalization}</div>
+                  <div className="text-[10px] uppercase font-bold text-zinc-500">Needs Pers.</div>
+                </div>
+                <div className="rounded-xl bg-rose-50 p-3 border border-rose-100">
+                  <div className="text-lg font-bold text-rose-700">{metrics.readinessDistribution.follow_up_due}</div>
+                  <div className="text-[10px] uppercase font-bold text-zinc-500">Follow-up Due</div>
+                </div>
+                <div className="rounded-xl bg-blue-50 p-3 border border-blue-100">
+                  <div className="text-lg font-bold text-blue-700">{metrics.readinessDistribution.already_contacted}</div>
+                  <div className="text-[10px] uppercase font-bold text-zinc-500">Contacted</div>
+                </div>
+                <div className="rounded-xl bg-zinc-100 p-3 border border-zinc-200">
+                  <div className="text-lg font-bold text-zinc-700">{metrics.readinessDistribution.do_not_contact}</div>
+                  <div className="text-[10px] uppercase font-bold text-zinc-500">Do Not Contact</div>
+                </div>
+              </div>
             </div>
           </section>
 
