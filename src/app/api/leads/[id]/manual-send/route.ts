@@ -306,11 +306,9 @@ export async function POST(
       senderName,
       Boolean(includeSignature)
     );
-    const appBaseUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL 
-      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` 
-      : process.env.PRODUCTION_URL 
-      ? process.env.PRODUCTION_URL 
-      : 'https://app.reachmira.com';
+    const appBaseUrl = process.env.NEXT_PUBLIC_APP_URL && !process.env.NEXT_PUBLIC_APP_URL.includes('localhost')
+      ? process.env.NEXT_PUBLIC_APP_URL
+      : 'https://reachmira.vercel.app';
     const unsubscribeUrl = `${appBaseUrl}/unsubscribe?token=${lead.unsubscribe_token}`;
     const { html, text } = buildEmailMessageBodies(bodyWithSignature, unsubscribeUrl);
     const to = mode === 'test' ? targetEmail || user.email || lead.email : recipientEmail || lead.email;
