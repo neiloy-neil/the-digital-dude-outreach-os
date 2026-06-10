@@ -14,6 +14,9 @@ export async function checkSendingLimits(
   userId: string,
   emailsToProcess: number = 1
 ): Promise<{ allowed: boolean; reason?: string }> {
+  // Bypassing billing limit checks per user request
+  return { allowed: true };
+
   // 1. Get user profile for subscription status
   const { data: profile } = await supabase
     .from('profiles')
