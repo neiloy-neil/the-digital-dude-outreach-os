@@ -39,8 +39,13 @@ export default function InboxPage() {
   const [drafting, setDrafting] = useState(false);
   const toast = useToast();
 
-  const loadMessages = async () => {
+  const loadMessages = async (forceSync = false) => {
+    setLoading(true);
     try {
+      if (forceSync) {
+        toast.success('Syncing inbox...', { icon: <RefreshCcw className="h-4 w-4 animate-spin text-violet-500" /> });
+        await fetch('/api/cron/check-replies', { method: 'POST' });
+      }
       const res = await fetch('/api/inbox');
       const data = await res.json();
       if (data.messages) {
@@ -136,7 +141,7 @@ export default function InboxPage() {
         <div className="w-1/3 border-r border-[var(--border)] bg-white flex flex-col">
           <div className="p-4 border-b border-[var(--border)] flex items-center justify-between">
             <h2 className="text-lg font-bold text-zinc-900">Inbox</h2>
-            <button onClick={loadMessages} className="text-zinc-500 hover:text-zinc-900">
+            <button onClick={() => loadMessages(true)} className="text-zinc-500 hover:text-zinc-900 transition-colors">
               <RefreshCcw className="h-4 w-4" />
             </button>
           </div>
