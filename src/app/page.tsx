@@ -18,12 +18,10 @@ export default function HomePage() {
       <nav className="sticky top-0 z-50 bg-[#FFFFFF]/80 backdrop-blur-md border-b border-[#E5E7EB]">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <Link href="/" className="flex items-center">
-            <Image 
+            <img 
               src="/reachmira-logo.png" 
               alt="ReachMira Logo" 
-              width={160} 
-              height={40} 
-              className="h-10 w-auto object-contain"
+              className="h-20 md:h-24 w-auto object-contain"
             />
           </Link>
           
@@ -308,7 +306,7 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex flex-col items-center md:items-start">
             <Link href="/" className="flex items-center mb-4">
-              <Image src="/reachmira-logo.png" alt="ReachMira Logo" width={140} height={32} className="h-8 w-auto object-contain grayscale opacity-60" />
+              <img src="/reachmira-logo.png" alt="ReachMira Logo" className="h-16 md:h-20 w-auto object-contain grayscale opacity-60" />
             </Link>
             <p className="text-sm text-[#6B7280]">Simple outreach workspace for early-stage teams.</p>
           </div>
