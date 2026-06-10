@@ -1,20 +1,3 @@
 {
-  "crons": [
-    {
-      "path": "/api/cron/check-replies",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cron/send-due-emails",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cron/send-emails",
-      "schedule": "*/5 * * * *"
-    },
-    {
-      "path": "/api/cron/telegram-report",
-      "schedule": "0 8 * * *"
-    }
-  ]
+  "version": 2
 }
