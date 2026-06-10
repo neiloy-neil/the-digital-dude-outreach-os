@@ -3,638 +3,327 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { motion, Variants } from 'framer-motion';
 import { 
-  ArrowRight, Sparkles, Clock, Bot, Layers, 
-  CheckCircle2, ChevronDown, ShieldCheck, Mail, 
-  Zap, Star, User, Building2, Briefcase, X, Globe, Box
+  CheckCircle2, ArrowRight, FileSpreadsheet, 
+  Users, CheckSquare, Search, Send, FileText, Clock, Zap 
 } from 'lucide-react';
 
-// Animation Variants
-const fadeInUp: Variants = {
-  hidden: { opacity: 0, y: 40 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" as const } }
-};
-
-const staggerContainer: Variants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: { staggerChildren: 0.15 }
-  }
-};
-
-const bounceHover: Variants = {
-  rest: { scale: 1 },
-  hover: { scale: 1.05, transition: { type: "spring" as const, stiffness: 400, damping: 10 } }
-};
-
 export default function HomePage() {
-  const [openFaq, setOpenFaq] = useState<number | null>(null);
-
-  const faqs = [
-    {
-      question: "Do I need to warm up my email?",
-      answer: "Since ReachMira connects directly to your existing inboxes (via SMTP or APIs like Mailgun) and sends manually or in small, controlled batches, your deliverability naturally stays extremely high. We recommend standard best practices, but you won't need complex automated warmup tools if you're doing true manual-first outreach."
-    },
-    {
-      question: "What AI models does ReachMira use?",
-      answer: "We leverage Google's Gemini models for our Auto-Research feature. It's incredibly fast at reading a website's HTML, stripping away the noise, and extracting exactly the company summaries and pain points you need to personalize your emails."
-    },
-    {
-      question: "Can I still send automated campaigns?",
-      answer: "Yes! While our core philosophy is 'manual-first' for high-value targets, we do have a campaign engine for sending follow-ups and broader blasts. However, our safety rules ensure you don't accidentally spam unverified or risky emails."
-    },
-    {
-      question: "How does the pricing work during Beta?",
-      answer: "Right now, the Private Beta is free while we iron out the kinks and gather feedback. Once we officially launch, early adopters will get exclusive lifetime discounts on our paid tiers."
-    }
-  ];
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-[#050505] text-zinc-100 selection:bg-fuchsia-500/30 overflow-x-hidden relative">
+    <div className="min-h-screen bg-[#F8FAFC] text-[#111827] font-sans selection:bg-[#7C3AED]/20">
       
-      {/* Animated Mesh Background (Stripe-style) */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
-        <motion.div 
-          animate={{
-            scale: [1, 1.2, 1],
-            rotate: [0, 90, 0],
-            opacity: [0.4, 0.6, 0.4]
-          }}
-          transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-          className="absolute -top-1/4 -left-1/4 w-[150%] h-[150%] bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-fuchsia-600/20 via-violet-900/10 to-transparent blur-[120px] rounded-full mix-blend-screen"
-        />
-        <motion.div 
-          animate={{
-            scale: [1, 1.5, 1],
-            rotate: [0, -90, 0],
-            opacity: [0.3, 0.5, 0.3]
-          }}
-          transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
-          className="absolute top-1/4 right-0 w-[100%] h-[100%] bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-cyan-500/10 via-teal-900/10 to-transparent blur-[120px] rounded-full mix-blend-screen"
-        />
-      </div>
-
-      <div className="relative z-10">
-        {/* Navigation */}
-        <nav className="container mx-auto px-6 py-6 flex items-center justify-between">
-          <motion.div 
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="flex items-center gap-3"
-          >
-            {/* Logo only, no text */}
+      {/* 1. Navbar */}
+      <nav className="sticky top-0 z-50 bg-[#FFFFFF]/80 backdrop-blur-md border-b border-[#E5E7EB]">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
             <Image 
               src="/reachmira-logo.png" 
               alt="ReachMira Logo" 
-              width={96} 
-              height={96} 
-              priority
-              className="w-24 h-24 object-contain drop-shadow-[0_0_20px_rgba(255,255,255,0.4)]"
+              width={32} 
+              height={32} 
+              className="w-8 h-8 object-contain"
             />
-          </motion.div>
-          <motion.div 
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="flex items-center gap-6"
-          >
-            <Link href="/login" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors hidden sm:block">
+            <span className="font-bold text-xl tracking-tight text-[#111827]">ReachMira</span>
+          </div>
+          
+          <div className="hidden md:flex items-center gap-8 text-sm font-medium text-[#6B7280]">
+            <a href="#features" className="hover:text-[#7C3AED] transition-colors">Features</a>
+            <a href="#how-it-works" className="hover:text-[#7C3AED] transition-colors">How It Works</a>
+            <a href="#pricing" className="hover:text-[#7C3AED] transition-colors">Pricing</a>
+          </div>
+
+          <div className="hidden md:flex items-center gap-4">
+            <Link href="/login" className="text-sm font-medium text-[#6B7280] hover:text-[#111827] transition-colors">
               Login
             </Link>
-            <Link href="/waitlist" className="text-sm font-semibold bg-white/10 backdrop-blur-md border border-white/20 text-white px-5 py-2 rounded-full hover:bg-white hover:text-black hover:shadow-[0_0_30px_rgba(255,255,255,0.5)] transition-all duration-300">
-              Join Waitlist
+            <Link href="/register" className="text-sm font-medium bg-[#7C3AED] hover:bg-[#6D28D9] text-white px-5 py-2 rounded-full transition-colors shadow-sm">
+              Start Free
             </Link>
-          </motion.div>
-        </nav>
+          </div>
 
-        {/* Hero Section */}
-        <main className="container mx-auto px-6 pt-24 pb-32 flex flex-col items-center text-center relative">
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.1, type: "spring" }}
-            className="inline-flex items-center gap-2 rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-4 py-1.5 text-xs font-bold text-fuchsia-300 mb-8 shadow-[0_0_30px_rgba(217,70,239,0.2)] backdrop-blur-md"
-          >
-            <Sparkles className="h-3 w-3" />
-            <span>Private Beta Currently Full</span>
-          </motion.div>
+          <button className="md:hidden" onClick={() => setIsMenuOpen(!isMenuOpen)}>
+            <svg className="w-6 h-6 text-[#111827]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+          </button>
+        </div>
+      </nav>
 
-          <motion.h1 
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2, duration: 0.7 }}
-            className="max-w-5xl text-6xl md:text-8xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white via-zinc-200 to-zinc-500 leading-[1.05] mb-8"
-          >
-            Outreach without the <br className="hidden md:block" />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-500 via-violet-400 to-cyan-400 drop-shadow-sm">automation overwhelm.</span>
-          </motion.h1>
+      {/* 2. Hero Section */}
+      <section className="relative pt-24 pb-32 px-6 max-w-7xl mx-auto text-center">
+        {/* Soft Violet gradient blob behind hero */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full max-w-3xl h-[400px] bg-gradient-to-b from-[#7C3AED]/10 to-transparent blur-3xl -z-10 rounded-full" />
+        
+        <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight text-[#111827] max-w-4xl mx-auto mb-6 leading-tight">
+          Turn your lead list into <br className="hidden md:block"/> 
+          <span className="text-[#7C3AED]">personalized outreach.</span>
+        </h1>
+        
+        <p className="text-lg md:text-xl text-[#6B7280] max-w-2xl mx-auto mb-10 leading-relaxed">
+          ReachMira helps startups, freelancers, marketers, and small agencies import leads, verify emails, write better outreach, send manually, and track every follow-up from one simple workspace.
+        </p>
 
-          <motion.p 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-            className="max-w-2xl text-lg md:text-xl text-zinc-400 mb-12 leading-relaxed"
-          >
-            A manual-first CRM built for B2B agencies that value deep personalization over volume. Scrape websites, manage pipelines, and track follow-ups—all in one gorgeous workspace.
-          </motion.p>
+        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
+          <Link href="/register" className="w-full sm:w-auto text-base font-semibold bg-[#7C3AED] hover:bg-[#6D28D9] text-white px-8 py-4 rounded-full transition-colors shadow-lg shadow-[#7C3AED]/20">
+            Start Free
+          </Link>
+          <a href="#how-it-works" className="w-full sm:w-auto text-base font-medium bg-white border border-[#E5E7EB] hover:border-[#7C3AED]/50 hover:bg-[#F8FAFC] text-[#111827] px-8 py-4 rounded-full transition-colors">
+            See How It Works
+          </a>
+        </div>
 
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
-            className="w-full max-w-sm relative group"
-          >
-            <div className="absolute -inset-1 bg-gradient-to-r from-fuchsia-600 via-violet-600 to-cyan-600 rounded-2xl blur-lg opacity-40 transition duration-1000 group-hover:opacity-70 animate-pulse"></div>
-            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} className="relative p-1 rounded-2xl bg-zinc-900 border border-zinc-800 backdrop-blur-2xl shadow-2xl">
-              <Link
-                href="/waitlist"
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-zinc-100 to-zinc-300 px-8 py-5 text-lg font-black text-black transition-all shadow-[inset_0_-2px_10px_rgba(0,0,0,0.2)]"
-              >
-                Join the Waitlist
-                <ArrowRight className="h-5 w-5" />
-              </Link>
-            </motion.div>
-          </motion.div>
-          <motion.p 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.8 }}
-            className="mt-6 mb-20 text-sm text-zinc-500 font-semibold uppercase tracking-widest"
-          >
-            No credit card required
-          </motion.p>
+        <p className="text-sm text-[#6B7280] font-medium mb-16">
+          Built for people using CSV, Google Sheets, ChatGPT, and their own email accounts.
+        </p>
 
-          {/* Hero Mockup */}
-          <motion.div 
-            initial={{ opacity: 0, y: 100 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 1, duration: 1, ease: "easeOut" as const }}
-            className="w-full max-w-6xl mx-auto relative group mt-12"
-          >
-            <div className="absolute -inset-4 bg-gradient-to-b from-fuchsia-600/30 via-cyan-600/20 to-transparent blur-3xl opacity-50 rounded-[3rem]"></div>
-            <div className="relative rounded-2xl border border-zinc-800/80 bg-zinc-900/50 p-2 md:p-4 backdrop-blur-xl shadow-2xl overflow-hidden">
-              <div className="absolute inset-0 bg-gradient-to-tr from-fuchsia-500/5 to-cyan-500/5 z-10 pointer-events-none"></div>
-              <Image 
-                src="/hero_dashboard.png" 
-                alt="ReachMira Dashboard" 
-                width={1200} 
-                height={675} 
-                priority
-                className="w-full h-auto rounded-xl shadow-2xl border border-zinc-800"
-              />
+        {/* Hero Visual Mockup */}
+        <div className="relative mx-auto max-w-5xl rounded-2xl bg-white border border-[#E5E7EB] shadow-2xl overflow-hidden text-left flex flex-col md:flex-row h-auto md:h-[450px]">
+          {/* Mockup Sidebar */}
+          <div className="w-full md:w-64 bg-[#F8FAFC] border-r border-[#E5E7EB] p-4 flex flex-col gap-2">
+            <div className="flex items-center gap-2 mb-6 px-2">
+              <div className="w-3 h-3 rounded-full bg-red-400"></div>
+              <div className="w-3 h-3 rounded-full bg-yellow-400"></div>
+              <div className="w-3 h-3 rounded-full bg-green-400"></div>
             </div>
-          </motion.div>
-        </main>
-
-        {/* Trusted By */}
-        <motion.section 
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true }}
-          variants={staggerContainer}
-          className="w-full border-y border-zinc-900 bg-zinc-950/50 py-10 overflow-hidden flex flex-col items-center"
-        >
-          <p className="text-zinc-500 text-sm font-semibold mb-6 tracking-widest uppercase">Trusted by forward-thinking B2B agencies</p>
-          <div className="flex gap-16 md:gap-32 items-center opacity-50 grayscale">
-            <span className="text-2xl font-black tracking-tighter text-zinc-300">AcmeCorp</span>
-            <span className="text-2xl font-black tracking-tighter text-zinc-300 flex items-center gap-2"><Globe className="w-6 h-6"/> GlobalReach</span>
-            <span className="text-2xl font-black tracking-tighter text-zinc-300">NextGen</span>
-            <span className="text-2xl font-black tracking-tighter text-zinc-300 flex items-center gap-2"><Box className="w-6 h-6"/> Elevate</span>
-            <span className="text-2xl font-black tracking-tighter text-zinc-300">Stratos</span>
+            <div className="flex items-center gap-3 px-3 py-2 bg-white rounded-lg shadow-sm border border-[#E5E7EB] text-sm font-semibold text-[#111827]">
+              <Users className="w-4 h-4 text-[#7C3AED]" /> Lead Library
+            </div>
+            <div className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-[#6B7280]">
+              <Send className="w-4 h-4" /> Ready to Send <span className="ml-auto bg-[#7C3AED] text-white text-xs px-2 py-0.5 rounded-full">12</span>
+            </div>
+            <div className="flex items-center gap-3 px-3 py-2 text-sm font-medium text-[#6B7280]">
+              <Clock className="w-4 h-4" /> Today&apos;s Follow-ups
+            </div>
           </div>
-        </motion.section>
-
-        {/* Why Manual First? */}
-        <motion.section 
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-100px" }}
-          variants={staggerContainer}
-          className="container mx-auto px-6 py-32"
-        >
-          <motion.div variants={fadeInUp} className="max-w-3xl mx-auto text-center mb-20">
-            <h2 className="text-4xl md:text-6xl font-bold text-white mb-6 tracking-tight">Why "Manual-First"?</h2>
-            <p className="text-xl text-zinc-400 leading-relaxed">
-              The era of spray-and-pray cold email is dead. Automated blasts burn your domains, annoy prospects, and ruin your sender reputation. Quality beats quantity.
-            </p>
-          </motion.div>
-
-          <div className="grid gap-8 md:grid-cols-3 max-w-6xl mx-auto">
-            <motion.div variants={fadeInUp} whileHover="hover" initial="rest" className="bg-zinc-900/40 border border-zinc-800/80 rounded-[2rem] p-10 backdrop-blur-md relative overflow-hidden group">
-              <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-              <motion.div variants={bounceHover}>
-                <ShieldCheck className="w-12 h-12 text-cyan-400 mb-8" />
-                <h3 className="text-2xl font-bold text-white mb-4">Protect Domains</h3>
-                <p className="text-zinc-400 text-base leading-relaxed">By reviewing and sending emails manually, you drastically lower bounce rates and avoid triggering spam filters, keeping your primary domains perfectly safe.</p>
-              </motion.div>
-            </motion.div>
-            <motion.div variants={fadeInUp} whileHover="hover" initial="rest" className="bg-zinc-900/40 border border-zinc-800/80 rounded-[2rem] p-10 backdrop-blur-md relative overflow-hidden group">
-              <div className="absolute inset-0 bg-gradient-to-br from-fuchsia-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-              <motion.div variants={bounceHover}>
-                <Zap className="w-12 h-12 text-fuchsia-400 mb-8" />
-                <h3 className="text-2xl font-bold text-white mb-4">Hyper-Personalization</h3>
-                <p className="text-zinc-400 text-base leading-relaxed">Actually read about your prospect before you hit send. Use our AI to scrape their site, then craft a message that proves you aren't just another bot.</p>
-              </motion.div>
-            </motion.div>
-            <motion.div variants={fadeInUp} whileHover="hover" initial="rest" className="bg-zinc-900/40 border border-zinc-800/80 rounded-[2rem] p-10 backdrop-blur-md relative overflow-hidden group">
-              <div className="absolute inset-0 bg-gradient-to-br from-violet-500/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-              <motion.div variants={bounceHover}>
-                <Mail className="w-12 h-12 text-violet-400 mb-8" />
-                <h3 className="text-2xl font-bold text-white mb-4">Higher Reply Rates</h3>
-                <p className="text-zinc-400 text-base leading-relaxed">10 highly researched, perfectly timed emails will out-perform 1,000 generic spam blasts every single time. Book more meetings with less effort.</p>
-              </motion.div>
-            </motion.div>
+          {/* Mockup Main */}
+          <div className="flex-1 bg-white p-6 md:p-8 flex flex-col gap-6 overflow-hidden">
+            <div className="flex items-center justify-between border-b border-[#F3F4F6] pb-4">
+              <div>
+                <h3 className="font-bold text-lg text-[#111827]">Sarah Jenkins</h3>
+                <p className="text-sm text-[#6B7280]">Acme Corp • Founder</p>
+              </div>
+              <div className="flex gap-2">
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-50 text-green-700 text-xs font-medium border border-green-200">
+                  <CheckCircle2 className="w-3 h-3" /> Valid Email
+                </span>
+              </div>
+            </div>
+            
+            <div className="flex-1 bg-[#F8FAFC] rounded-xl border border-[#E5E7EB] p-5 flex flex-col">
+              <div className="text-sm text-[#6B7280] mb-4 border-b border-[#E5E7EB] pb-2">Drafting manual email...</div>
+              <div className="space-y-3">
+                <div className="h-4 bg-[#E5E7EB] rounded w-3/4"></div>
+                <div className="h-4 bg-[#E5E7EB] rounded w-full"></div>
+                <div className="h-4 bg-[#E5E7EB] rounded w-5/6"></div>
+              </div>
+              <div className="mt-auto flex justify-end">
+                <div className="bg-[#7C3AED] text-white text-sm px-4 py-2 rounded-lg font-medium flex items-center gap-2">
+                  <Send className="w-4 h-4" /> Send Email
+                </div>
+              </div>
+            </div>
           </div>
-        </motion.section>
+        </div>
+      </section>
 
-        {/* How it Works */}
-        <motion.section 
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-100px" }}
-          variants={staggerContainer}
-          className="relative py-32"
-        >
-          {/* Subtle separator */}
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-px bg-gradient-to-r from-transparent via-zinc-800 to-transparent" />
+      {/* 3. Problem Section */}
+      <section className="bg-white py-24 border-y border-[#E5E7EB]">
+        <div className="max-w-7xl mx-auto px-6">
+          <h2 className="text-3xl md:text-4xl font-bold text-center text-[#111827] mb-16">Outreach gets messy fast.</h2>
+          <div className="grid md:grid-cols-4 gap-6">
+            {[
+              { icon: FileSpreadsheet, text: "Lead lists stay scattered in spreadsheets" },
+              { icon: FileText, text: "Personalized emails are hard to organize" },
+              { icon: Clock, text: "Follow-ups are easy to forget" },
+              { icon: Zap, text: "Most outreach tools cost too much too early" }
+            ].map((item, idx) => (
+              <div key={idx} className="bg-[#F8FAFC] p-8 rounded-2xl border border-[#E5E7EB] flex flex-col items-start gap-4">
+                <div className="w-10 h-10 rounded-full bg-white border border-[#E5E7EB] flex items-center justify-center shadow-sm">
+                  <item.icon className="w-5 h-5 text-[#6B7280]" />
+                </div>
+                <p className="font-medium text-[#111827] text-lg leading-snug">{item.text}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 4. Solution / Features Section */}
+      <section id="features" className="py-24 bg-[#F8FAFC]">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl md:text-4xl font-bold text-[#111827] mb-4">ReachMira keeps your outreach organized from first lead to final follow-up.</h2>
+          </div>
           
-          <div className="container mx-auto px-6">
-            <motion.div variants={fadeInUp} className="max-w-3xl mx-auto text-center mb-24">
-              <h2 className="text-4xl md:text-6xl font-bold text-white mb-6 tracking-tight">How it works</h2>
-              <p className="text-xl text-zinc-400">A streamlined workflow designed to get you in, get you out, and get you replies.</p>
-            </motion.div>
-
-            <div className="max-w-5xl mx-auto space-y-20 relative">
-              {/* Connecting line */}
-              <div className="absolute left-8 md:left-1/2 top-10 bottom-10 w-0.5 bg-gradient-to-b from-fuchsia-500/20 via-violet-500/20 to-transparent hidden md:block" />
-
-              {/* Step 1 */}
-              <motion.div variants={fadeInUp} className="flex flex-col md:flex-row items-center gap-12 md:gap-24 relative z-10">
-                <div className="md:w-1/2 flex justify-end text-left md:text-right">
-                  <div>
-                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-violet-500/10 text-violet-400 border border-violet-500/30 mb-6 font-black text-xl shadow-[0_0_20px_rgba(139,92,246,0.3)]">1</div>
-                    <h3 className="text-3xl font-bold text-white mb-4 tracking-tight">Import & Clean</h3>
-                    <p className="text-zinc-400 text-lg">Upload your CSV or link a Google Sheet. ReachMira automatically detects risky and role-based emails so you don't waste time on bounces.</p>
-                  </div>
+          <div className="grid md:grid-cols-3 gap-6">
+            {[
+              { icon: FileSpreadsheet, title: "Import leads from CSV or Google Sheets", desc: "Easily drop in your data and map it to your workspace." },
+              { icon: CheckSquare, title: "Verify email status before sending", desc: "Detect invalid and risky emails instantly to protect your domain." },
+              { icon: Search, title: "Store pain points and solution angles", desc: "Keep all your deep research perfectly attached to each lead." },
+              { icon: FileText, title: "Write and save manual emails", desc: "Draft highly personalized emails right next to the lead&apos;s context." },
+              { icon: Send, title: "Track sent emails and follow-ups", desc: "Never forget who you emailed or when it&apos;s time to reach back out." },
+              { icon: Users, title: "Keep every lead history in one place", desc: "A unified view of every interaction you&apos;ve had with a prospect." }
+            ].map((feat, idx) => (
+              <div key={idx} className="bg-white p-6 rounded-2xl border border-[#E5E7EB] shadow-sm hover:shadow-md transition-shadow">
+                <div className="w-12 h-12 rounded-xl bg-[#7C3AED]/10 flex items-center justify-center mb-5">
+                  <feat.icon className="w-6 h-6 text-[#7C3AED]" />
                 </div>
-                <div className="md:w-1/2 w-full">
-                  <motion.div whileHover={{ scale: 1.02 }} className="rounded-[2rem] border border-zinc-800 shadow-2xl overflow-hidden relative group cursor-default">
-                    <div className="absolute inset-0 bg-gradient-to-tr from-violet-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-10 pointer-events-none" />
-                    <Image 
-                      src="/inbox_pipeline.png" 
-                      alt="Import Leads Pipeline" 
-                      width={800} 
-                      height={450} 
-                      className="w-full h-auto object-cover transform transition-transform duration-700 group-hover:scale-105"
-                    />
-                  </motion.div>
-                </div>
-              </motion.div>
-
-              {/* Step 2 */}
-              <motion.div variants={fadeInUp} className="flex flex-col md:flex-row-reverse items-center gap-12 md:gap-24 relative z-10">
-                <div className="md:w-1/2 text-left">
-                  <div>
-                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-fuchsia-500/10 text-fuchsia-400 border border-fuchsia-500/30 mb-6 font-black text-xl shadow-[0_0_20px_rgba(217,70,239,0.3)]">2</div>
-                    <h3 className="text-3xl font-bold text-white mb-4 tracking-tight">Auto-Research AI</h3>
-                    <p className="text-zinc-400 text-lg">Click a button and ReachMira's AI will scrape the lead's website, digest what they do, and instantly extract their top pain points and suggest an angle.</p>
-                  </div>
-                </div>
-                <div className="md:w-1/2 w-full flex justify-end">
-                  <motion.div whileHover={{ scale: 1.02 }} className="w-full rounded-[2rem] border border-zinc-800 shadow-2xl overflow-hidden relative group cursor-default">
-                    <div className="absolute inset-0 bg-gradient-to-bl from-fuchsia-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-10 pointer-events-none" />
-                    <Image 
-                      src="/ai_research.png" 
-                      alt="AI Auto-Research" 
-                      width={800} 
-                      height={450} 
-                      className="w-full h-auto object-cover transform transition-transform duration-700 group-hover:scale-105"
-                    />
-                  </motion.div>
-                </div>
-              </motion.div>
-
-              {/* Step 3 */}
-              <motion.div variants={fadeInUp} className="flex flex-col md:flex-row items-center gap-12 md:gap-24 relative z-10">
-                <div className="md:w-1/2 flex justify-end text-left md:text-right">
-                  <div>
-                    <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 mb-6 font-black text-xl shadow-[0_0_20px_rgba(6,182,212,0.3)]">3</div>
-                    <h3 className="text-3xl font-bold text-white mb-4 tracking-tight">Send & Track</h3>
-                    <p className="text-zinc-400 text-lg">Review the AI's research, tweak your template, and send directly from your connected inbox. We'll track opens, clicks, and remind you when to follow up.</p>
-                  </div>
-                </div>
-                <div className="md:w-1/2 w-full">
-                  <motion.div whileHover={{ scale: 1.02 }} className="w-full rounded-[2rem] border border-zinc-800 shadow-2xl overflow-hidden relative group cursor-default">
-                    <div className="absolute inset-0 bg-gradient-to-t from-cyan-600/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-10 pointer-events-none" />
-                    <Image 
-                      src="/inbox_pipeline.png" 
-                      alt="Send and Track Emails" 
-                      width={800} 
-                      height={450} 
-                      className="w-full h-auto object-cover transform transition-transform duration-700 group-hover:scale-105"
-                    />
-                  </motion.div>
-                </div>
-              </motion.div>
-            </div>
+                <h3 className="font-bold text-lg text-[#111827] mb-2">{feat.title}</h3>
+                <p className="text-[#6B7280]">{feat.desc}</p>
+              </div>
+            ))}
           </div>
-        </motion.section>
+        </div>
+      </section>
 
-        {/* Comparison Table */}
-        <motion.section 
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-100px" }}
-          variants={staggerContainer}
-          className="container mx-auto px-6 py-32"
-        >
-          <motion.div variants={fadeInUp} className="max-w-3xl mx-auto text-center mb-16">
-            <h2 className="text-4xl md:text-6xl font-bold text-white mb-6 tracking-tight">The Anti-Spam Alternative</h2>
-            <p className="text-xl text-zinc-400">Why top agencies are ditching high-volume blasters for ReachMira.</p>
-          </motion.div>
-
-          <motion.div variants={fadeInUp} className="max-w-5xl mx-auto bg-zinc-900/40 border border-zinc-800 rounded-3xl overflow-hidden backdrop-blur-md shadow-2xl">
-            <div className="grid grid-cols-3 border-b border-zinc-800">
-              <div className="p-6"></div>
-              <div className="p-6 border-x border-zinc-800 bg-zinc-950/50 flex flex-col items-center justify-center text-center">
-                <span className="text-xl font-bold text-zinc-400">Automated Blasters</span>
-                <span className="text-sm text-zinc-500">(Instantly, Smartlead)</span>
+      {/* 5. How it works Section */}
+      <section id="how-it-works" className="py-24 bg-white border-y border-[#E5E7EB]">
+        <div className="max-w-5xl mx-auto px-6">
+          <h2 className="text-3xl md:text-4xl font-bold text-center text-[#111827] mb-16">How ReachMira works</h2>
+          
+          <div className="space-y-12">
+            {[
+              { step: 1, title: "Import your leads", desc: "Upload a CSV or connect a Google Sheet." },
+              { step: 2, title: "Review and verify", desc: "See email status, missing data, and outreach readiness." },
+              { step: 3, title: "Write personalized emails", desc: "Use lead context, pain points, and solution ideas to write better emails." },
+              { step: 4, title: "Send and track", desc: "Send manually from your connected email account and track every follow-up." }
+            ].map((item) => (
+              <div key={item.step} className="flex gap-6 items-start">
+                <div className="flex-shrink-0 w-12 h-12 rounded-full bg-[#14B8A6]/10 text-[#14B8A6] flex items-center justify-center font-bold text-lg border border-[#14B8A6]/20">
+                  {item.step}
+                </div>
+                <div>
+                  <h3 className="text-2xl font-bold text-[#111827] mb-2">{item.title}</h3>
+                  <p className="text-lg text-[#6B7280]">{item.desc}</p>
+                </div>
               </div>
-              <div className="p-6 bg-gradient-to-b from-violet-900/20 flex flex-col items-center justify-center text-center relative overflow-hidden">
-                <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-violet-500 to-cyan-400" />
-                <span className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-cyan-400">ReachMira</span>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 6. Best For Section */}
+      <section className="py-24 bg-[#F8FAFC]">
+        <div className="max-w-7xl mx-auto px-6 text-center">
+          <h2 className="text-3xl md:text-4xl font-bold text-[#111827] mb-12">Built for early-stage outreach.</h2>
+          <div className="flex flex-wrap justify-center gap-4 max-w-4xl mx-auto">
+            {['Startups', 'Freelancers', 'Small agencies', 'Early-stage marketers', 'B2B service providers', 'Founders doing sales manually'].map((tag, i) => (
+              <span key={i} className="bg-white border border-[#E5E7EB] text-[#111827] px-6 py-3 rounded-full font-medium shadow-sm text-lg">
+                {tag}
+              </span>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* 7. Comparison Section */}
+      <section className="py-24 bg-white border-y border-[#E5E7EB] overflow-x-auto">
+        <div className="max-w-7xl mx-auto px-6 min-w-[800px]">
+          <h2 className="text-3xl md:text-4xl font-bold text-center text-[#111827] mb-16">Before you need a heavy outreach platform, start with ReachMira.</h2>
+          
+          <div className="border border-[#E5E7EB] rounded-2xl overflow-hidden shadow-sm">
+            {/* Header */}
+            <div className="grid grid-cols-4 bg-[#F8FAFC] border-b border-[#E5E7EB]">
+              <div className="p-6 font-semibold text-[#6B7280]"></div>
+              <div className="p-6 font-bold text-[#111827] text-center border-l border-[#E5E7EB]">Spreadsheet</div>
+              <div className="p-6 font-bold text-[#111827] text-center border-l border-[#E5E7EB]">Heavy Outreach Tools</div>
+              <div className="p-6 font-bold text-[#7C3AED] text-center bg-[#7C3AED]/5 border-l border-[#E5E7EB]">ReachMira</div>
+            </div>
+
+            {/* Rows */}
+            {[
+              { label: "Lead organization", s: "Basic", h: "Advanced", r: "Simple and focused" },
+              { label: "Personalized email workflow", s: "Manual", h: "Automated", r: "Manual-first with context" },
+              { label: "Follow-up tracking", s: "Easy to miss", h: "Powerful", r: "Clear and simple" },
+              { label: "Email verification", s: "No", h: "Usually yes", r: "Yes" },
+              { label: "Cost", s: "Free", h: "Often expensive", r: "Affordable" },
+              { label: "Best for", s: "Raw data", h: "Scaling teams", r: "Getting started" }
+            ].map((row, idx) => (
+              <div key={idx} className="grid grid-cols-4 border-b border-[#E5E7EB] last:border-0 bg-white">
+                <div className="p-6 font-medium text-[#111827]">{row.label}</div>
+                <div className="p-6 text-[#6B7280] text-center border-l border-[#E5E7EB]">{row.s}</div>
+                <div className="p-6 text-[#6B7280] text-center border-l border-[#E5E7EB]">{row.h}</div>
+                <div className="p-6 font-bold text-[#7C3AED] bg-[#7C3AED]/5 text-center border-l border-[#E5E7EB]">{row.r}</div>
               </div>
-            </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
-            <div className="grid grid-cols-3 border-b border-zinc-800/50">
-              <div className="p-6 flex items-center font-medium text-zinc-300">Deliverability Focus</div>
-              <div className="p-6 border-x border-zinc-800 bg-zinc-950/50 flex items-center justify-center text-rose-400"><X className="w-5 h-5 mr-2" /> Quantity (Spam Filters)</div>
-              <div className="p-6 bg-violet-900/10 flex items-center justify-center text-teal-400 font-bold"><CheckCircle2 className="w-5 h-5 mr-2" /> Quality (Primary Inbox)</div>
-            </div>
-
-            <div className="grid grid-cols-3 border-b border-zinc-800/50">
-              <div className="p-6 flex items-center font-medium text-zinc-300">Domain Burning</div>
-              <div className="p-6 border-x border-zinc-800 bg-zinc-950/50 flex items-center justify-center text-rose-400">High (Need constant warmups)</div>
-              <div className="p-6 bg-violet-900/10 flex items-center justify-center text-teal-400 font-bold">Zero (Safe manual sends)</div>
-            </div>
-
-            <div className="grid grid-cols-3 border-b border-zinc-800/50">
-              <div className="p-6 flex items-center font-medium text-zinc-300">Personalization</div>
-              <div className="p-6 border-x border-zinc-800 bg-zinc-950/50 flex items-center justify-center text-rose-400">Basic {`{{first_name}}`} tags</div>
-              <div className="p-6 bg-violet-900/10 flex items-center justify-center text-teal-400 font-bold">Deep AI Pain-Point Extraction</div>
-            </div>
-
-            <div className="grid grid-cols-3">
-              <div className="p-6 flex items-center font-medium text-zinc-300">Reply Rates</div>
-              <div className="p-6 border-x border-zinc-800 bg-zinc-950/50 flex items-center justify-center text-rose-400">{"< 1%"}</div>
-              <div className="p-6 bg-violet-900/10 flex items-center justify-center text-teal-400 font-bold text-xl">15% - 40%+</div>
-            </div>
-          </motion.div>
-        </motion.section>
-
-        {/* Pricing */}
-        <motion.section 
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-100px" }}
-          variants={staggerContainer}
-          className="container mx-auto px-6 py-32"
-        >
-          <motion.div variants={fadeInUp} className="max-w-3xl mx-auto text-center mb-20">
-            <h2 className="text-4xl md:text-6xl font-bold text-white mb-6 tracking-tight">Simple, Transparent Pricing</h2>
-            <p className="text-xl text-zinc-400">Lock in early adopter pricing when you join the waitlist today. No hidden fees, no per-seat nonsense.</p>
-          </motion.div>
-
-          <div className="grid gap-6 md:grid-cols-4 max-w-7xl mx-auto">
+      {/* 8. Pricing Section */}
+      <section id="pricing" className="py-24 bg-[#F8FAFC]">
+        <div className="max-w-7xl mx-auto px-6">
+          <h2 className="text-3xl md:text-4xl font-bold text-center text-[#111827] mb-16">Simple pricing for early-stage users.</h2>
+          
+          <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
             {/* Free Beta */}
-            <motion.div variants={fadeInUp} whileHover={{ y: -10 }} className="flex flex-col rounded-[2rem] border border-zinc-800 bg-zinc-900/50 p-8 backdrop-blur-xl relative overflow-hidden transition-colors hover:border-zinc-700">
-              <div className="mb-4">
-                <h3 className="text-2xl font-bold text-white mb-2">Free Beta</h3>
-                <p className="text-sm text-zinc-400 h-10">For our earliest testers.</p>
+            <div className="bg-white border border-[#E5E7EB] rounded-2xl p-8 shadow-sm flex flex-col">
+              <h3 className="text-2xl font-bold text-[#111827] mb-2">Free Beta</h3>
+              <p className="text-[#6B7280] mb-8">Test ReachMira while we build.</p>
+              <div className="mt-auto">
+                <Link href="/waitlist" className="block w-full text-center bg-white border border-[#E5E7EB] hover:bg-[#F8FAFC] text-[#111827] font-semibold py-3 rounded-xl transition-colors">
+                  Join Early Access
+                </Link>
               </div>
-              <div className="mb-8">
-                <span className="text-5xl font-black text-white">$0</span>
-                <span className="text-zinc-500 font-medium">/mo</span>
-              </div>
-              <ul className="space-y-4 mb-10 flex-1">
-                <li className="flex items-start gap-3 text-sm text-zinc-300"><CheckCircle2 className="w-5 h-5 text-zinc-500 shrink-0" /> <span>100 Leads / month</span></li>
-                <li className="flex items-start gap-3 text-sm text-zinc-300"><CheckCircle2 className="w-5 h-5 text-zinc-500 shrink-0" /> <span>1 Email Account</span></li>
-                <li className="flex items-start gap-3 text-sm text-zinc-300"><CheckCircle2 className="w-5 h-5 text-zinc-500 shrink-0" /> <span>Basic AI Research</span></li>
-              </ul>
-              <Link href="/waitlist" className="w-full text-center py-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold transition-colors">Current Phase</Link>
-            </motion.div>
+            </div>
 
             {/* Starter */}
-            <motion.div variants={fadeInUp} whileHover={{ y: -10 }} className="flex flex-col rounded-[2rem] border border-zinc-800 bg-zinc-900/50 p-8 backdrop-blur-xl relative overflow-hidden transition-colors hover:border-zinc-700">
-              <div className="mb-4">
-                <h3 className="text-2xl font-bold text-white mb-2">Starter</h3>
-                <p className="text-sm text-zinc-400 h-10">Perfect for freelancers.</p>
+            <div className="bg-white border-2 border-[#7C3AED] rounded-2xl p-8 shadow-lg relative flex flex-col transform md:-translate-y-4">
+              <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-[#7C3AED] text-white text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full">Most Popular</div>
+              <h3 className="text-2xl font-bold text-[#111827] mb-2">Starter</h3>
+              <p className="text-[#6B7280] mb-8">For freelancers and founders.</p>
+              <div className="mt-auto">
+                <Link href="/waitlist" className="block w-full text-center bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-semibold py-3 rounded-xl transition-colors">
+                  Join Early Access
+                </Link>
               </div>
-              <div className="mb-8">
-                <span className="text-5xl font-black text-white">$9</span>
-                <span className="text-zinc-500 font-medium">/mo</span>
-              </div>
-              <ul className="space-y-4 mb-10 flex-1">
-                <li className="flex items-start gap-3 text-sm text-zinc-300"><CheckCircle2 className="w-5 h-5 text-violet-400 shrink-0" /> <span>1,000 Leads / month</span></li>
-                <li className="flex items-start gap-3 text-sm text-zinc-300"><CheckCircle2 className="w-5 h-5 text-violet-400 shrink-0" /> <span>3 Email Accounts</span></li>
-                <li className="flex items-start gap-3 text-sm text-zinc-300"><CheckCircle2 className="w-5 h-5 text-violet-400 shrink-0" /> <span>Auto-Research API</span></li>
-              </ul>
-              <Link href="/waitlist" className="w-full text-center py-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold transition-colors">Join Waitlist</Link>
-            </motion.div>
-
-            {/* Growth (Highlighted) */}
-            <motion.div variants={fadeInUp} whileHover={{ y: -10 }} className="flex flex-col rounded-[2rem] border border-fuchsia-500/50 bg-fuchsia-900/10 p-8 backdrop-blur-xl relative overflow-hidden transform md:-translate-y-4 shadow-[0_0_50px_rgba(217,70,239,0.15)]">
-              <div className="absolute top-0 inset-x-0 h-1.5 bg-gradient-to-r from-fuchsia-500 via-violet-500 to-cyan-400" />
-              <div className="absolute top-6 right-6 bg-fuchsia-500/20 text-fuchsia-300 text-[10px] font-black px-3 py-1.5 rounded-full border border-fuchsia-500/30 uppercase tracking-widest">POPULAR</div>
-              
-              <div className="mb-4">
-                <h3 className="text-2xl font-bold text-white mb-2">Growth</h3>
-                <p className="text-sm text-zinc-400 h-10">For small agencies scaling up.</p>
-              </div>
-              <div className="mb-8">
-                <span className="text-5xl font-black text-white">$19</span>
-                <span className="text-zinc-500 font-medium">/mo</span>
-              </div>
-              <ul className="space-y-4 mb-10 flex-1">
-                <li className="flex items-start gap-3 text-sm text-zinc-100"><CheckCircle2 className="w-5 h-5 text-fuchsia-400 shrink-0" /> <span className="font-medium">5,000 Leads / month</span></li>
-                <li className="flex items-start gap-3 text-sm text-zinc-100"><CheckCircle2 className="w-5 h-5 text-fuchsia-400 shrink-0" /> <span className="font-medium">10 Email Accounts</span></li>
-                <li className="flex items-start gap-3 text-sm text-zinc-100"><CheckCircle2 className="w-5 h-5 text-fuchsia-400 shrink-0" /> <span className="font-medium">Advanced AI Parsing</span></li>
-                <li className="flex items-start gap-3 text-sm text-zinc-100"><CheckCircle2 className="w-5 h-5 text-fuchsia-400 shrink-0" /> <span className="font-medium">Automated Campaigns</span></li>
-              </ul>
-              <Link href="/waitlist" className="w-full text-center py-4 rounded-xl bg-gradient-to-r from-fuchsia-600 to-violet-600 hover:from-fuchsia-500 hover:to-violet-500 text-white font-black transition-colors shadow-[0_0_20px_rgba(217,70,239,0.4)]">Join Waitlist</Link>
-            </motion.div>
+            </div>
 
             {/* Agency */}
-            <motion.div variants={fadeInUp} whileHover={{ y: -10 }} className="flex flex-col rounded-[2rem] border border-zinc-800 bg-zinc-900/50 p-8 backdrop-blur-xl relative overflow-hidden transition-colors hover:border-zinc-700">
-              <div className="mb-4">
-                <h3 className="text-2xl font-bold text-white mb-2">Agency</h3>
-                <p className="text-sm text-zinc-400 h-10">Unlimited power for power users.</p>
+            <div className="bg-white border border-[#E5E7EB] rounded-2xl p-8 shadow-sm flex flex-col">
+              <h3 className="text-2xl font-bold text-[#111827] mb-2">Agency</h3>
+              <p className="text-[#6B7280] mb-8">For small teams managing multiple lead lists.</p>
+              <div className="mt-auto">
+                <Link href="/waitlist" className="block w-full text-center bg-white border border-[#E5E7EB] hover:bg-[#F8FAFC] text-[#111827] font-semibold py-3 rounded-xl transition-colors">
+                  Join Early Access
+                </Link>
               </div>
-              <div className="mb-8">
-                <span className="text-5xl font-black text-white">$39</span>
-                <span className="text-zinc-500 font-medium">/mo</span>
-              </div>
-              <ul className="space-y-4 mb-10 flex-1">
-                <li className="flex items-start gap-3 text-sm text-zinc-300"><CheckCircle2 className="w-5 h-5 text-cyan-400 shrink-0" /> <span>Unlimited Leads</span></li>
-                <li className="flex items-start gap-3 text-sm text-zinc-300"><CheckCircle2 className="w-5 h-5 text-cyan-400 shrink-0" /> <span>Unlimited Senders</span></li>
-                <li className="flex items-start gap-3 text-sm text-zinc-300"><CheckCircle2 className="w-5 h-5 text-cyan-400 shrink-0" /> <span>API Access</span></li>
-                <li className="flex items-start gap-3 text-sm text-zinc-300"><CheckCircle2 className="w-5 h-5 text-cyan-400 shrink-0" /> <span>Priority Support</span></li>
-              </ul>
-              <Link href="/waitlist" className="w-full text-center py-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-white font-bold transition-colors">Join Waitlist</Link>
-            </motion.div>
-          </div>
-        </motion.section>
-
-        {/* Testimonials */}
-        <motion.section 
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-100px" }}
-          variants={staggerContainer}
-          className="relative py-32"
-        >
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-px bg-gradient-to-r from-transparent via-zinc-800 to-transparent" />
-          <div className="container mx-auto px-6">
-            <motion.div variants={fadeInUp} className="max-w-3xl mx-auto text-center mb-20">
-              <h2 className="text-4xl md:text-6xl font-bold text-white mb-6 tracking-tight">Loved by early adopters</h2>
-              <p className="text-xl text-zinc-400">Here's what our private beta testers are saying about the manual-first approach.</p>
-            </motion.div>
-
-            <div className="grid gap-8 md:grid-cols-3 max-w-6xl mx-auto">
-              {/* Review 1 */}
-              <motion.div variants={fadeInUp} whileHover={{ y: -5, scale: 1.02 }} className="bg-gradient-to-b from-zinc-800/50 to-zinc-900/50 border border-zinc-700/50 rounded-[2rem] p-8 shadow-xl backdrop-blur-md">
-                <div className="flex gap-1 text-fuchsia-400 mb-6">
-                  <Star className="w-4 h-4 fill-current" /><Star className="w-4 h-4 fill-current" /><Star className="w-4 h-4 fill-current" /><Star className="w-4 h-4 fill-current" /><Star className="w-4 h-4 fill-current" />
-                </div>
-                <p className="text-zinc-300 mb-8 text-base leading-relaxed font-medium">"ReachMira totally changed how I do outreach. The AI Auto-Research tool saves me hours of Googling, but I still feel totally in control of what I send. My open rates went from 15% to over 60%."</p>
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center border border-zinc-700"><User className="w-6 h-6 text-zinc-400" /></div>
-                  <div>
-                    <h4 className="text-white font-bold text-base">Sarah Jenkins</h4>
-                    <p className="text-zinc-500 text-sm font-medium">Freelance Copywriter</p>
-                  </div>
-                </div>
-              </motion.div>
-
-              {/* Review 2 */}
-              <motion.div variants={fadeInUp} whileHover={{ y: -5, scale: 1.02 }} className="bg-gradient-to-b from-zinc-800/50 to-zinc-900/50 border border-zinc-700/50 rounded-[2rem] p-8 shadow-xl backdrop-blur-md">
-                <div className="flex gap-1 text-fuchsia-400 mb-6">
-                  <Star className="w-4 h-4 fill-current" /><Star className="w-4 h-4 fill-current" /><Star className="w-4 h-4 fill-current" /><Star className="w-4 h-4 fill-current" /><Star className="w-4 h-4 fill-current" />
-                </div>
-                <p className="text-zinc-300 mb-8 text-base leading-relaxed font-medium">"We used to burn through domains every 3 months using automated blasters. Switching to a manual-first workflow with ReachMira means we actually land in the primary inbox now. Highly recommend."</p>
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center border border-zinc-700"><Building2 className="w-6 h-6 text-zinc-400" /></div>
-                  <div>
-                    <h4 className="text-white font-bold text-base">Michael T.</h4>
-                    <p className="text-zinc-500 text-sm font-medium">B2B Growth Agency</p>
-                  </div>
-                </div>
-              </motion.div>
-
-              {/* Review 3 */}
-              <motion.div variants={fadeInUp} whileHover={{ y: -5, scale: 1.02 }} className="bg-gradient-to-b from-zinc-800/50 to-zinc-900/50 border border-zinc-700/50 rounded-[2rem] p-8 shadow-xl backdrop-blur-md">
-                <div className="flex gap-1 text-fuchsia-400 mb-6">
-                  <Star className="w-4 h-4 fill-current" /><Star className="w-4 h-4 fill-current" /><Star className="w-4 h-4 fill-current" /><Star className="w-4 h-4 fill-current" /><Star className="w-4 h-4 fill-current" />
-                </div>
-                <p className="text-zinc-300 mb-8 text-base leading-relaxed font-medium">"The UI is gorgeous and the follow-up tracker is exactly what I needed. It's like having a spreadsheet on steroids without the clunkiness of Salesforce or HubSpot."</p>
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-full bg-zinc-800 flex items-center justify-center border border-zinc-700"><Briefcase className="w-6 h-6 text-zinc-400" /></div>
-                  <div>
-                    <h4 className="text-white font-bold text-base">David Chen</h4>
-                    <p className="text-zinc-500 text-sm font-medium">SaaS Founder</p>
-                  </div>
-                </div>
-              </motion.div>
             </div>
           </div>
-        </motion.section>
+        </div>
+      </section>
 
-        {/* FAQ Section */}
-        <motion.section 
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true, margin: "-100px" }}
-          variants={staggerContainer}
-          className="relative py-32"
-        >
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-px bg-gradient-to-r from-transparent via-zinc-800 to-transparent" />
-          <div className="container mx-auto px-6 max-w-3xl">
-            <motion.h2 variants={fadeInUp} className="text-4xl md:text-6xl font-bold text-white mb-16 text-center tracking-tight">Frequently Asked Questions</motion.h2>
-            <motion.div variants={fadeInUp} className="space-y-4">
-              {faqs.map((faq, idx) => (
-                <div key={idx} className="border border-zinc-800 bg-zinc-900/50 backdrop-blur-md rounded-2xl overflow-hidden transition-all duration-300 hover:border-zinc-700 hover:bg-zinc-800/50">
-                  <button 
-                    onClick={() => setOpenFaq(openFaq === idx ? null : idx)}
-                    className="w-full px-8 py-6 flex items-center justify-between text-left focus:outline-none"
-                  >
-                    <span className="text-xl font-bold text-white">{faq.question}</span>
-                    <ChevronDown className={`w-6 h-6 text-zinc-400 transition-transform duration-300 ${openFaq === idx ? 'rotate-180 text-white' : ''}`} />
-                  </button>
-                  <div className={`px-8 overflow-hidden transition-all duration-500 ease-in-out ${openFaq === idx ? 'max-h-96 pb-6 opacity-100' : 'max-h-0 opacity-0'}`}>
-                    <p className="text-zinc-400 text-lg leading-relaxed">{faq.answer}</p>
-                  </div>
-                </div>
-              ))}
-            </motion.div>
-          </div>
-        </motion.section>
+      {/* 9. Final CTA Section */}
+      <section className="py-32 bg-white border-t border-[#E5E7EB] text-center">
+        <div className="max-w-3xl mx-auto px-6">
+          <h2 className="text-4xl md:text-5xl font-extrabold text-[#111827] mb-6">Start organizing your outreach before it gets messy.</h2>
+          <p className="text-xl text-[#6B7280] mb-10">Import your leads, verify emails, write personalized outreach, and track every follow-up from one simple workspace.</p>
+          <Link href="/register" className="inline-flex items-center gap-2 bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-bold text-lg px-8 py-4 rounded-full transition-colors shadow-lg shadow-[#7C3AED]/20">
+            Start Free <ArrowRight className="w-5 h-5" />
+          </Link>
+        </div>
+      </section>
 
-        {/* Integrations */}
-        <motion.section 
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true }}
-          variants={staggerContainer}
-          className="container mx-auto px-6 py-20 border-t border-zinc-900 text-center"
-        >
-          <motion.p variants={fadeInUp} className="text-zinc-500 font-medium mb-8">Seamlessly connects with your favorite tools</motion.p>
-          <motion.div variants={fadeInUp} className="flex flex-wrap justify-center gap-12 opacity-60">
-            <div className="text-xl font-bold flex items-center gap-2"><Mail className="w-6 h-6"/> Gmail</div>
-            <div className="text-xl font-bold flex items-center gap-2"><Mail className="w-6 h-6"/> Outlook</div>
-            <div className="text-xl font-bold flex items-center gap-2"><Briefcase className="w-6 h-6"/> Salesforce</div>
-            <div className="text-xl font-bold flex items-center gap-2"><Layers className="w-6 h-6"/> HubSpot</div>
-            <div className="text-xl font-bold flex items-center gap-2"><Zap className="w-6 h-6"/> Zapier</div>
-          </motion.div>
-        </motion.section>
+      {/* Footer */}
+      <footer className="bg-[#F8FAFC] border-t border-[#E5E7EB] py-12">
+        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
+          <div className="flex flex-col items-center md:items-start">
+            <div className="flex items-center gap-2 mb-2">
+              <Image src="/reachmira-logo.png" alt="Logo" width={24} height={24} className="w-6 h-6 object-contain grayscale opacity-60" />
+              <span className="font-bold text-[#111827]">ReachMira</span>
+            </div>
+            <p className="text-sm text-[#6B7280]">Simple outreach workspace for early-stage teams.</p>
+          </div>
+          <div className="flex gap-6 text-sm font-medium text-[#6B7280]">
+            <Link href="/login" className="hover:text-[#111827] transition-colors">Login</Link>
+            <Link href="/register" className="hover:text-[#111827] transition-colors">Register</Link>
+            <Link href="#" className="hover:text-[#111827] transition-colors">Terms</Link>
+            <Link href="#" className="hover:text-[#111827] transition-colors">Privacy</Link>
+          </div>
+          <p className="text-sm text-[#6B7280]">© {new Date().getFullYear()} ReachMira. All rights reserved.</p>
+        </div>
+      </footer>
 
-        {/* Final CTA */}
-        <motion.section 
-          initial="hidden"
-          whileInView="visible"
-          viewport={{ once: true }}
-          variants={staggerContainer}
-          className="relative py-40 overflow-hidden"
-        >
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-fuchsia-900/10 to-violet-900/20 pointer-events-none" />
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-px bg-gradient-to-r from-transparent via-zinc-800 to-transparent" />
-          <div className="relative z-10 max-w-4xl mx-auto text-center px-6">
-            <motion.h2 variants={fadeInUp} className="text-5xl md:text-7xl font-black text-white mb-8 tracking-tighter">Ready to personalize at scale?</motion.h2>
-            <motion.p variants={fadeInUp} className="text-2xl text-zinc-400 mb-12 font-medium">Stop spamming. Start connecting. Join the waitlist today to lock in your early adopter pricing.</motion.p>
-            <motion.div variants={fadeInUp} className="flex flex-col sm:flex-row justify-center gap-6">
-              <Link
-                href="/waitlist"
-                className="inline-flex items-center justify-center gap-3 rounded-2xl bg-white px-10 py-5 text-xl font-black text-black transition-all hover:bg-zinc-200 hover:scale-[1.03] active:scale-[0.97] shadow-[0_0_40px_rgba(255,255,255,0.2)]"
-              >
-                Join the Waitlist Now
-                <ArrowRight className="h-6 w-6" />
-              </Link>
-            </motion.div>
-          </div>
-        </motion.section>
-
-        {/* Footer */}
-        <footer className="container mx-auto px-6 py-12 border-t border-zinc-900 flex flex-col md:flex-row items-center justify-between text-zinc-500 text-sm relative z-10">
-          <div className="flex items-center gap-3 mb-4 md:mb-0">
-            <Image src="/reachmira-logo.png" alt="Logo" width={32} height={32} className="w-8 h-8 opacity-40 grayscale" />
-            <p className="font-medium">© {new Date().getFullYear()} ReachMira. All rights reserved.</p>
-          </div>
-          <div className="flex gap-8 font-medium">
-            <Link href="/login" className="hover:text-zinc-300 transition-colors">Login</Link>
-            <Link href="/waitlist" className="hover:text-zinc-300 transition-colors">Waitlist</Link>
-          </div>
-        </footer>
-      </div>
     </div>
   );
 }
