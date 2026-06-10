@@ -38,7 +38,7 @@ function ToastItem({ toast, onDismiss }: { toast: Toast; onDismiss: (id: string)
   const [visible, setVisible] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [progress, setProgress] = useState(100);
-  const startRef = useRef<number>(Date.now());
+  const startRef = useRef<number>(0);
   const animFrameRef = useRef<number | null>(null);
 
   // Trigger enter animation on mount

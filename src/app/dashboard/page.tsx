@@ -365,12 +365,12 @@ export default function Dashboard() {
                       {sentEmails.length > 0 ? <CheckCircle2 className="h-5 w-5" /> : <Send className="h-5 w-5" />}
                     </div>
                     <div className="flex-1">
-                      <h3 className={`font-semibold text-lg ${sentEmails.length > 0 ? 'text-violet-200 line-through' : 'text-white'}`}>3. Send your first Manual Email</h3>
-                      <p className={`text-sm ${sentEmails.length > 0 ? 'text-violet-300' : 'text-violet-100'}`}>Write a draft, approve it, and hit send.</p>
+                      <h3 className={`font-semibold text-lg ${sentEmails.length > 0 ? 'text-violet-200 line-through' : 'text-white'}`}>3. Add a Lead Manually</h3>
+                      <p className={`text-sm ${sentEmails.length > 0 ? 'text-violet-300' : 'text-violet-100'}`}>Write their info by hand to test outreach.</p>
                     </div>
                     {leads.length > 0 && sentEmails.length === 0 && (
-                      <Link href="/leads" className="rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-violet-700 hover:bg-violet-50 shadow-sm transition-colors">
-                        Open Library
+                      <Link href="/leads/new" className="rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-violet-700 hover:bg-violet-50 shadow-sm transition-colors">
+                        Add Lead
                       </Link>
                     )}
                   </div>
