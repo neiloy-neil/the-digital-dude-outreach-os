@@ -108,15 +108,32 @@ Return ONLY a JSON object with these two keys, nothing else. No markdown wrapper
 `;
 
     const ai = new GoogleGenAI({ apiKey: profile.gemini_api_key });
-    const aiResponse = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-      },
-    });
+    let aiResponse;
+    let retries = 3;
+    let delay = 1000;
+    while (retries > 0) {
+      try {
+        aiResponse = await ai.models.generateContent({
+          model: 'gemini-2.5-flash',
+          contents: prompt,
+          config: {
+            responseMimeType: 'application/json',
+          },
+        });
+        break;
+      } catch (err: any) {
+        if (err.status === 503 || err.status === 429 || err.message?.includes('503')) {
+          retries--;
+          if (retries === 0) throw err;
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          delay *= 2;
+        } else {
+          throw err;
+        }
+      }
+    }
 
-    const responseText = aiResponse.text || '{}';
+    const responseText = aiResponse?.text || '{}';
     let parsedResult;
     try {
       parsedResult = JSON.parse(responseText.trim().replace(/^```json\s*/i, '').replace(/```$/i, ''));
