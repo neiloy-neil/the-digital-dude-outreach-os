@@ -76,6 +76,7 @@ export default function Dashboard() {
   const [campaignCount, setCampaignCount] = useState(0);
   const [recentActivities, setRecentActivities] = useState<AuditRow[]>([]);
   const [sentEmails, setSentEmails] = useState<SentEmailRow[]>([]);
+  const [hasEmailAccount, setHasEmailAccount] = useState(false);
   const [aiStats, setAiStats] = useState({ callsToday: 0, cached: 0, skipped: 0 });
 
   useEffect(() => {
@@ -89,7 +90,7 @@ export default function Dashboard() {
         const startOfDay = new Date();
         startOfDay.setHours(0, 0, 0, 0);
 
-        const [campaignsResponse, leadsResponse, sentEmailsResponse, auditLogsResponse, aiUsageResponse] = await Promise.all([
+        const [campaignsResponse, leadsResponse, sentEmailsResponse, auditLogsResponse, aiUsageResponse, emailAccountsResponse] = await Promise.all([
           supabase.from('campaigns').select('id').eq('user_id', user.id),
           supabase
             .from('leads')
@@ -110,12 +111,14 @@ export default function Dashboard() {
             .select('id,cache_hit,skipped,created_at')
             .eq('user_id', user.id)
             .gte('created_at', startOfDay.toISOString()),
+          supabase.from('email_accounts').select('id').eq('user_id', user.id).limit(1),
         ]);
 
         setCampaignCount(campaignsResponse.data?.length || 0);
         setLeads((leadsResponse.data || []) as LeadRow[]);
         setSentEmails((sentEmailsResponse.data || []) as SentEmailRow[]);
         setRecentActivities((auditLogsResponse.data || []) as AuditRow[]);
+        setHasEmailAccount((emailAccountsResponse.data?.length || 0) > 0);
         setAiStats({
           callsToday: aiUsageResponse.data?.filter((row) => !row.skipped && !row.cache_hit).length || 0,
           cached: aiUsageResponse.data?.filter((row) => row.cache_hit).length || 0,
@@ -314,6 +317,68 @@ export default function Dashboard() {
         </div>
       ) : (
         <div className="space-y-8">
+          {(!hasEmailAccount || leads.length === 0 || sentEmails.length === 0) && (
+            <section className="rounded-3xl border border-[var(--border)] bg-gradient-to-br from-violet-600 via-violet-700 to-indigo-800 p-8 shadow-xl text-white relative overflow-hidden">
+              <div className="absolute top-0 right-0 p-12 opacity-10">
+                <Sparkles className="w-64 h-64" />
+              </div>
+              <div className="relative z-10 max-w-3xl">
+                <h2 className="text-2xl font-bold tracking-tight text-white mb-2">Welcome to ReachMira! Let's get you set up.</h2>
+                <p className="text-violet-100 mb-8 text-base">Complete these 3 simple steps to start turning cold leads into warm conversations.</p>
+                
+                <div className="space-y-4">
+                  {/* Step 1 */}
+                  <div className={`flex items-center gap-4 rounded-2xl p-4 transition-all ${hasEmailAccount ? 'bg-white/10 opacity-70' : 'bg-white/20 shadow-lg border border-white/20'}`}>
+                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${hasEmailAccount ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white text-violet-700'}`}>
+                      {hasEmailAccount ? <CheckCircle2 className="h-5 w-5" /> : <Mail className="h-5 w-5" />}
+                    </div>
+                    <div className="flex-1">
+                      <h3 className={`font-semibold text-lg ${hasEmailAccount ? 'text-violet-200 line-through' : 'text-white'}`}>1. Connect an Email Account</h3>
+                      <p className={`text-sm ${hasEmailAccount ? 'text-violet-300' : 'text-violet-100'}`}>Connect via SMTP or Mailgun to start sending.</p>
+                    </div>
+                    {!hasEmailAccount && (
+                      <Link href="/settings/email-accounts" className="rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-violet-700 hover:bg-violet-50 shadow-sm transition-colors">
+                        Connect Account
+                      </Link>
+                    )}
+                  </div>
+
+                  {/* Step 2 */}
+                  <div className={`flex items-center gap-4 rounded-2xl p-4 transition-all ${leads.length > 0 ? 'bg-white/10 opacity-70' : (!hasEmailAccount ? 'bg-white/5 opacity-50' : 'bg-white/20 shadow-lg border border-white/20')}`}>
+                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${leads.length > 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white text-violet-700'}`}>
+                      {leads.length > 0 ? <CheckCircle2 className="h-5 w-5" /> : <Database className="h-5 w-5" />}
+                    </div>
+                    <div className="flex-1">
+                      <h3 className={`font-semibold text-lg ${leads.length > 0 ? 'text-violet-200 line-through' : 'text-white'}`}>2. Import your first Leads</h3>
+                      <p className={`text-sm ${leads.length > 0 ? 'text-violet-300' : 'text-violet-100'}`}>Upload a CSV or paste a Google Sheet link.</p>
+                    </div>
+                    {hasEmailAccount && leads.length === 0 && (
+                      <Link href="/leads/import" className="rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-violet-700 hover:bg-violet-50 shadow-sm transition-colors">
+                        Import Leads
+                      </Link>
+                    )}
+                  </div>
+
+                  {/* Step 3 */}
+                  <div className={`flex items-center gap-4 rounded-2xl p-4 transition-all ${sentEmails.length > 0 ? 'bg-white/10 opacity-70' : (leads.length === 0 ? 'bg-white/5 opacity-50' : 'bg-white/20 shadow-lg border border-white/20')}`}>
+                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${sentEmails.length > 0 ? 'bg-emerald-500/20 text-emerald-300' : 'bg-white text-violet-700'}`}>
+                      {sentEmails.length > 0 ? <CheckCircle2 className="h-5 w-5" /> : <Send className="h-5 w-5" />}
+                    </div>
+                    <div className="flex-1">
+                      <h3 className={`font-semibold text-lg ${sentEmails.length > 0 ? 'text-violet-200 line-through' : 'text-white'}`}>3. Send your first Manual Email</h3>
+                      <p className={`text-sm ${sentEmails.length > 0 ? 'text-violet-300' : 'text-violet-100'}`}>Write a draft, approve it, and hit send.</p>
+                    </div>
+                    {leads.length > 0 && sentEmails.length === 0 && (
+                      <Link href="/leads" className="rounded-xl bg-white px-5 py-2.5 text-sm font-semibold text-violet-700 hover:bg-violet-50 shadow-sm transition-colors">
+                        Open Library
+                      </Link>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
             <MetricCard label="Total Leads" value={metrics.totalLeads} description="All leads in your workspace" icon={Users} tone="slate" trend={`${campaignCount} campaigns`} />
             <MetricCard label="Ready to Send" value={metrics.readyToSend} description="Approved or draft-ready leads" icon={Mail} tone="violet" trend="Manual-first" />
