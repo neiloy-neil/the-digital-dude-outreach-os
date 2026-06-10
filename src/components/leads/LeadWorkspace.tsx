@@ -675,6 +675,8 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
     try {
       const response = await fetch(`/api/leads/${leadId}/auto-research`, {
         method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ offers, companyContext }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || 'Failed to auto-research lead');
@@ -686,6 +688,9 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
         ...current,
         ai_company_summary: payload.result.company_summary || current.ai_company_summary,
         pain_points: payload.result.pain_points || current.pain_points,
+        solution: payload.result.solution_angle || current.solution,
+        ai_solution_angle: payload.result.solution_angle || current.ai_solution_angle,
+        recommended_offer: payload.result.recommended_offer || current.recommended_offer,
       }));
       
       await loadLead({ silent: true });
@@ -1212,7 +1217,6 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                       ['ai_lead_analysis', 'Lead Analysis'],
                       ['ai_outreach_strategy', 'Outreach Strategy'],
                       ['ai_personalized_first_line', 'Personalized First Line'],
-                      ['ai_solution_angle', 'Solution Angle'],
                     ].map(([key, label]) => (
                       <div key={key} className={key === 'ai_personalized_first_line' ? 'md:col-span-2' : ''}>
                         <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">{label}</label>
