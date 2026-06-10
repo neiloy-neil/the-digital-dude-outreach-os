@@ -88,9 +88,10 @@ export default function HomePage() {
             <Image 
               src="/reachmira-logo.png" 
               alt="ReachMira Logo" 
-              width={40} 
-              height={40} 
-              className="w-10 h-10 object-contain drop-shadow-[0_0_15px_rgba(255,255,255,0.3)]"
+              width={96} 
+              height={96} 
+              priority
+              className="w-24 h-24 object-contain drop-shadow-[0_0_20px_rgba(255,255,255,0.4)]"
             />
           </motion.div>
           <motion.div 
@@ -179,6 +180,7 @@ export default function HomePage() {
                 alt="ReachMira Dashboard" 
                 width={1200} 
                 height={675} 
+                priority
                 className="w-full h-auto rounded-xl shadow-2xl border border-zinc-800"
               />
             </div>
@@ -536,7 +538,7 @@ export default function HomePage() {
         {/* Footer */}
         <footer className="container mx-auto px-6 py-12 border-t border-zinc-900 flex flex-col md:flex-row items-center justify-between text-zinc-500 text-sm relative z-10">
           <div className="flex items-center gap-3 mb-4 md:mb-0">
-            <Image src="/reachmira-logo.png" alt="Logo" width={24} height={24} className="w-6 h-6 opacity-40 grayscale" />
+            <Image src="/reachmira-logo.png" alt="Logo" width={32} height={32} className="w-8 h-8 opacity-40 grayscale" />
             <p className="font-medium">© {new Date().getFullYear()} ReachMira. All rights reserved.</p>
           </div>
           <div className="flex gap-8 font-medium">

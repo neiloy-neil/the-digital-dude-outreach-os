@@ -57,9 +57,10 @@ export default function WaitlistPage() {
           <Image 
             src="/reachmira-logo.png" 
             alt="ReachMira Logo" 
-            width={64} 
-            height={64} 
-            className="w-16 h-16 object-contain"
+            width={128} 
+            height={128} 
+            priority
+            className="w-32 h-32 object-contain"
           />
         </div>
 
