@@ -670,6 +670,32 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
     }
   };
 
+  const handleAutoResearch = async () => {
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/leads/${leadId}/auto-research`, {
+        method: 'POST',
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Failed to auto-research lead');
+      
+      toast.success('Website scraped and AI research complete!');
+      
+      // Update form state directly to avoid needing a full reload if they are editing
+      setForm((current) => ({
+        ...current,
+        ai_company_summary: payload.result.company_summary || current.ai_company_summary,
+        pain_points: payload.result.pain_points || current.pain_points,
+      }));
+      
+      await loadLead({ silent: true });
+    } catch (researchError: unknown) {
+      toast.error(researchError instanceof Error ? researchError.message : 'Failed to auto-research');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleGenerateAi = async (requestedDepth?: 'none' | 'basic' | 'standard' | 'deep', requestedMode?: string) => {
     if (requestedDepth === 'deep') {
       const confirmed = window.confirm('This will use a Deep AI request. You have only 20/day.');
@@ -1155,6 +1181,10 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                   <div className="mb-5 flex flex-col gap-3 border-b border-[var(--border)] pb-4 sm:flex-row sm:items-center sm:justify-between">
                     <h3 className="text-base font-semibold text-zinc-950">Lead Intelligence</h3>
                     <div className="flex flex-wrap gap-2">
+                      <button onClick={handleAutoResearch} disabled={saving || !lead?.website} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:opacity-50">
+                        {saving ? <Spinner size={16} className="text-white" /> : <Sparkles className="h-4 w-4" />}
+                        {saving ? 'Researching...' : 'Auto-Research Lead'}
+                      </button>
                       <button onClick={handleSaveLead} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:opacity-50">
                         <Save className="h-4 w-4" /> Save
                       </button>
