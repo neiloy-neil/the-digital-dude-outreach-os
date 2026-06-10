@@ -97,22 +97,22 @@ export async function POST(
     // Truncate to save tokens (approx 3000 chars is enough for summary)
     websiteText = websiteText.slice(0, 4000);
 
-    const offersString = offers.length > 0 ? offers.map((o: any) => \`- \${o.name}: \${o.description || 'No description'}\`).join('\\n') : 'No specific offers provided. Suggest a general B2B service.';
-    const ourCompanyString = companyContext?.company_name ? \`Our Company: \${companyContext.company_name}\\nWhat we do: \${companyContext.company_description || 'B2B Services'}\` : 'Our Company: A B2B Service Agency';
+    const offersString = offers.length > 0 ? offers.map((o: any) => `- ${o.name}: ${o.description || 'No description'}`).join('\n') : 'No specific offers provided. Suggest a general B2B service.';
+    const ourCompanyString = companyContext?.company_name ? `Our Company: ${companyContext.company_name}\nWhat we do: ${companyContext.company_description || 'B2B Services'}` : 'Our Company: A B2B Service Agency';
 
     // 2. Ask Gemini for summary and pain points
-    const prompt = \`
+    const prompt = `
 You are an expert sales researcher. I am providing you with the text scraped from a company's website.
-Company Name: \${lead.company_name || lead.company || 'Unknown'}
+Company Name: ${lead.company_name || lead.company || 'Unknown'}
 
-\${ourCompanyString}
+${ourCompanyString}
 
 Our Available Offers/Services:
-\${offersString}
+${offersString}
 
 Website Content:
 """
-\${websiteText}
+${websiteText}
 """
 
 Based on this content, please extract the following in strictly valid JSON format:
@@ -128,7 +128,7 @@ Return ONLY a JSON object with these keys, nothing else. No markdown wrappers.
   "solution_angle": "...",
   "recommended_offer": "..."
 }
-\`;
+`;
 
     const ai = new GoogleGenAI({ apiKey: profile.gemini_api_key });
     let aiResponse;
