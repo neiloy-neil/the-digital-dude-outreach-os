@@ -7,7 +7,7 @@ import { motion, Variants } from 'framer-motion';
 import { 
   ArrowRight, Sparkles, Clock, Bot, Layers, 
   CheckCircle2, ChevronDown, ShieldCheck, Mail, 
-  Zap, Star, User, Building2, Briefcase
+  Zap, Star, User, Building2, Briefcase, X, Globe, Box
 } from 'lucide-react';
 
 // Animation Variants
@@ -187,6 +187,24 @@ export default function HomePage() {
           </motion.div>
         </main>
 
+        {/* Trusted By */}
+        <motion.section 
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true }}
+          variants={staggerContainer}
+          className="w-full border-y border-zinc-900 bg-zinc-950/50 py-10 overflow-hidden flex flex-col items-center"
+        >
+          <p className="text-zinc-500 text-sm font-semibold mb-6 tracking-widest uppercase">Trusted by forward-thinking B2B agencies</p>
+          <div className="flex gap-16 md:gap-32 items-center opacity-50 grayscale">
+            <span className="text-2xl font-black tracking-tighter text-zinc-300">AcmeCorp</span>
+            <span className="text-2xl font-black tracking-tighter text-zinc-300 flex items-center gap-2"><Globe className="w-6 h-6"/> GlobalReach</span>
+            <span className="text-2xl font-black tracking-tighter text-zinc-300">NextGen</span>
+            <span className="text-2xl font-black tracking-tighter text-zinc-300 flex items-center gap-2"><Box className="w-6 h-6"/> Elevate</span>
+            <span className="text-2xl font-black tracking-tighter text-zinc-300">Stratos</span>
+          </div>
+        </motion.section>
+
         {/* Why Manual First? */}
         <motion.section 
           initial="hidden"
@@ -321,6 +339,58 @@ export default function HomePage() {
               </motion.div>
             </div>
           </div>
+        </motion.section>
+
+        {/* Comparison Table */}
+        <motion.section 
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true, margin: "-100px" }}
+          variants={staggerContainer}
+          className="container mx-auto px-6 py-32"
+        >
+          <motion.div variants={fadeInUp} className="max-w-3xl mx-auto text-center mb-16">
+            <h2 className="text-4xl md:text-6xl font-bold text-white mb-6 tracking-tight">The Anti-Spam Alternative</h2>
+            <p className="text-xl text-zinc-400">Why top agencies are ditching high-volume blasters for ReachMira.</p>
+          </motion.div>
+
+          <motion.div variants={fadeInUp} className="max-w-5xl mx-auto bg-zinc-900/40 border border-zinc-800 rounded-3xl overflow-hidden backdrop-blur-md shadow-2xl">
+            <div className="grid grid-cols-3 border-b border-zinc-800">
+              <div className="p-6"></div>
+              <div className="p-6 border-x border-zinc-800 bg-zinc-950/50 flex flex-col items-center justify-center text-center">
+                <span className="text-xl font-bold text-zinc-400">Automated Blasters</span>
+                <span className="text-sm text-zinc-500">(Instantly, Smartlead)</span>
+              </div>
+              <div className="p-6 bg-gradient-to-b from-violet-900/20 flex flex-col items-center justify-center text-center relative overflow-hidden">
+                <div className="absolute top-0 inset-x-0 h-1 bg-gradient-to-r from-violet-500 to-cyan-400" />
+                <span className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-cyan-400">ReachMira</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 border-b border-zinc-800/50">
+              <div className="p-6 flex items-center font-medium text-zinc-300">Deliverability Focus</div>
+              <div className="p-6 border-x border-zinc-800 bg-zinc-950/50 flex items-center justify-center text-rose-400"><X className="w-5 h-5 mr-2" /> Quantity (Spam Filters)</div>
+              <div className="p-6 bg-violet-900/10 flex items-center justify-center text-teal-400 font-bold"><CheckCircle2 className="w-5 h-5 mr-2" /> Quality (Primary Inbox)</div>
+            </div>
+
+            <div className="grid grid-cols-3 border-b border-zinc-800/50">
+              <div className="p-6 flex items-center font-medium text-zinc-300">Domain Burning</div>
+              <div className="p-6 border-x border-zinc-800 bg-zinc-950/50 flex items-center justify-center text-rose-400">High (Need constant warmups)</div>
+              <div className="p-6 bg-violet-900/10 flex items-center justify-center text-teal-400 font-bold">Zero (Safe manual sends)</div>
+            </div>
+
+            <div className="grid grid-cols-3 border-b border-zinc-800/50">
+              <div className="p-6 flex items-center font-medium text-zinc-300">Personalization</div>
+              <div className="p-6 border-x border-zinc-800 bg-zinc-950/50 flex items-center justify-center text-rose-400">Basic {`{{first_name}}`} tags</div>
+              <div className="p-6 bg-violet-900/10 flex items-center justify-center text-teal-400 font-bold">Deep AI Pain-Point Extraction</div>
+            </div>
+
+            <div className="grid grid-cols-3">
+              <div className="p-6 flex items-center font-medium text-zinc-300">Reply Rates</div>
+              <div className="p-6 border-x border-zinc-800 bg-zinc-950/50 flex items-center justify-center text-rose-400">{"< 1%"}</div>
+              <div className="p-6 bg-violet-900/10 flex items-center justify-center text-teal-400 font-bold text-xl">15% - 40%+</div>
+            </div>
+          </motion.div>
         </motion.section>
 
         {/* Pricing */}
@@ -508,6 +578,24 @@ export default function HomePage() {
               ))}
             </motion.div>
           </div>
+        </motion.section>
+
+        {/* Integrations */}
+        <motion.section 
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true }}
+          variants={staggerContainer}
+          className="container mx-auto px-6 py-20 border-t border-zinc-900 text-center"
+        >
+          <motion.p variants={fadeInUp} className="text-zinc-500 font-medium mb-8">Seamlessly connects with your favorite tools</motion.p>
+          <motion.div variants={fadeInUp} className="flex flex-wrap justify-center gap-12 opacity-60">
+            <div className="text-xl font-bold flex items-center gap-2"><Mail className="w-6 h-6"/> Gmail</div>
+            <div className="text-xl font-bold flex items-center gap-2"><Mail className="w-6 h-6"/> Outlook</div>
+            <div className="text-xl font-bold flex items-center gap-2"><Briefcase className="w-6 h-6"/> Salesforce</div>
+            <div className="text-xl font-bold flex items-center gap-2"><Layers className="w-6 h-6"/> HubSpot</div>
+            <div className="text-xl font-bold flex items-center gap-2"><Zap className="w-6 h-6"/> Zapier</div>
+          </motion.div>
         </motion.section>
 
         {/* Final CTA */}
