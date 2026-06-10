@@ -636,7 +636,7 @@ alter table public.profiles
   add column if not exists stripe_subscription_id text,
   add column if not exists stripe_price_id text,
   add column if not exists stripe_current_period_end timestamp with time zone,
-  add column if not exists subscription_status text default 'trialing',
+  add column if not exists subscription_status text default 'active',
   add column if not exists trial_ends_at timestamp with time zone;
 
 -- 19. Inbox Messages
