@@ -10,6 +10,7 @@ import PageHeader from '@/components/reachmira/PageHeader';
 import MetricCard from '@/components/reachmira/MetricCard';
 import EmptyState from '@/components/reachmira/EmptyState';
 import NextActionCard from '@/components/reachmira/NextActionCard';
+import Spinner from '@/components/reachmira/Spinner';
 import AnalyticsCharts from '@/components/reachmira/AnalyticsCharts';
 import { getLeadStatusLabel, isRepliedStatus } from '@/lib/leads/status';
 import { getLeadReadiness } from '@/lib/leads/library';
@@ -338,8 +339,8 @@ export default function Dashboard() {
       />
 
       {loading ? (
-        <div className="flex h-64 items-center justify-center">
-          <div className="h-9 w-9 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
+        <div className="flex h-64 items-center justify-center text-violet-500">
+          <Spinner size={36} />
         </div>
       ) : (
         <div className="space-y-8">
