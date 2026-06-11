@@ -14,6 +14,7 @@ import PageHeader from '@/components/reachmira/PageHeader';
 import EmptyState from '@/components/reachmira/EmptyState';
 import QualityScoreBadge from '@/components/reachmira/QualityScoreBadge';
 import Spinner from '@/components/reachmira/Spinner';
+import { Button, ConfirmDialog, Field, Input, Modal } from '@/components/reachmira/ui';
 import { getLeadReadiness } from '@/lib/leads/library';
 import { useToast } from '@/lib/toast/toast-context';
 
@@ -312,7 +313,13 @@ function LeadsPageContent() {
     setSelected((prev) => (prev.includes(leadId) ? prev.filter((id) => id !== leadId) : [...prev, leadId]));
   };
 
-  const runBulkAction = async (action: string, extras: Record<string, unknown> = {}) => {
+  const [pendingBulkAction, setPendingBulkAction] = useState<{
+    action: string;
+    extras: Record<string, unknown>;
+    label: string;
+  } | null>(null);
+
+  const runBulkAction = (action: string, extras: Record<string, unknown> = {}) => {
     const actionLabels: Record<string, string> = {
       mark_interested: 'mark as interested',
       mark_not_interested: 'mark as not interested',
@@ -327,8 +334,13 @@ function LeadsPageContent() {
       assign_to_list: 'assign to list',
     };
     const label = actionLabels[action] || action.replace(/_/g, ' ');
-    const confirmed = window.confirm(`Apply "${label}" to ${selected.length} selected lead${selected.length === 1 ? '' : 's'}?`);
-    if (!confirmed) return;
+    setPendingBulkAction({ action, extras, label });
+  };
+
+  const executeBulkAction = async () => {
+    if (!pendingBulkAction) return;
+    const { action, extras, label } = pendingBulkAction;
+    setPendingBulkAction(null);
 
     setBulkLoading(true);
     try {
@@ -466,9 +478,9 @@ function LeadsPageContent() {
     }
   };
 
-  const deleteSavedView = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!confirm('Are you sure you want to delete this saved view?')) return;
+  const [deleteViewId, setDeleteViewId] = useState<string | null>(null);
+
+  const deleteSavedView = async (id: string) => {
     try {
       const response = await fetch(`/api/saved-views?id=${id}`, {
         method: 'DELETE',
@@ -606,7 +618,10 @@ function LeadsPageContent() {
                   </button>
                 )}
                 <span
-                  onClick={(e) => deleteSavedView(view.id, e)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteViewId(view.id);
+                  }}
                   className="rounded p-0.5 hover:bg-black/10 text-zinc-400 group-hover:text-current transition-colors"
                   title="Delete view"
                 >
@@ -625,38 +640,27 @@ function LeadsPageContent() {
         </div>
       </div>
 
-      {showSaveViewModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-zinc-900/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-6 shadow-xl">
-            <h3 className="text-base font-semibold text-zinc-950">Save Current Filter Preset</h3>
-            <p className="mt-1 text-xs text-zinc-500">Name this view to quickly re-apply all your current filters later.</p>
-            <input
-              type="text"
-              required
-              value={newViewName}
-              onChange={(e) => setNewViewName(e.target.value)}
-              placeholder="e.g. Agency Leads with Valid Emails"
-              className="mt-4 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 outline-none focus:border-violet-500"
-            />
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                onClick={() => setShowSaveViewModal(false)}
-                className="rounded-xl border border-zinc-200 bg-white px-4 py-2 text-xs font-semibold text-zinc-600 hover:bg-zinc-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={saveCurrentView}
-                disabled={savingView}
-                className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-70 disabled:cursor-not-allowed"
-              >
-                {savingView && <Spinner size={12} className="text-white" />}
-                {savingView ? 'Saving...' : 'Save View'}
-              </button>
-            </div>
-          </div>
+      <Modal open={showSaveViewModal} onClose={() => setShowSaveViewModal(false)} title="Save Current Filter Preset" maxWidth="md">
+        <p className="-mt-4 mb-4 text-xs text-zinc-500">Name this view to quickly re-apply all your current filters later.</p>
+        <Field label="View name" htmlFor="save-view-name">
+          <Input
+            id="save-view-name"
+            type="text"
+            required
+            value={newViewName}
+            onChange={(e) => setNewViewName(e.target.value)}
+            placeholder="e.g. Agency Leads with Valid Emails"
+          />
+        </Field>
+        <div className="mt-6 flex justify-end gap-3">
+          <Button size="sm" onClick={() => setShowSaveViewModal(false)}>
+            Cancel
+          </Button>
+          <Button size="sm" variant="primary" onClick={saveCurrentView} loading={savingView}>
+            {savingView ? 'Saving...' : 'Save View'}
+          </Button>
         </div>
-      )}
+      </Modal>
 
       <section className="rounded-3xl border border-[var(--border)] bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-12">
@@ -982,8 +986,8 @@ function LeadsPageContent() {
 
       <section className="mt-6 rounded-3xl border border-[var(--border)] bg-white shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
         {loading ? (
-          <div className="flex h-64 items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
+          <div className="flex h-64 items-center justify-center text-violet-500">
+            <Spinner size={32} />
           </div>
         ) : filteredLeads.length === 0 ? (
           <EmptyState
@@ -1173,6 +1177,28 @@ function LeadsPageContent() {
           </>
         )}
       </section>
+
+      <ConfirmDialog
+        open={Boolean(pendingBulkAction)}
+        title="Apply bulk action?"
+        description={`Apply "${pendingBulkAction?.label || ''}" to ${selected.length} selected lead${selected.length === 1 ? '' : 's'}?`}
+        confirmLabel="Apply"
+        tone="default"
+        onConfirm={executeBulkAction}
+        onCancel={() => setPendingBulkAction(null)}
+      />
+
+      <ConfirmDialog
+        open={Boolean(deleteViewId)}
+        title="Delete saved view?"
+        description="This filter preset will be removed. Your leads are not affected."
+        confirmLabel="Delete View"
+        onConfirm={async () => {
+          if (deleteViewId) await deleteSavedView(deleteViewId);
+          setDeleteViewId(null);
+        }}
+        onCancel={() => setDeleteViewId(null)}
+      />
     </AppShell>
   );
 }
@@ -1182,8 +1208,8 @@ export default function LeadsPage() {
     <Suspense
       fallback={
         <AppShell>
-          <div className="flex h-64 items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
+          <div className="flex h-64 items-center justify-center text-violet-500">
+            <Spinner size={32} />
           </div>
         </AppShell>
       }
