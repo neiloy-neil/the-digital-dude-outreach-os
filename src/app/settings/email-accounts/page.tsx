@@ -7,10 +7,11 @@ import AppShell from '@/components/reachmira/AppShell';
 import PageHeader from '@/components/reachmira/PageHeader';
 import RichTextEditor from '@/components/leads/RichTextEditor';
 import { buildEmailSignatureHtml, buildSendSignatureHtml, sanitizeSignatureHtml } from '@/lib/email/signature';
-import { 
-  Mail, Plus, Trash2, AlertCircle,
-  Flame, Zap, CheckCircle2, X, RefreshCw, Eye, Wand2
+import {
+  Mail, Plus, Trash2,
+  Flame, Zap, Eye, Wand2
 } from 'lucide-react';
+import { Button, Banner, Modal, ConfirmDialog, Field, Input, Select } from '@/components/reachmira/ui';
 
 type EmailAccountConfig = Record<string, string | number | boolean | null | undefined>;
 
@@ -302,8 +303,9 @@ export default function EmailAccountsPage() {
     }
   };
 
+  const [deleteTarget, setDeleteTarget] = useState<EmailAccount | null>(null);
+
   const handleDelete = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this email account? This campaign links will be orphaned.')) return;
     setError(null);
     setSuccess(null);
 
@@ -318,6 +320,8 @@ export default function EmailAccountsPage() {
       fetchAccounts();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error deleting account');
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
@@ -403,42 +407,29 @@ export default function EmailAccountsPage() {
           subtitle="Connect Gmail or Outlook in one click, or add SMTP and Mailgun accounts with safe daily limits."
           actions={
             <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => window.location.assign('/api/email-accounts/oauth/gmail/start')}
-                className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800 shadow-sm transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
-              >
+              <Button variant="secondary" onClick={() => window.location.assign('/api/email-accounts/oauth/gmail/start')}>
                 <Mail className="h-4 w-4 text-rose-500" /> Connect Gmail
-              </button>
-              <button
-                type="button"
-                onClick={() => window.location.assign('/api/email-accounts/oauth/outlook/start')}
-                className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800 shadow-sm transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
-              >
+              </Button>
+              <Button variant="secondary" onClick={() => window.location.assign('/api/email-accounts/oauth/outlook/start')}>
                 <Mail className="h-4 w-4 text-sky-500" /> Connect Outlook
-              </button>
-              <button
-                onClick={openAddModal}
-                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-600/20 transition hover:opacity-95 active:scale-[0.98]"
-              >
+              </Button>
+              <Button variant="primary" onClick={openAddModal}>
                 <Plus className="h-4 w-4" /> Add Account
-              </button>
+              </Button>
             </div>
           }
         />
 
         {error && (
-          <div className="mb-6 flex items-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">
-            <AlertCircle className="h-5 w-5 shrink-0" />
-            <span>{error}</span>
-          </div>
+          <Banner tone="error" className="mb-6" onDismiss={() => setError(null)}>
+            {error}
+          </Banner>
         )}
 
         {success && (
-          <div className="mb-6 flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">
-            <CheckCircle2 className="h-5 w-5 shrink-0" />
-            <span>{success}</span>
-          </div>
+          <Banner tone="success" className="mb-6" onDismiss={() => setSuccess(null)}>
+            {success}
+          </Banner>
         )}
 
         {loading ? (
@@ -452,12 +443,9 @@ export default function EmailAccountsPage() {
             <p className="mx-auto mt-2 max-w-sm text-sm text-zinc-500">
               Connect Gmail or Outlook in one click, or set up SMTP / Mailgun to start launching outreach campaigns.
             </p>
-            <button
-              onClick={openAddModal}
-              className="mt-6 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-600/20 transition hover:opacity-95"
-            >
+            <Button variant="primary" className="mt-6" onClick={openAddModal}>
               Configure First Account
-            </button>
+            </Button>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-4">
@@ -522,44 +510,32 @@ export default function EmailAccountsPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 self-end md:self-auto">
+                <div className="flex flex-wrap items-center gap-2 self-end md:self-auto">
                   {!account.is_default && (
-                    <button
-                      onClick={() => handleSetDefault(account)}
-                      className="cursor-pointer rounded-lg border border-[var(--border)] bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
-                    >
+                    <Button size="sm" onClick={() => handleSetDefault(account)}>
                       Make Default
-                    </button>
+                    </Button>
                   )}
-                  <button
-                    onClick={() => setShowTestModal(account.id)}
-                    disabled={account.status !== 'active'}
-                    className="flex cursor-pointer items-center gap-1 rounded-lg border border-[var(--border)] bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
+                  <Button size="sm" onClick={() => setShowTestModal(account.id)} disabled={account.status !== 'active'}>
                     <Zap className="h-3 w-3 text-amber-400" /> Test Connection
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    size="sm"
                     onClick={() => handleStatusToggle(account)}
-                    className={`px-3 py-1.5 rounded-lg border text-xs font-semibold transition-all cursor-pointer ${
+                    className={
                       account.status === 'active'
-                        ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
-                        : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                    }`}
+                        ? '!border-amber-200 !bg-amber-50 !text-amber-700 hover:!bg-amber-100'
+                        : '!border-emerald-200 !bg-emerald-50 !text-emerald-700 hover:!bg-emerald-100'
+                    }
                   >
                     {account.status === 'active' ? 'Disable' : 'Activate'}
-                  </button>
-                  <button
-                    onClick={() => openEditModal(account)}
-                    className="cursor-pointer rounded-lg border border-[var(--border)] bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
-                  >
+                  </Button>
+                  <Button size="sm" onClick={() => openEditModal(account)}>
                     Edit
-                  </button>
-                  <button
-                    onClick={() => handleDelete(account.id)}
-                    className="cursor-pointer rounded-lg border border-rose-200 bg-rose-50 p-2 text-rose-700 transition hover:bg-rose-100"
-                  >
+                  </Button>
+                  <Button size="sm" variant="danger" aria-label={`Delete ${account.email_address}`} onClick={() => setDeleteTarget(account)}>
                     <Trash2 className="h-4 w-4" />
-                  </button>
+                  </Button>
                 </div>
               </div>
             ))}
@@ -567,20 +543,11 @@ export default function EmailAccountsPage() {
         )}
 
         {/* Add/Edit Modal */}
-        {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="relative max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-3xl border border-[var(--border)] bg-white p-6 shadow-2xl">
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="absolute right-4 top-4 cursor-pointer rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-1.5 text-zinc-500 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
-              >
-                <X className="h-5 w-5" />
-              </button>
-
-              <h3 className="mb-6 text-xl font-bold text-zinc-950">
-                {editingAccount ? 'Edit Email Account' : 'Add Email Account'}
-              </h3>
-
+        <Modal
+          open={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          title={editingAccount ? 'Edit Email Account' : 'Add Email Account'}
+        >
               <form onSubmit={handleSave} className="space-y-4">
                 {!isOAuthProvider && (
                 <div className="grid grid-cols-2 gap-2 rounded-2xl bg-[var(--surface-muted)] p-1 sm:grid-cols-4">
@@ -624,28 +591,27 @@ export default function EmailAccountsPage() {
                 )}
 
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold uppercase text-zinc-500">Email Address</label>
-                    <input
+                  <Field label="Email Address" htmlFor="account-email">
+                    <Input
+                      id="account-email"
                       type="email"
                       required
                       readOnly={isOAuthProvider}
                       value={emailAddress}
                       onChange={(e) => setEmailAddress(e.target.value)}
                       placeholder="sender@domain.com"
-                      className={`mt-1 w-full rounded-xl border border-[var(--border)] px-3 py-2 text-sm text-zinc-900 transition-colors placeholder:text-zinc-400 focus:border-violet-500 focus:outline-none ${isOAuthProvider ? 'cursor-not-allowed bg-[var(--surface-muted)]' : 'bg-white'}`}
+                      className={isOAuthProvider ? 'cursor-not-allowed bg-[var(--surface-muted)]' : ''}
                     />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-semibold uppercase text-zinc-500">Sender Display Name</label>
-                    <input
+                  </Field>
+                  <Field label="Sender Display Name" htmlFor="account-sender-name">
+                    <Input
+                      id="account-sender-name"
                       type="text"
                       value={senderName}
                       onChange={(e) => setSenderName(e.target.value)}
                       placeholder="John Doe"
-                      className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 transition-colors placeholder:text-zinc-400 focus:border-violet-500 focus:outline-none"
                     />
-                  </div>
+                  </Field>
                 </div>
 
                 {/* Dynamic Configuration Forms */}
@@ -658,27 +624,13 @@ export default function EmailAccountsPage() {
                   <div className="space-y-4 border-t border-[var(--border)] pt-4">
                     <div className="grid grid-cols-3 gap-4">
                       <div className="col-span-2">
-                        <label className="block text-xs font-semibold uppercase text-zinc-500">SMTP Host</label>
-                        <input
-                          type="text"
-                          required
-                          value={smtpHost}
-                          onChange={(e) => setSmtpHost(e.target.value)}
-                          placeholder="mail.domain.com"
-                          className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 transition-colors placeholder:text-zinc-400 focus:border-violet-500 focus:outline-none"
-                        />
+                        <Field label="SMTP Host" htmlFor="smtp-host">
+                          <Input id="smtp-host" type="text" required value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} placeholder="mail.domain.com" />
+                        </Field>
                       </div>
-                      <div>
-                        <label className="block text-xs font-semibold uppercase text-zinc-500">SMTP Port</label>
-                        <input
-                          type="number"
-                          required
-                          value={smtpPort}
-                          onChange={(e) => setSmtpPort(Number(e.target.value))}
-                          placeholder="465"
-                          className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 transition-colors placeholder:text-zinc-400 focus:border-violet-500 focus:outline-none"
-                        />
-                      </div>
+                      <Field label="SMTP Port" htmlFor="smtp-port">
+                        <Input id="smtp-port" type="number" required value={smtpPort} onChange={(e) => setSmtpPort(Number(e.target.value))} placeholder="465" />
+                      </Field>
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -695,79 +647,35 @@ export default function EmailAccountsPage() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold uppercase text-zinc-500">SMTP Username</label>
-                        <input
-                          type="text"
-                          required
-                          value={smtpUsername}
-                          onChange={(e) => setSmtpUsername(e.target.value)}
-                          placeholder="sender@domain.com"
-                          className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 transition-colors placeholder:text-zinc-400 focus:border-violet-500 focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold uppercase text-zinc-500">SMTP Password</label>
-                        <input
-                          type="password"
-                          required={!editingAccount}
-                          value={smtpPassword}
-                          onChange={(e) => setSmtpPassword(e.target.value)}
-                          placeholder={editingAccount ? "••••••••" : "Password"}
-                          className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 transition-colors placeholder:text-zinc-400 focus:border-violet-500 focus:outline-none"
-                        />
-                      </div>
+                      <Field label="SMTP Username" htmlFor="smtp-username">
+                        <Input id="smtp-username" type="text" required value={smtpUsername} onChange={(e) => setSmtpUsername(e.target.value)} placeholder="sender@domain.com" />
+                      </Field>
+                      <Field label="SMTP Password" htmlFor="smtp-password">
+                        <Input id="smtp-password" type="password" required={!editingAccount} value={smtpPassword} onChange={(e) => setSmtpPassword(e.target.value)} placeholder={editingAccount ? '••••••••' : 'Password'} />
+                      </Field>
                     </div>
                   </div>
                 ) : (
                   <div className="space-y-4 border-t border-[var(--border)] pt-4">
                     <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold uppercase text-zinc-500">Mailgun Domain</label>
-                        <input
-                          type="text"
-                          required
-                          value={mgDomain}
-                          onChange={(e) => setMgDomain(e.target.value)}
-                          placeholder="mg.yourdomain.com"
-                          className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 transition-colors placeholder:text-zinc-400 focus:border-violet-500 focus:outline-none"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold uppercase text-zinc-500">API Key</label>
-                        <input
-                          type="password"
-                          required={!editingAccount}
-                          value={mgApiKey}
-                          onChange={(e) => setMgApiKey(e.target.value)}
-                          placeholder={editingAccount ? "••••••••" : "API Private Key"}
-                          className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 transition-colors placeholder:text-zinc-400 focus:border-violet-500 focus:outline-none"
-                        />
-                      </div>
+                      <Field label="Mailgun Domain" htmlFor="mg-domain">
+                        <Input id="mg-domain" type="text" required value={mgDomain} onChange={(e) => setMgDomain(e.target.value)} placeholder="mg.yourdomain.com" />
+                      </Field>
+                      <Field label="API Key" htmlFor="mg-api-key">
+                        <Input id="mg-api-key" type="password" required={!editingAccount} value={mgApiKey} onChange={(e) => setMgApiKey(e.target.value)} placeholder={editingAccount ? '••••••••' : 'API Private Key'} />
+                      </Field>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-xs font-semibold uppercase text-zinc-500">Region</label>
-                        <select
-                          value={mgRegion}
-                          onChange={(e) => setMgRegion(e.target.value as 'us' | 'eu')}
-                          className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 transition-colors focus:border-violet-500 focus:outline-none"
-                        >
+                      <Field label="Region" htmlFor="mg-region">
+                        <Select id="mg-region" value={mgRegion} onChange={(e) => setMgRegion(e.target.value as 'us' | 'eu')}>
                           <option value="us">United States (US)</option>
                           <option value="eu">Europe (EU)</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold uppercase text-zinc-500">Webhook Signing Key (Optional)</label>
-                        <input
-                          type="password"
-                          value={mgWebhookKey}
-                          onChange={(e) => setMgWebhookKey(e.target.value)}
-                          placeholder={editingAccount?.config.webhook_signing_key ? "••••••••" : "Signing Key"}
-                          className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 transition-colors placeholder:text-zinc-400 focus:border-violet-500 focus:outline-none"
-                        />
-                      </div>
+                        </Select>
+                      </Field>
+                      <Field label="Webhook Signing Key (Optional)" htmlFor="mg-webhook-key">
+                        <Input id="mg-webhook-key" type="password" value={mgWebhookKey} onChange={(e) => setMgWebhookKey(e.target.value)} placeholder={editingAccount?.config.webhook_signing_key ? '••••••••' : 'Signing Key'} />
+                      </Field>
                     </div>
                   </div>
                 )}
@@ -810,38 +718,30 @@ export default function EmailAccountsPage() {
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2">
-                    <div>
-                      <label className="block text-xs font-semibold uppercase text-zinc-500">Name</label>
-                      <input value={signatureName} onChange={(e) => setSignatureName(e.target.value)} placeholder={senderName || 'Jane Doe'} className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-violet-500" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold uppercase text-zinc-500">Title</label>
-                      <input value={signatureTitle} onChange={(e) => setSignatureTitle(e.target.value)} placeholder="Founder" className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-violet-500" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold uppercase text-zinc-500">Company</label>
-                      <input value={signatureCompany} onChange={(e) => setSignatureCompany(e.target.value)} placeholder="ReachMira" className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-violet-500" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold uppercase text-zinc-500">Website</label>
-                      <input value={signatureWebsite} onChange={(e) => setSignatureWebsite(e.target.value)} placeholder="https://example.com" className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-violet-500" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold uppercase text-zinc-500">Phone</label>
-                      <input value={signaturePhone} onChange={(e) => setSignaturePhone(e.target.value)} placeholder="+1 555 123 4567" className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-violet-500" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold uppercase text-zinc-500">Logo URL</label>
-                      <input value={signatureLogoUrl} onChange={(e) => setSignatureLogoUrl(e.target.value)} placeholder="https://example.com/logo.png" className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-violet-500" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold uppercase text-zinc-500">LinkedIn URL</label>
-                      <input value={signatureLinkedInUrl} onChange={(e) => setSignatureLinkedInUrl(e.target.value)} placeholder="https://linkedin.com/in/..." className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-violet-500" />
-                    </div>
-                    <div>
-                      <label className="block text-xs font-semibold uppercase text-zinc-500">Social URL</label>
-                      <input value={signatureTwitterUrl} onChange={(e) => setSignatureTwitterUrl(e.target.value)} placeholder="https://x.com/..." className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:border-violet-500" />
-                    </div>
+                    <Field label="Name" htmlFor="sig-name">
+                      <Input id="sig-name" value={signatureName} onChange={(e) => setSignatureName(e.target.value)} placeholder={senderName || 'Jane Doe'} />
+                    </Field>
+                    <Field label="Title" htmlFor="sig-title">
+                      <Input id="sig-title" value={signatureTitle} onChange={(e) => setSignatureTitle(e.target.value)} placeholder="Founder" />
+                    </Field>
+                    <Field label="Company" htmlFor="sig-company">
+                      <Input id="sig-company" value={signatureCompany} onChange={(e) => setSignatureCompany(e.target.value)} placeholder="ReachMira" />
+                    </Field>
+                    <Field label="Website" htmlFor="sig-website">
+                      <Input id="sig-website" value={signatureWebsite} onChange={(e) => setSignatureWebsite(e.target.value)} placeholder="https://example.com" />
+                    </Field>
+                    <Field label="Phone" htmlFor="sig-phone">
+                      <Input id="sig-phone" value={signaturePhone} onChange={(e) => setSignaturePhone(e.target.value)} placeholder="+1 555 123 4567" />
+                    </Field>
+                    <Field label="Logo URL" htmlFor="sig-logo">
+                      <Input id="sig-logo" value={signatureLogoUrl} onChange={(e) => setSignatureLogoUrl(e.target.value)} placeholder="https://example.com/logo.png" />
+                    </Field>
+                    <Field label="LinkedIn URL" htmlFor="sig-linkedin">
+                      <Input id="sig-linkedin" value={signatureLinkedInUrl} onChange={(e) => setSignatureLinkedInUrl(e.target.value)} placeholder="https://linkedin.com/in/..." />
+                    </Field>
+                    <Field label="Social URL" htmlFor="sig-social">
+                      <Input id="sig-social" value={signatureTwitterUrl} onChange={(e) => setSignatureTwitterUrl(e.target.value)} placeholder="https://x.com/..." />
+                    </Field>
                   </div>
 
                   <div>
@@ -869,16 +769,15 @@ export default function EmailAccountsPage() {
 
                 {/* Common Limits & Warmup flags */}
                 <div className="grid grid-cols-2 gap-4 border-t border-[var(--border)] pt-4">
-                  <div>
-                    <label className="block text-xs font-semibold uppercase text-zinc-500">Daily Send Limit</label>
-                    <input
+                  <Field label="Daily Send Limit" htmlFor="daily-send-limit">
+                    <Input
+                      id="daily-send-limit"
                       type="number"
                       required
                       value={dailySendLimit}
                       onChange={(e) => setDailySendLimit(Number(e.target.value))}
-                      className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 transition-colors focus:border-violet-500 focus:outline-none"
                     />
-                  </div>
+                  </Field>
                   <div className="flex flex-col justify-end gap-2.5">
                     <div className="flex items-center gap-2">
                       <input
@@ -908,113 +807,76 @@ export default function EmailAccountsPage() {
                 </div>
 
                 <div className="mt-6 flex justify-end gap-2 border-t border-[var(--border)] pt-4">
-                  <button
-                    type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="cursor-pointer rounded-xl border border-[var(--border)] bg-white px-4 py-2 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
-                  >
+                  <Button onClick={() => setIsModalOpen(false)}>
                     Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="cursor-pointer rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-5 py-2 text-sm font-semibold text-white shadow-lg shadow-violet-600/15 transition-all hover:opacity-90 active:scale-[0.98]"
-                  >
+                  </Button>
+                  <Button type="submit" variant="primary">
                     {editingAccount ? 'Save Changes' : 'Create Account'}
-                  </button>
+                  </Button>
                 </div>
               </form>
-            </div>
-          </div>
-        )}
+        </Modal>
 
         {/* Test Email Destination Prompt Modal */}
-        {showTestModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="relative w-full max-w-sm rounded-3xl border border-[var(--border)] bg-white p-5 shadow-2xl">
-              <button
-                onClick={() => setShowTestModal(null)}
-                className="absolute right-3 top-3 cursor-pointer rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-1 text-zinc-500 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
-              >
-                <X className="h-4 w-4" />
-              </button>
+        <Modal open={Boolean(showTestModal)} onClose={() => setShowTestModal(null)} title="Send Verification Email" maxWidth="md">
+          <p className="-mt-3 mb-4 text-xs text-zinc-500">
+            Enter an inbox address where we can deliver the credentials verification test email.
+          </p>
 
-              <h4 className="mb-3 text-base font-bold text-zinc-950">Send Verification Email</h4>
-              <p className="mb-4 text-xs text-zinc-500">
-                Enter an inbox address where we can deliver the credentials verification test email.
-              </p>
-
-              <form onSubmit={handleTestConnection} className="space-y-4">
-                <div>
-                  <input
-                    type="email"
-                    required
-                    value={testEmailRecipient}
-                    onChange={(e) => setTestEmailRecipient(e.target.value)}
-                    placeholder="recipient@example.com"
-                    className="w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 transition-colors placeholder:text-zinc-400 focus:border-violet-500 focus:outline-none"
-                  />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowTestModal(null)}
-                    className="cursor-pointer rounded-xl border border-[var(--border)] bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={!!testingId}
-                    className="flex cursor-pointer items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-1.5 text-xs font-semibold text-white transition-all hover:bg-violet-500 disabled:opacity-50"
-                  >
-                    {testingId ? (
-                      <>
-                        <RefreshCw className="h-3 w-3 animate-spin" /> Verifying...
-                      </>
-                    ) : (
-                      'Send Test'
-                    )}
-                  </button>
-                </div>
-              </form>
+          <form onSubmit={handleTestConnection} className="space-y-4">
+            <Field label="Recipient" htmlFor="test-email-recipient">
+              <Input
+                id="test-email-recipient"
+                type="email"
+                required
+                value={testEmailRecipient}
+                onChange={(e) => setTestEmailRecipient(e.target.value)}
+                placeholder="recipient@example.com"
+              />
+            </Field>
+            <div className="flex justify-end gap-2">
+              <Button size="sm" onClick={() => setShowTestModal(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" size="sm" variant="primary" loading={!!testingId}>
+                {testingId ? 'Verifying...' : 'Send Test'}
+              </Button>
             </div>
-          </div>
-        )}
+          </form>
+        </Modal>
 
         {previewSignatureAccount && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <div className="relative w-full max-w-lg rounded-3xl border border-[var(--border)] bg-white p-6 shadow-2xl">
-              <button
-                onClick={() => setPreviewSignatureAccount(null)}
-                className="absolute right-4 top-4 cursor-pointer rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] p-1.5 text-zinc-500 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
-              >
-                <X className="h-5 w-5" />
-              </button>
+          <Modal open onClose={() => setPreviewSignatureAccount(null)} title="Signature Preview" maxWidth="lg">
+            <p className="-mt-4 mb-5 text-sm text-zinc-500">
+              This is what ReachMira appends for {previewSignatureAccount.email_address}.
+            </p>
 
-              <div className="mb-5 pr-10">
-                <h4 className="text-lg font-bold text-zinc-950">Signature Preview</h4>
-                <p className="mt-1 text-sm text-zinc-500">
-                  This is what ReachMira appends for {previewSignatureAccount.email_address}.
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-5 text-sm text-zinc-900">
-                <div dangerouslySetInnerHTML={{
-                  __html: buildSendSignatureHtml(
-                    previewSignatureAccount.config,
-                    previewSignatureAccount.sender_name || previewSignatureAccount.email_address
-                  )
-                }} />
-              </div>
-
-              {!buildEmailSignatureHtml(previewSignatureAccount.config, previewSignatureAccount.sender_name || previewSignatureAccount.email_address) && (
-                <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                  No custom signature is configured, so emails will use the email account name fallback.
-                </div>
-              )}
+            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-5 text-sm text-zinc-900">
+              <div dangerouslySetInnerHTML={{
+                __html: buildSendSignatureHtml(
+                  previewSignatureAccount.config,
+                  previewSignatureAccount.sender_name || previewSignatureAccount.email_address
+                )
+              }} />
             </div>
-          </div>
+
+            {!buildEmailSignatureHtml(previewSignatureAccount.config, previewSignatureAccount.sender_name || previewSignatureAccount.email_address) && (
+              <Banner tone="warning" className="mt-4">
+                No custom signature is configured, so emails will use the email account name fallback.
+              </Banner>
+            )}
+          </Modal>
         )}
+        <ConfirmDialog
+          open={Boolean(deleteTarget)}
+          title="Delete email account?"
+          description={`${deleteTarget?.email_address || 'This account'} will be removed and its campaign links will be orphaned. This cannot be undone.`}
+          confirmLabel="Delete Account"
+          onConfirm={async () => {
+            if (deleteTarget) await handleDelete(deleteTarget.id);
+          }}
+          onCancel={() => setDeleteTarget(null)}
+        />
       </main>
     </AppShell>
   );
