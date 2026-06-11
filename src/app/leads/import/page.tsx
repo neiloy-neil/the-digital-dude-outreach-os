@@ -10,6 +10,7 @@ import { useSearchParams } from 'next/navigation';
 import Papa from 'papaparse';
 import { ArrowLeft, Upload, FileSpreadsheet, Database } from 'lucide-react';
 import { LEAD_DESTINATION_FIELDS, autoMapHeaders } from '@/lib/leads/library';
+import Spinner from '@/components/reachmira/Spinner';
 
 type LeadListOption = {
   id: string;
@@ -402,7 +403,7 @@ function LeadImportPageInner() {
                     Import invalid emails too
                   </label>
                   <button disabled={importing} onClick={handleImport} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-600/20 transition hover:opacity-95 disabled:opacity-50">
-                    {importing ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <><Database className="h-4 w-4" /> Import to List</>}
+                    {importing ? <Spinner size={16} className="text-white" /> : <><Database className="h-4 w-4" /> Import to List</>}
                   </button>
                 </div>
               </div>

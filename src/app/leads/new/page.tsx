@@ -7,6 +7,7 @@ import AppShell from '@/components/reachmira/AppShell';
 import PageHeader from '@/components/reachmira/PageHeader';
 import Link from 'next/link';
 import { ArrowLeft, Save, Sparkles } from 'lucide-react';
+import Spinner from '@/components/reachmira/Spinner';
 
 type LeadListOption = {
   id: string;
@@ -171,7 +172,7 @@ export default function NewLeadPage() {
           </div>
 
           <button disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-600/20 transition hover:opacity-95 disabled:opacity-50">
-            {saving ? <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <><Save className="h-4 w-4" /> Save Lead</>}
+            {saving ? <Spinner size={16} className="text-white" /> : <><Save className="h-4 w-4" /> Save Lead</>}
           </button>
 
           <div className="flex items-center gap-1.5 text-xs text-zinc-500">

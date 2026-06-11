@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import Papa from 'papaparse';
+import Spinner from '@/components/reachmira/Spinner';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -282,7 +283,7 @@ export default function LeadImportPage({ params }: PageProps) {
 
         {loading ? (
           <div className="flex h-64 items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
+            <Spinner size={32} className="text-violet-500" />
           </div>
         ) : (
           <div className="space-y-6">
@@ -427,7 +428,7 @@ export default function LeadImportPage({ params }: PageProps) {
                         className="flex cursor-pointer items-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-5 py-2.5 text-xs font-semibold text-white shadow-lg shadow-violet-500/10 hover:opacity-95 disabled:opacity-50"
                       >
                         {loadingPreview ? (
-                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                          <Spinner size={16} className="text-white" />
                         ) : (
                           <>Preview Sheet Content</>
                         )}
@@ -450,7 +451,7 @@ export default function LeadImportPage({ params }: PageProps) {
             {/* LOADING PREVIEW SPINNER */}
             {loadingPreview && (
               <div className="flex h-48 flex-col items-center justify-center gap-2">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
+                <Spinner size={32} className="text-violet-500" />
                 <span className="text-xs text-zinc-500">Retrieving sheet schema & rows...</span>
               </div>
             )}
@@ -564,7 +565,7 @@ export default function LeadImportPage({ params }: PageProps) {
                     >
                       {importing ? (
                         <>
-                          <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                          <Spinner size={16} className="text-white" />
                           Executing Import...
                         </>
                       ) : (

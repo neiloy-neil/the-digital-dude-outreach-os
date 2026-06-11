@@ -11,6 +11,7 @@ import StatusBadge from '@/components/leads/StatusBadge';
 import Link from 'next/link';
 import { MailPlus, Send, Sparkles, Clock3 } from 'lucide-react';
 import { getLeadStatusLabel } from '@/lib/leads/status';
+import Spinner from '@/components/reachmira/Spinner';
 
 type DraftRow = {
   id: string;
@@ -157,7 +158,7 @@ export default function ManualEmailsPage() {
 
       {loading ? (
         <div className="flex h-64 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
+          <Spinner size={32} className="text-violet-500" />
         </div>
       ) : (
         <div className="grid gap-6 xl:grid-cols-2">

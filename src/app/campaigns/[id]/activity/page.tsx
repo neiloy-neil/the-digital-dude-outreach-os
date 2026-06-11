@@ -9,6 +9,7 @@ import PageHeader from '@/components/reachmira/PageHeader';
 import { createClient } from '@/utils/supabase/client';
 import Link from 'next/link';
 import { ArrowLeft, Activity, CheckCircle2, Mail, Pause, Play, Ban, Bot, Inbox, Undo2, ChevronDown } from 'lucide-react';
+import Spinner from '@/components/reachmira/Spinner';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -84,7 +85,7 @@ export default function CampaignActivityPage({ params }: PageProps) {
 
         {loading ? (
           <div className="flex h-64 items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
+            <Spinner size={32} className="text-violet-500" />
           </div>
         ) : (
           <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-white shadow-[0_12px_40px_rgba(15,23,42,0.04)]">

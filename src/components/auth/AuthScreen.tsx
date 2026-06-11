@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/utils/supabase/client';
 import { ArrowRight, CheckCircle2, Lock, Mail, Sparkles, ShieldCheck, Send } from 'lucide-react';
+import Spinner from '@/components/reachmira/Spinner';
 
 type AuthMode = 'toggle' | 'login' | 'register';
 
@@ -168,7 +169,7 @@ export default function AuthScreen({ mode = 'toggle' }: AuthScreenProps) {
                 className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-zinc-950 px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:opacity-50"
               >
                 {loading ? (
-                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  <Spinner size={20} className="text-white" />
                 ) : (
                   <>
                     {isSignUp ? <Sparkles className="h-4 w-4" /> : <Send className="h-4 w-4" />}

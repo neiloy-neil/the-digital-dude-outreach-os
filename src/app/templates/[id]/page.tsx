@@ -10,6 +10,7 @@ import AppShell from '@/components/reachmira/AppShell';
 import PageHeader from '@/components/reachmira/PageHeader';
 import { useConfirm } from '@/components/reachmira/ui';
 import { TEMPLATE_CATEGORIES, TEMPLATE_VARIABLES } from '@/lib/templates/template-helpers';
+import Spinner from '@/components/reachmira/Spinner';
 
 type TemplateForm = {
   name: string;
@@ -121,7 +122,7 @@ export default function EditTemplatePage() {
 
       {loading ? (
         <div className="flex h-64 items-center justify-center rounded-3xl border border-[var(--border)] bg-white">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
+          <Spinner size={32} className="text-violet-500" />
         </div>
       ) : (
         <form onSubmit={handleSave} className="space-y-5 rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
@@ -174,7 +175,7 @@ export default function EditTemplatePage() {
           <div className="flex flex-wrap items-center gap-3">
             <button type="submit" disabled={saving} className="inline-flex items-center gap-2 rounded-2xl bg-zinc-950 px-4 py-3 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:opacity-50">
               {saving ? (
-                <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                <Spinner size={16} className="text-white" />
               ) : (
                 <>
                   <Save className="h-4 w-4" />

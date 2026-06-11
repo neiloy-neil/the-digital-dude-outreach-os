@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import AppShell from '@/components/reachmira/AppShell';
+import Spinner from '@/components/reachmira/Spinner';
+import { Button } from '@/components/reachmira/ui';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/lib/toast/toast-context';
 import { Sparkles, Send, Mail, CheckCircle, RefreshCcw } from 'lucide-react';
@@ -140,16 +142,36 @@ export default function InboxPage() {
         {/* Left Pane: Message List */}
         <div className="w-1/3 border-r border-[var(--border)] bg-white flex flex-col">
           <div className="p-4 border-b border-[var(--border)] flex items-center justify-between">
-            <h2 className="text-lg font-bold text-zinc-900">Inbox</h2>
-            <button onClick={() => loadMessages(true)} className="text-zinc-500 hover:text-zinc-900 transition-colors">
-              <RefreshCcw className="h-4 w-4" />
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-bold text-zinc-900">Inbox</h2>
+              {messages.some((m) => m.status === 'unread') && (
+                <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-bold text-violet-700">
+                  {messages.filter((m) => m.status === 'unread').length} new
+                </span>
+              )}
+            </div>
+            <button
+              onClick={() => loadMessages(true)}
+              aria-label="Sync inbox"
+              title="Sync inbox"
+              className="cursor-pointer rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40"
+            >
+              <RefreshCcw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
           </div>
           <div className="flex-1 overflow-y-auto">
             {loading ? (
-              <div className="p-4 text-center text-sm text-zinc-500">Loading...</div>
+              <div className="flex h-40 items-center justify-center text-violet-500">
+                <Spinner size={24} />
+              </div>
             ) : messages.length === 0 ? (
-              <div className="p-4 text-center text-sm text-zinc-500">No messages found.</div>
+              <div className="px-6 py-12 text-center">
+                <Mail className="mx-auto mb-3 h-10 w-10 text-zinc-300" />
+                <p className="text-sm font-medium text-zinc-600">No replies yet</p>
+                <p className="mt-1 text-xs leading-5 text-zinc-400">
+                  Replies from leads land here automatically once reply detection is set up.
+                </p>
+              </div>
             ) : (
               messages.map((msg) => (
                 <div
@@ -197,7 +219,9 @@ export default function InboxPage() {
               {/* Thread Messages */}
               <div className="flex-1 overflow-y-auto p-6 space-y-6">
                 {threadLoading ? (
-                  <div className="text-center text-sm text-zinc-500">Loading thread...</div>
+                  <div className="flex h-40 items-center justify-center text-violet-500">
+                    <Spinner size={24} />
+                  </div>
                 ) : (
                   thread.map((tMsg, i) => (
                     <div key={i} className={`flex ${tMsg.type === 'sent' ? 'justify-end' : 'justify-start'}`}>
@@ -222,22 +246,14 @@ export default function InboxPage() {
                     className="w-full bg-transparent p-4 text-sm outline-none resize-none min-h-[100px]"
                   />
                   <div className="flex items-center justify-between border-t border-[var(--border)] p-2 bg-zinc-50/50 rounded-b-2xl">
-                    <button
-                      onClick={handleDraftAI}
-                      disabled={drafting}
-                      className="flex items-center gap-2 rounded-xl bg-white border border-[var(--border)] px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:bg-zinc-50 transition"
-                    >
-                      <Sparkles className="h-3 w-3 text-violet-500" />
+                    <Button size="sm" onClick={handleDraftAI} loading={drafting}>
+                      {!drafting && <Sparkles className="h-3 w-3 text-violet-500" />}
                       {drafting ? 'Drafting...' : 'Draft with AI'}
-                    </button>
-                    <button
-                      onClick={handleReply}
-                      disabled={replying || !replyText.trim()}
-                      className="flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-1.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-50 transition"
-                    >
-                      <Send className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="primary" onClick={handleReply} loading={replying} disabled={!replyText.trim()}>
+                      {!replying && <Send className="h-4 w-4" />}
                       {replying ? 'Sending...' : 'Send Reply'}
-                    </button>
+                    </Button>
                   </div>
                 </div>
               </div>

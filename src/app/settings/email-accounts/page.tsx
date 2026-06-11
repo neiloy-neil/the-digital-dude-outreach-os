@@ -12,6 +12,7 @@ import {
   Flame, Zap, Eye, Wand2
 } from 'lucide-react';
 import { Button, Banner, Modal, ConfirmDialog, Field, Input, Select } from '@/components/reachmira/ui';
+import Spinner from '@/components/reachmira/Spinner';
 
 type EmailAccountConfig = Record<string, string | number | boolean | null | undefined>;
 
@@ -434,7 +435,7 @@ export default function EmailAccountsPage() {
 
         {loading ? (
           <div className="flex h-64 items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
+            <Spinner size={32} className="text-violet-500" />
           </div>
         ) : accounts.length === 0 ? (
           <div className="rounded-3xl border border-dashed border-[var(--border)] bg-white p-12 text-center shadow-[0_12px_40px_rgba(15,23,42,0.04)]">

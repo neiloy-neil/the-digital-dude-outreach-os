@@ -475,7 +475,7 @@ export default function SettingsPage() {
 
       {loading ? (
         <div className="flex h-64 items-center justify-center rounded-3xl border border-[var(--border)] bg-white">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
+          <Spinner size={32} className="text-violet-500" />
         </div>
       ) : (
         <form onSubmit={handleSave} className="space-y-6">

@@ -8,6 +8,7 @@ import AppShell from '@/components/reachmira/AppShell';
 import PageHeader from '@/components/reachmira/PageHeader';
 import EmptyState from '@/components/reachmira/EmptyState';
 import { Activity, ArrowUpRight } from 'lucide-react';
+import Spinner from '@/components/reachmira/Spinner';
 
 type AuditRow = {
   id: string;
@@ -63,7 +64,7 @@ export default function ActivityPage() {
 
       {loading ? (
         <div className="flex h-64 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
+          <Spinner size={32} className="text-violet-500" />
         </div>
       ) : logs.length === 0 ? (
         <EmptyState

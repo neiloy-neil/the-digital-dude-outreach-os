@@ -21,6 +21,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import Link from 'next/link';
+import Spinner from '@/components/reachmira/Spinner';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -334,7 +335,7 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
 
         {loading ? (
           <div className="flex h-64 items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
+            <Spinner size={32} className="text-violet-500" />
           </div>
         ) : (
           <div className="space-y-6">
@@ -707,7 +708,7 @@ export default function PersonalizationReviewPage({ params }: PageProps) {
                   className="flex cursor-pointer items-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-5 py-2 text-xs font-semibold text-white shadow-md shadow-violet-500/10 hover:opacity-95 disabled:opacity-50"
                 >
                   {processing ? (
-                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    <Spinner size={16} className="text-white" />
                   ) : (
                     <>Save Email Draft</>
                   )}

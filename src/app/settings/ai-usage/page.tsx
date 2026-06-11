@@ -7,6 +7,7 @@ import AppShell from '@/components/reachmira/AppShell';
 import PageHeader from '@/components/reachmira/PageHeader';
 import { createClient } from '@/utils/supabase/client';
 import { CalendarDays, CheckCircle, Clock3, Layers3, ShieldAlert, Sparkles, Save } from 'lucide-react';
+import Spinner from '@/components/reachmira/Spinner';
 
 type AiSettingsRow = {
   default_model?: string | null;
@@ -245,7 +246,7 @@ export default function AiUsageSettingsPage() {
 
   return (
     <AppShell showSearch={false}>
-      <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
         <PageHeader
           eyebrow="AI controls"
           title="AI Usage Controls"
@@ -254,7 +255,7 @@ export default function AiUsageSettingsPage() {
 
         {loading ? (
           <div className="flex h-64 items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
+            <Spinner size={32} className="text-violet-500" />
           </div>
         ) : (
           <div className="space-y-6">
@@ -396,7 +397,7 @@ export default function AiUsageSettingsPage() {
                   className="flex cursor-pointer items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-6 py-2.5 font-semibold text-white shadow-lg shadow-violet-600/20 transition-all hover:opacity-95 active:scale-[0.98] disabled:opacity-50"
                 >
                   {saving ? (
-                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                    <Spinner size={20} className="text-white" />
                   ) : (
                     <>
                       <Save className="h-4 w-4" /> Save AI Rules

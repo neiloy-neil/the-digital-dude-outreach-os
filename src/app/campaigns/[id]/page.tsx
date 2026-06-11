@@ -1145,7 +1145,7 @@ export default function CampaignDetailPage({ params }: PageProps) {
                       className="flex items-center gap-1.5 px-4 py-1.5 bg-gradient-to-r from-violet-600 to-teal-500 rounded-lg text-xs font-semibold text-white hover:opacity-90 shadow-md shadow-violet-500/10 transition-colors disabled:opacity-50 cursor-pointer"
                     >
                       {savingSequence ? (
-                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        <Spinner size={16} className="text-white" />
                       ) : (
                         <>
                           <Save className="h-4 w-4" /> Save Sequence
@@ -1545,7 +1545,7 @@ export default function CampaignDetailPage({ params }: PageProps) {
                                 className="px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 rounded-lg text-xs font-semibold text-white hover:opacity-90 shadow-md shadow-emerald-500/10 cursor-pointer disabled:opacity-50"
                               >
                                 {approvingLeadId === selectedLead.id ? (
-                                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                                  <Spinner size={16} className="text-white" />
                                 ) : selectedLead.approval_status === 'approved' ? (
                                   'Save changes'
                                 ) : (

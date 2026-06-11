@@ -6,6 +6,7 @@ import AppShell from '@/components/reachmira/AppShell';
 import PageHeader from '@/components/reachmira/PageHeader';
 import { CreditCard, Check, Zap } from 'lucide-react';
 import { useToast } from '@/lib/toast/toast-context';
+import Spinner from '@/components/reachmira/Spinner';
 
 export default function BillingPage() {
   const supabase = createClient();
@@ -64,7 +65,7 @@ export default function BillingPage() {
     return (
       <AppShell>
         <div className="flex h-64 items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
+          <Spinner size={32} className="text-violet-500" />
         </div>
       </AppShell>
     );
@@ -80,7 +81,7 @@ export default function BillingPage() {
         subtitle="Manage your current plan, view invoices, and upgrade to unlock higher limits."
       />
 
-      <div className="mx-auto max-w-4xl space-y-8 mt-6">
+      <div className="mx-auto max-w-5xl space-y-8 mt-6">
         {/* Current Plan Card */}
         <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
           <div className="flex items-start justify-between">
