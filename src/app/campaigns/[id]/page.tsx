@@ -13,14 +13,14 @@ import {
   Sparkles, 
   Play, 
   Pause, 
-  ChevronRight, 
-  Save, 
-  AlertCircle,
+  ChevronRight,
+  Save,
   FileText,
-  UserPlus,
-  X
+  UserPlus
 } from 'lucide-react';
 import Link from 'next/link';
+import Spinner from '@/components/reachmira/Spinner';
+import { Badge, Banner, Button, ConfirmDialog, Modal } from '@/components/reachmira/ui';
 
 function parseCSVLine(line: string): string[] {
   const result: string[] = [];
@@ -675,8 +675,9 @@ export default function CampaignDetailPage({ params }: PageProps) {
     }
   };
 
+  const [clearLeadsConfirmOpen, setClearLeadsConfirmOpen] = useState(false);
+
   const handleClearLeads = async () => {
-    if (!confirm('Are you sure you want to delete ALL leads in this campaign? This will also cancel any pending emails.')) return;
     try {
       const { error } = await supabase
         .from('leads')
@@ -687,6 +688,8 @@ export default function CampaignDetailPage({ params }: PageProps) {
       await loadCampaignData();
     } catch (err: any) {
       setError(err.message || 'Error clearing leads');
+    } finally {
+      setClearLeadsConfirmOpen(false);
     }
   };
 
@@ -835,15 +838,14 @@ export default function CampaignDetailPage({ params }: PageProps) {
 
         {/* Global Notifications */}
         {error && (
-          <div className="mb-6 rounded-lg bg-rose-500/10 p-3 text-xs text-rose-400 border border-rose-500/20 flex items-center gap-2">
-            <AlertCircle className="h-4 w-4" />
+          <Banner tone="error" className="mb-6" onDismiss={() => setError(null)}>
             {error}
-          </div>
+          </Banner>
         )}
         {success && (
-          <div className="mb-6 rounded-lg bg-emerald-500/10 p-3 text-xs text-emerald-400 border border-emerald-500/20">
+          <Banner tone="success" className="mb-6" onDismiss={() => setSuccess(null)}>
             {success}
-          </div>
+          </Banner>
         )}
 
         {!loading && campaign && (
@@ -1009,8 +1011,8 @@ export default function CampaignDetailPage({ params }: PageProps) {
         )}
 
         {loading ? (
-          <div className="flex h-64 items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
+          <div className="flex h-64 items-center justify-center text-violet-500">
+            <Spinner size={32} />
           </div>
         ) : (
           <div className="space-y-6">
@@ -1048,7 +1050,7 @@ export default function CampaignDetailPage({ params }: PageProps) {
                   <div className="flex items-center gap-3">
                     {leads.length > 0 && (
                       <button
-                        onClick={handleClearLeads}
+                        onClick={() => setClearLeadsConfirmOpen(true)}
                         className="px-4 py-2 bg-rose-500/5 border border-rose-500/10 hover:bg-rose-500/10 text-rose-400 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
                       >
                         Clear Leads
@@ -1568,116 +1570,86 @@ export default function CampaignDetailPage({ params }: PageProps) {
         )}
       </main>
 
-      {bulkApproveModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-3xl border border-[var(--border)] bg-white p-6 shadow-2xl">
-            <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-4">
-              <div>
-                <div className="mb-2 inline-flex rounded-full bg-amber-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-amber-100">
-                  Bulk send safety check
-                </div>
-                <h3 className="text-lg font-semibold text-zinc-950">Approve and queue {pendingBulkApprovalLeads.length} leads?</h3>
-                <p className="mt-2 text-sm leading-6 text-zinc-500">
-                  This will approve every pending personalized email and add them to the campaign outbox. If the campaign is active, ReachMira can send them during the next automation run while respecting campaign and email-account limits.
-                </p>
-              </div>
-              <button
-                onClick={() => setBulkApproveModalOpen(false)}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] text-zinc-500 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="mt-4 grid gap-3 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-900">
-              <div className="font-semibold">Before continuing, confirm:</div>
-              <div>Each selected lead has been reviewed enough for automated sending.</div>
-              <div>Your sequence, sender account, suppression checks, and daily limits are ready.</div>
-            </div>
-
-            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <button
-                onClick={() => setBulkApproveModalOpen(false)}
-                className="rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleBulkApprove}
-                disabled={approvingLeadId === 'bulk'}
-                className="rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-600/15 transition hover:opacity-95 disabled:opacity-50"
-              >
-                Confirm Bulk Queue
-              </button>
-            </div>
-          </div>
+      <Modal open={bulkApproveModalOpen} onClose={() => setBulkApproveModalOpen(false)} maxWidth="lg">
+        <div className="border-b border-[var(--border)] pb-4 pr-10">
+          <Badge tone="amber" className="mb-2 uppercase tracking-wide">Bulk send safety check</Badge>
+          <h3 className="text-lg font-semibold text-zinc-950">Approve and queue {pendingBulkApprovalLeads.length} leads?</h3>
+          <p className="mt-2 text-sm leading-6 text-zinc-500">
+            This will approve every pending personalized email and add them to the campaign outbox. If the campaign is active, ReachMira can send them during the next automation run while respecting campaign and email-account limits.
+          </p>
         </div>
-      )}
 
-      {launchModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-3xl border border-[var(--border)] bg-white p-6 shadow-2xl">
-            <div className="flex items-start justify-between gap-4 border-b border-[var(--border)] pb-4">
-              <div>
-                <div className="mb-2 inline-flex rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-100">
-                  Campaign launch
-                </div>
-                <h3 className="text-lg font-semibold text-zinc-950">Launch {campaign?.name}?</h3>
-                <p className="mt-2 text-sm leading-6 text-zinc-500">
-                  Once active, ReachMira will send approved campaign emails during automation runs while respecting suppression checks, campaign limits, and email-account limits.
-                </p>
-              </div>
-              <button
-                onClick={() => setLaunchModalOpen(false)}
-                className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] text-zinc-500 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="mt-5 grid gap-3">
-              {launchChecklist.map((item) => (
-                <div key={item.label} className="flex items-start justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
-                  <div>
-                    <div className="text-sm font-semibold text-zinc-950">{item.label}</div>
-                    <div className="mt-1 text-xs leading-5 text-zinc-500">{item.detail}</div>
-                  </div>
-                  <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
-                    item.ok ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100' : 'bg-amber-50 text-amber-700 ring-1 ring-amber-100'
-                  }`}>
-                    {item.ok ? 'Ready' : 'Fix'}
-                  </span>
-                </div>
-              ))}
-            </div>
-
-            {launchBlockingIssues.length > 0 && (
-              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-800">
-                Fix the required launch items before starting this campaign. We’ll keep the launch button disabled until the checklist is clean.
-              </div>
-            )}
-
-            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-              <button
-                onClick={() => setLaunchModalOpen(false)}
-                className="rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  setLaunchModalOpen(false);
-                  handleLaunchCampaign();
-                }}
-                disabled={launchBlockingIssues.length > 0}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-600/15 transition hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Play className="h-4 w-4" /> Confirm Launch
-              </button>
-            </div>
-          </div>
+        <div className="mt-4 grid gap-3 rounded-2xl border border-amber-100 bg-amber-50 p-4 text-sm text-amber-900">
+          <div className="font-semibold">Before continuing, confirm:</div>
+          <div>Each selected lead has been reviewed enough for automated sending.</div>
+          <div>Your sequence, sender account, suppression checks, and daily limits are ready.</div>
         </div>
-      )}
+
+        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <Button onClick={() => setBulkApproveModalOpen(false)}>
+            Cancel
+          </Button>
+          <Button variant="primary" onClick={handleBulkApprove} loading={approvingLeadId === 'bulk'}>
+            Confirm Bulk Queue
+          </Button>
+        </div>
+      </Modal>
+
+      <Modal open={launchModalOpen} onClose={() => setLaunchModalOpen(false)} maxWidth="2xl">
+        <div className="border-b border-[var(--border)] pb-4 pr-10">
+          <Badge tone="emerald" className="mb-2 uppercase tracking-wide">Campaign launch</Badge>
+          <h3 className="text-lg font-semibold text-zinc-950">Launch {campaign?.name}?</h3>
+          <p className="mt-2 text-sm leading-6 text-zinc-500">
+            Once active, ReachMira will send approved campaign emails during automation runs while respecting suppression checks, campaign limits, and email-account limits.
+          </p>
+        </div>
+
+        <div className="mt-5 grid gap-3">
+          {launchChecklist.map((item) => (
+            <div key={item.label} className="flex items-start justify-between gap-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
+              <div>
+                <div className="text-sm font-semibold text-zinc-950">{item.label}</div>
+                <div className="mt-1 text-xs leading-5 text-zinc-500">{item.detail}</div>
+              </div>
+              <Badge tone={item.ok ? 'emerald' : 'amber'} className="shrink-0 uppercase tracking-wide">
+                {item.ok ? 'Ready' : 'Fix'}
+              </Badge>
+            </div>
+          ))}
+        </div>
+
+        {launchBlockingIssues.length > 0 && (
+          <Banner tone="warning" className="mt-4">
+            Fix the required launch items before starting this campaign. We’ll keep the launch button disabled until the checklist is clean.
+          </Banner>
+        )}
+
+        <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+          <Button onClick={() => setLaunchModalOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            className="!from-emerald-600 !to-teal-500 !shadow-emerald-600/15"
+            onClick={() => {
+              setLaunchModalOpen(false);
+              handleLaunchCampaign();
+            }}
+            disabled={launchBlockingIssues.length > 0}
+          >
+            <Play className="h-4 w-4" /> Confirm Launch
+          </Button>
+        </div>
+      </Modal>
+
+      <ConfirmDialog
+        open={clearLeadsConfirmOpen}
+        title="Delete all campaign leads?"
+        description="Every lead in this campaign will be deleted and any pending emails will be cancelled. This cannot be undone."
+        confirmLabel="Delete All Leads"
+        onConfirm={handleClearLeads}
+        onCancel={() => setClearLeadsConfirmOpen(false)}
+      />
     </AppShell>
   );
 }
