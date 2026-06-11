@@ -14,7 +14,6 @@ import {
   Mail, 
   Eye, 
   CheckCircle,
-  AlertCircle,
   Plus,
   Trash2,
   HelpCircle,
@@ -24,6 +23,7 @@ import {
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Papa from 'papaparse';
+import { Banner, Button } from '@/components/reachmira/ui';
 import { calculateLeadDataQuality } from '@/utils/data-quality';
 
 type TemplateOption = {
@@ -571,10 +571,9 @@ export default function CampaignWizardPage() {
         </div>
 
         {error && (
-          <div className="mb-6 rounded-lg bg-rose-500/10 p-3.5 text-xs text-rose-400 border border-rose-500/20 flex items-center gap-2">
-            <AlertCircle className="h-4.5 w-4.5" />
+          <Banner tone="error" className="mb-6" onDismiss={() => setError(null)}>
             {error}
-          </div>
+          </Banner>
         )}
 
         {/* STEP 1: CAMPAIGN BASICS */}
@@ -893,7 +892,7 @@ export default function CampaignWizardPage() {
               )}
 
               {previewError && (
-                <div className="p-3 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 text-xs">{previewError}</div>
+                <Banner tone="error">{previewError}</Banner>
               )}
             </div>
 
@@ -1300,17 +1299,9 @@ export default function CampaignWizardPage() {
 
             <div className="flex justify-between pt-4 border-t border-[var(--border)]">
               <button onClick={() => setCurrentStep(4)} className="text-xs text-zinc-600 hover:text-violet-700" disabled={processing}>Back</button>
-              <button
-                onClick={handleCreateCampaign}
-                disabled={processing}
-                className="px-6 py-2.5 bg-gradient-to-r from-violet-600 to-teal-500 hover:opacity-90 rounded-lg text-xs font-semibold text-white shadow-lg shadow-violet-500/10 flex items-center gap-1.5"
-              >
-                {processing ? (
-                  <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                ) : (
-                  <>Create & Start Campaign</>
-                )}
-              </button>
+              <Button variant="primary" size="sm" onClick={handleCreateCampaign} loading={processing}>
+                Create &amp; Start Campaign
+              </Button>
             </div>
           </div>
         )}
