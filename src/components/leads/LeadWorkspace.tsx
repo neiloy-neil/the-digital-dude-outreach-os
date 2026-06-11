@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, Ban, CheckCircle2, Copy, Database, Edit3, ExternalLink, History, Mail, MessageSquare, PlusCircle, Save, Send, Sparkles, WandSparkles, X, Clock3, AlertTriangle, Trash2, ShieldAlert } from 'lucide-react';
 import AppShell from '@/components/reachmira/AppShell';
 import Spinner from '@/components/reachmira/Spinner';
+import { Badge, useConfirm } from '@/components/reachmira/ui';
 import EmailVerificationBadge from '@/components/leads/EmailVerificationBadge';
 import StatusBadge from '@/components/leads/StatusBadge';
 import RichTextEditor from '@/components/leads/RichTextEditor';
@@ -155,6 +156,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const toast = useToast();
+  const { confirm, confirmDialog } = useConfirm();
   const [activeTab, setActiveTab] = useState<TabId>('overview');
   const [lead, setLead] = useState<LeadDetail | null>(null);
   const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
@@ -578,7 +580,11 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
   };
 
   const handleResendEmail = async (email: SentEmail) => {
-    if (!window.confirm(`Resend "${email.subject}" to ${email.recipient_email}?`)) return;
+    if (!(await confirm({
+      title: 'Resend email?',
+      description: `Resend "${email.subject}" to ${email.recipient_email}?`,
+      confirmLabel: 'Resend',
+    }))) return;
     setSending(true);
     try {
       const response = await fetch(`/api/leads/${leadId}/manual-send`, {
@@ -703,7 +709,11 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
 
   const handleGenerateAi = async (requestedDepth?: 'none' | 'basic' | 'standard' | 'deep', requestedMode?: string) => {
     if (requestedDepth === 'deep') {
-      const confirmed = window.confirm('This will use a Deep AI request. You have only 20/day.');
+      const confirmed = await confirm({
+        title: 'Use a Deep AI request?',
+        description: 'Deep AI runs a more thorough analysis and counts against your limit of 20 requests per day.',
+        confirmLabel: 'Run Deep AI',
+      });
       if (!confirmed) return;
     }
     setSaving(true);
@@ -732,7 +742,11 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
   const handleSendManual = async (mode: 'test' | 'send_now') => {
     if (mode === 'send_now') {
       const recipient = targetEmail || lead?.email || 'this lead';
-      const confirmed = window.confirm(`Send this ${getLeadStatusLabel(manualEmailType)} to ${recipient}?`);
+      const confirmed = await confirm({
+        title: 'Send this email?',
+        description: `Send this ${getLeadStatusLabel(manualEmailType)} to ${recipient}?`,
+        confirmLabel: 'Send Now',
+      });
       if (!confirmed) return;
     }
 
@@ -763,7 +777,12 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
       };
 
       if (mode === 'send_now' && response.status === 409 && payload.requiresConfirmation) {
-        const confirmedRisk = window.confirm(payload.warning?.message || payload.error || 'This email has a verification warning. Send anyway?');
+        const confirmedRisk = await confirm({
+          title: 'Send despite warning?',
+          description: payload.warning?.message || payload.error || 'This email has a verification warning. Send anyway?',
+          confirmLabel: 'Send Anyway',
+          tone: 'danger',
+        });
         if (!confirmedRisk) {
           toast.info('Send canceled.');
           return;
@@ -830,7 +849,12 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
   };
 
   const handleMarkDoNotContact = async () => {
-    if (!window.confirm('Mark this lead as do not contact?')) return;
+    if (!(await confirm({
+      title: 'Mark as do not contact?',
+      description: 'This lead will be excluded from all future sends and follow-ups.',
+      confirmLabel: 'Mark Do Not Contact',
+      tone: 'danger',
+    }))) return;
     setSaving(true);
     try {
       const response = await fetch(`/api/leads/${leadId}`, {
@@ -884,7 +908,12 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
 
   const handleDeleteLead = async () => {
     const leadLabel = lead?.company_name || lead?.company || lead?.email || 'this lead';
-    const confirmed = window.confirm(`Delete ${leadLabel}? This cannot be undone.`);
+    const confirmed = await confirm({
+      title: 'Delete lead?',
+      description: `Delete ${leadLabel}? This cannot be undone.`,
+      confirmLabel: 'Delete Lead',
+      tone: 'danger',
+    });
     if (!confirmed) return;
 
     setSaving(true);
@@ -1014,7 +1043,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
 
         {isInitialLoading ? (
           <div className="flex h-64 items-center justify-center rounded-3xl border border-[var(--border)] bg-white">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
+            <Spinner size={32} className="text-violet-500" />
           </div>
         ) : lead ? (
           <div className="space-y-6">
@@ -1530,7 +1559,17 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                               <td className="px-3 py-3 font-medium text-zinc-900">{email.subject}</td>
                               <td className="px-3 py-3"><StatusBadge status={email.status} /></td>
                               <td className="px-3 py-3 text-zinc-600">{email.provider}</td>
-                              <td className="px-3 py-3 text-xs text-zinc-500">{email.opened_at ? 'Opened ' : ''}{email.clicked_at ? 'Clicked ' : ''}{email.replied_at ? 'Replied ' : ''}{email.bounced_at ? 'Bounced' : ''}</td>
+                              <td className="px-3 py-3">
+                                <div className="flex flex-wrap gap-1">
+                                  {(email.opened_at || email.clicked_at) && <Badge tone="sky">Opened</Badge>}
+                                  {email.clicked_at && <Badge tone="indigo">Clicked</Badge>}
+                                  {email.replied_at && <Badge tone="emerald">Replied</Badge>}
+                                  {email.bounced_at && <Badge tone="rose">Bounced</Badge>}
+                                  {!email.opened_at && !email.clicked_at && !email.replied_at && !email.bounced_at && (
+                                    <span className="text-xs text-zinc-400">—</span>
+                                  )}
+                                </div>
+                              </td>
                               <td className="px-3 py-3">
                                 <div className="flex flex-wrap gap-2">
                                   <button onClick={(event) => { event.stopPropagation(); setSelectedEmail(email); }} className="rounded-lg border border-[var(--border)] bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">View</button>
@@ -1761,6 +1800,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
           </div>
         )}
       </div>
+      {confirmDialog}
     </AppShell>
   );
 }

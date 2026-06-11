@@ -5,3 +5,4 @@ export { default as Badge } from './Badge';
 export { default as Banner } from './Banner';
 export { default as Tabs } from './Tabs';
 export { Field, Input, Select, Textarea, LabeledInput } from './Field';
+export { useConfirm } from './useConfirm';
