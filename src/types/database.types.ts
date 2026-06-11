@@ -343,6 +343,7 @@ export interface SentEmail {
     | string;
   step_number?: number | null;
   provider_message_id?: string | null;
+  tracking_token?: string | null;
   status: string;
   sent_by?: string;
   sent_at: string;
@@ -362,13 +363,14 @@ export interface Sequence {
   delay_days: number;
   subject: string;
   body: string;
+  condition?: 'always' | 'opened' | 'not_opened' | 'clicked' | string;
   created_at: string;
 }
 
 export interface EmailAccount {
   id: string;
   user_id: string;
-  provider: 'smtp' | 'mailgun' | 'resend' | 'amazon_ses';
+  provider: 'smtp' | 'mailgun' | 'resend' | 'amazon_ses' | 'gmail' | 'outlook';
   email_address: string;
   sender_name?: string | null;
   config: Record<string, unknown>;

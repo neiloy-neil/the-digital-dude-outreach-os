@@ -46,7 +46,7 @@ export async function POST(
       </div>
     `;
 
-    const result = await sendEmail(account.provider, account.config, {
+    const result = await sendEmail(account.provider, { ...(account.config || {}), __account_id: account.id }, {
       to: targetEmail,
       fromName: account.sender_name || 'ReachMira Test',
       fromEmail: account.email_address,

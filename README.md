@@ -29,6 +29,8 @@ A modern outreach CRM for importing leads, writing personalized emails, sending 
 Supported now:
 - SMTP
 - Mailgun
+- Gmail (OAuth)
+- Outlook / Microsoft 365 (OAuth)
 
 Coming later:
 - Resend
@@ -90,6 +92,30 @@ Tips:
 
 ---
 
+## Gmail / Outlook OAuth Setup
+
+Users connect mailboxes in one click from `/settings/email-accounts` ("Connect Gmail" / "Connect Outlook").
+
+Environment variables:
+- `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` — from a Google Cloud OAuth web client.
+- `MICROSOFT_OAUTH_CLIENT_ID` / `MICROSOFT_OAUTH_CLIENT_SECRET` — from a Microsoft Entra app registration (multitenant + personal accounts).
+- `NEXT_PUBLIC_APP_URL` — used to build the OAuth redirect URIs.
+
+Redirect URIs to register with the providers:
+- Google: `{NEXT_PUBLIC_APP_URL}/api/email-accounts/oauth/gmail/callback`
+- Microsoft: `{NEXT_PUBLIC_APP_URL}/api/email-accounts/oauth/outlook/callback`
+
+Scopes requested:
+- Google: `gmail.send`, `openid`, `email` (send-only; reply tracking stays on IMAP/webhooks).
+- Microsoft: `offline_access`, `Mail.Send`, `User.Read`.
+
+Notes:
+- Sending goes through the Gmail API / Microsoft Graph `sendMail` — no SMTP app passwords needed.
+- Access tokens are refreshed automatically before sending; rotated refresh tokens are persisted to `email_accounts.config`.
+- Tokens are never exposed to the frontend (masked like all other provider secrets).
+
+---
+
 ## Free-Tier Queue Logic
 
 This MVP deliberately avoids:
@@ -127,6 +153,37 @@ The `audit_logs` table records important lifecycle events:
 - `email_account_tested`
 
 Audit logs are visible on campaign and lead activity pages, and are also written server-side using the Supabase service role.
+
+---
+
+## Conditional Sequences
+
+Follow-up steps (step 2+) can be gated on engagement with the previous email:
+- **Always send** (default)
+- **Only if NOT opened** — e.g. resend with a new subject line
+- **Only if opened** — e.g. a value follow-up for warm leads
+- **Only if link clicked** — e.g. "saw you checked the link"
+
+Behavior:
+- Conditions are evaluated against `opened_at` / `clicked_at` from self-hosted tracking (a click also counts as an open, since pixels are often blocked).
+- If a step's condition is not met, the step is **skipped** and the lead advances to the next step on that step's delay — sequences never stall.
+- Skips are recorded in audit logs as `sequence_step_skipped`.
+- Step 1 is always sent (there is no previous email to evaluate).
+
+---
+
+## Open & Click Tracking
+
+Every campaign and manual send (except test sends) is instrumented before it leaves:
+- A unique `tracking_token` is stored on the `sent_emails` row.
+- A 1×1 pixel (`/api/track/open/[token]`) stamps `opened_at` on first open.
+- Links are rewritten through `/api/track/click/[token]?u=...&s=...` which stamps `clicked_at` (and `opened_at`, since a click implies an open) before redirecting.
+
+Details:
+- Works for **all** providers (SMTP, Gmail, Outlook, Mailgun) — no webhooks required.
+- Click URLs are HMAC-signed (`TRACKING_SECRET`, falling back to `CRON_SECRET`) so the redirect cannot be abused as an open redirect.
+- Unsubscribe links and `mailto:` links are never rewritten.
+- The clean (un-instrumented) HTML is stored in `sent_emails.body_html`, so previewing an email inside ReachMira never records a false open.
 
 ---
 

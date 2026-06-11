@@ -317,6 +317,7 @@ create table public.sequences (
   delay_days integer not null default 1,
   subject text not null,
   body text not null,
+  condition text not null default 'always' check (condition in ('always', 'opened', 'not_opened', 'clicked')),
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
@@ -374,6 +375,7 @@ create table public.sent_emails (
   email_type text not null default 'custom_email',
   step_number integer,
   provider_message_id text,
+  tracking_token text,
   status text not null default 'sent',
   sent_by text not null default 'manual',
   sent_at timestamp with time zone default now() not null,
@@ -418,6 +420,7 @@ create index if not exists sent_emails_lead_id_idx on public.sent_emails(lead_id
 create index if not exists sent_emails_email_account_id_idx on public.sent_emails(email_account_id);
 create index if not exists sent_emails_provider_message_id_idx on public.sent_emails(provider_message_id);
 create index if not exists sent_emails_sent_at_idx on public.sent_emails(sent_at);
+create unique index if not exists sent_emails_tracking_token_idx on public.sent_emails(tracking_token) where tracking_token is not null;
 
 -- 8. Audit Logs Table
 create table public.audit_logs (

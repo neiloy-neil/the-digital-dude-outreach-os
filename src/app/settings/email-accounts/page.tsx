@@ -16,7 +16,7 @@ type EmailAccountConfig = Record<string, string | number | boolean | null | unde
 
 interface EmailAccount {
   id: string;
-  provider: 'smtp' | 'mailgun' | 'resend' | 'amazon_ses';
+  provider: 'smtp' | 'mailgun' | 'resend' | 'amazon_ses' | 'gmail' | 'outlook';
   email_address: string;
   sender_name?: string | null;
   config: EmailAccountConfig;
@@ -36,7 +36,7 @@ export default function EmailAccountsPage() {
   // Form states
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingAccount, setEditingAccount] = useState<EmailAccount | null>(null);
-  const [provider, setProvider] = useState<'smtp' | 'mailgun'>('smtp');
+  const [provider, setProvider] = useState<'smtp' | 'mailgun' | 'gmail' | 'outlook'>('smtp');
   const [emailAddress, setEmailAddress] = useState('');
   const [senderName, setSenderName] = useState('');
   const [dailySendLimit, setDailySendLimit] = useState(30);
@@ -142,6 +142,16 @@ export default function EmailAccountsPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchAccounts();
+
+    // Surface OAuth redirect results (?oauth_success= / ?oauth_error=) once, then clean the URL.
+    const searchParams = new URLSearchParams(window.location.search);
+    const oauthSuccess = searchParams.get('oauth_success');
+    const oauthError = searchParams.get('oauth_error');
+    if (oauthSuccess) setSuccess(oauthSuccess);
+    if (oauthError) setError(oauthError);
+    if (oauthSuccess || oauthError) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }, []);
 
   const openAddModal = () => {
@@ -181,7 +191,11 @@ export default function EmailAccountsPage() {
 
   const openEditModal = (account: EmailAccount) => {
     setEditingAccount(account);
-    setProvider(account.provider === 'mailgun' ? 'mailgun' : 'smtp');
+    setProvider(
+      account.provider === 'mailgun' || account.provider === 'gmail' || account.provider === 'outlook'
+        ? account.provider
+        : 'smtp'
+    );
     setEmailAddress(account.email_address);
     setSenderName(account.sender_name || '');
     setDailySendLimit(account.daily_send_limit);
@@ -220,7 +234,9 @@ export default function EmailAccountsPage() {
     setSuccess(null);
 
     const configPayload: EmailAccountConfig = {};
-    if (provider === 'smtp') {
+    if (provider === 'gmail' || provider === 'outlook') {
+      // OAuth accounts keep their tokens server-side; only signature/profile fields are editable.
+    } else if (provider === 'smtp') {
       configPayload.host = smtpHost;
       configPayload.port = Number(smtpPort);
       configPayload.secure = smtpSecure;
@@ -376,20 +392,38 @@ export default function EmailAccountsPage() {
     }
   };
 
+  const isOAuthProvider = provider === 'gmail' || provider === 'outlook';
+
   return (
     <AppShell showSearch={false}>
       <main className="mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
         <PageHeader
           eyebrow="Sending setup"
           title="Email Accounts"
-          subtitle="Add and manage SMTP, Mailgun, and custom sending accounts with safe daily limits."
+          subtitle="Connect Gmail or Outlook in one click, or add SMTP and Mailgun accounts with safe daily limits."
           actions={
-            <button
-              onClick={openAddModal}
-              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-600/20 transition hover:opacity-95 active:scale-[0.98]"
-            >
-              <Plus className="h-4 w-4" /> Add Account
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => window.location.assign('/api/email-accounts/oauth/gmail/start')}
+                className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800 shadow-sm transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+              >
+                <Mail className="h-4 w-4 text-rose-500" /> Connect Gmail
+              </button>
+              <button
+                type="button"
+                onClick={() => window.location.assign('/api/email-accounts/oauth/outlook/start')}
+                className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-800 shadow-sm transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700"
+              >
+                <Mail className="h-4 w-4 text-sky-500" /> Connect Outlook
+              </button>
+              <button
+                onClick={openAddModal}
+                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-600/20 transition hover:opacity-95 active:scale-[0.98]"
+              >
+                <Plus className="h-4 w-4" /> Add Account
+              </button>
+            </div>
           }
         />
 
@@ -416,7 +450,7 @@ export default function EmailAccountsPage() {
             <Mail className="mx-auto mb-4 h-12 w-12 text-violet-500" />
             <h3 className="text-lg font-semibold text-zinc-950">No sending accounts configured</h3>
             <p className="mx-auto mt-2 max-w-sm text-sm text-zinc-500">
-              Set up SMTP or Mailgun connections to start launching outreach campaigns.
+              Connect Gmail or Outlook in one click, or set up SMTP / Mailgun to start launching outreach campaigns.
             </p>
             <button
               onClick={openAddModal}
@@ -548,6 +582,7 @@ export default function EmailAccountsPage() {
               </h3>
 
               <form onSubmit={handleSave} className="space-y-4">
+                {!isOAuthProvider && (
                 <div className="grid grid-cols-2 gap-2 rounded-2xl bg-[var(--surface-muted)] p-1 sm:grid-cols-4">
                   <button
                     type="button"
@@ -586,6 +621,7 @@ export default function EmailAccountsPage() {
                     Amazon SES Soon
                   </button>
                 </div>
+                )}
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
@@ -593,10 +629,11 @@ export default function EmailAccountsPage() {
                     <input
                       type="email"
                       required
+                      readOnly={isOAuthProvider}
                       value={emailAddress}
                       onChange={(e) => setEmailAddress(e.target.value)}
                       placeholder="sender@domain.com"
-                      className="mt-1 w-full rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-sm text-zinc-900 transition-colors placeholder:text-zinc-400 focus:border-violet-500 focus:outline-none"
+                      className={`mt-1 w-full rounded-xl border border-[var(--border)] px-3 py-2 text-sm text-zinc-900 transition-colors placeholder:text-zinc-400 focus:border-violet-500 focus:outline-none ${isOAuthProvider ? 'cursor-not-allowed bg-[var(--surface-muted)]' : 'bg-white'}`}
                     />
                   </div>
                   <div>
@@ -612,7 +649,12 @@ export default function EmailAccountsPage() {
                 </div>
 
                 {/* Dynamic Configuration Forms */}
-                {provider === 'smtp' ? (
+                {isOAuthProvider ? (
+                  <div className="rounded-2xl border border-teal-100 bg-teal-50 p-4 text-xs text-teal-800">
+                    This account is connected via {provider === 'gmail' ? 'Google' : 'Microsoft'} OAuth. Credentials are
+                    managed automatically — reconnect from the buttons above if sending stops working.
+                  </div>
+                ) : provider === 'smtp' ? (
                   <div className="space-y-4 border-t border-[var(--border)] pt-4">
                     <div className="grid grid-cols-3 gap-4">
                       <div className="col-span-2">

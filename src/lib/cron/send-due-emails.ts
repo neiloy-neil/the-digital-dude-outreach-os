@@ -8,6 +8,7 @@ import { createAuditLog } from '@/lib/audit/create-audit-log';
 import { getStatusForEmailType, type EmailType } from '@/lib/leads/status';
 import { checkSuppression } from '@/lib/suppression/check-suppression';
 import { buildEmailMessageBodies } from '@/lib/email/html';
+import { generateTrackingToken, instrumentEmailHtml } from '@/lib/email/tracking';
 import { appendEmailSignature } from '@/lib/email/signature';
 import type { EmailProviderType } from '@/types/email-provider';
 
@@ -25,6 +26,16 @@ type SequenceStep = {
   delay_days: number;
   subject: string;
   body: string;
+  condition?: string;
+};
+
+type SequenceCondition = 'always' | 'opened' | 'not_opened' | 'clicked';
+
+const CONDITION_LABELS: Record<SequenceCondition, string> = {
+  always: 'always send',
+  opened: 'previous email opened',
+  not_opened: 'previous email not opened',
+  clicked: 'link in previous email clicked',
 };
 
 const BLOCKED_VERIFICATION_STATUSES = new Set(['invalid', 'disposable', 'suppressed']);
@@ -43,7 +54,7 @@ const VERIFICATION_STATUS_LABELS: Record<string, string> = {
 };
 
 function isSupportedProvider(provider: string): provider is EmailProviderType {
-  return ['smtp', 'mailgun', 'resend', 'amazon_ses'].includes(provider);
+  return ['smtp', 'mailgun', 'resend', 'amazon_ses', 'gmail', 'outlook'].includes(provider);
 }
 
 function isMissingColumnError(error: { message?: string; code?: string } | null | undefined) {
@@ -226,11 +237,22 @@ export async function sendDueEmails() {
       continue;
     }
 
-    const { data: sequences } = await supabase
+    let { data: sequences, error: sequencesError } = await supabase
       .from('sequences')
-      .select('id, step_number, delay_days, subject, body')
+      .select('id, step_number, delay_days, subject, body, condition')
       .eq('campaign_id', campaign.id)
       .order('step_number', { ascending: true });
+
+    if (sequencesError && isMissingColumnError(sequencesError)) {
+      // Databases without the conditions migration behave as 'always'.
+      const legacySequencesResponse = await supabase
+        .from('sequences')
+        .select('id, step_number, delay_days, subject, body')
+        .eq('campaign_id', campaign.id)
+        .order('step_number', { ascending: true });
+      sequences = (legacySequencesResponse.data || []).map((seq) => ({ ...seq, condition: 'always' }));
+      sequencesError = legacySequencesResponse.error;
+    }
 
     const sequenceByStep = new Map<number, SequenceStep>((sequences || []).map((seq) => [seq.step_number, seq]));
     let sent = 0;
@@ -253,6 +275,73 @@ export async function sendDueEmails() {
         skipped++;
         reasons.push(`Lead ${lead.email}: no sequence step ${nextStepNumber} configured`);
         continue;
+      }
+
+      // Conditional follow-ups: gate this step on engagement with the previous
+      // email. Step 1 has no previous email, so its condition is ignored.
+      const stepCondition = (sequence.condition || 'always') as SequenceCondition;
+      if (!isFirstEmail && stepCondition !== 'always') {
+        const { data: lastSentEmail } = await supabase
+          .from('sent_emails')
+          .select('opened_at, clicked_at')
+          .eq('lead_id', lead.id)
+          .eq('campaign_id', campaign.id)
+          .order('sent_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const wasOpened = Boolean(lastSentEmail?.opened_at || lastSentEmail?.clicked_at);
+        const wasClicked = Boolean(lastSentEmail?.clicked_at);
+        const conditionMet =
+          stepCondition === 'opened' ? wasOpened :
+          stepCondition === 'not_opened' ? !wasOpened :
+          stepCondition === 'clicked' ? wasClicked :
+          true;
+
+        if (!conditionMet) {
+          // Skip this step and advance the lead so the sequence never stalls.
+          const followingSequence = sequenceByStep.get(nextStepNumber + 1);
+          const followingEmailAt = followingSequence
+            ? new Date(Date.now() + Number(followingSequence.delay_days || 0) * 24 * 60 * 60 * 1000).toISOString()
+            : null;
+          const skipIso = new Date().toISOString();
+
+          const { error: skipUpdateError } = await supabase
+            .from('leads')
+            .update({
+              current_step: nextStepNumber,
+              next_email_at: followingEmailAt,
+              next_follow_up_at: followingEmailAt,
+              updated_at: skipIso,
+            })
+            .eq('id', lead.id);
+
+          if (skipUpdateError && isMissingColumnError(skipUpdateError)) {
+            await supabase
+              .from('leads')
+              .update({ current_step: nextStepNumber, next_email_at: followingEmailAt, updated_at: skipIso })
+              .eq('id', lead.id);
+          }
+
+          await createAuditLog({
+            userId: campaign.user_id,
+            campaignId: campaign.id,
+            leadId: lead.id,
+            action: 'sequence_step_skipped',
+            message: `Step ${nextStepNumber} skipped for ${lead.email}: condition "${CONDITION_LABELS[stepCondition]}" not met`,
+            metadata: {
+              step_number: nextStepNumber,
+              condition: stepCondition,
+              was_opened: wasOpened,
+              was_clicked: wasClicked,
+              next_email_at: followingEmailAt,
+            },
+          });
+
+          skipped++;
+          reasons.push(`Lead ${lead.email}: step ${nextStepNumber} skipped (condition '${stepCondition}' not met)`);
+          continue;
+        }
       }
 
       let subject = '';
@@ -298,6 +387,8 @@ export async function sendDueEmails() {
       const unsubscribeUrl = `${appBaseUrl}/unsubscribe?token=${lead.unsubscribe_token}`;
       const bodyWithSignature = appendEmailSignature(body, emailAccount.config || {}, senderName, true);
       const { html, text } = buildEmailMessageBodies(bodyWithSignature, unsubscribeUrl);
+      const trackingToken = generateTrackingToken();
+      const trackedHtml = instrumentEmailHtml(html, trackingToken, appBaseUrl);
       const replyTo = emailAccount.email_address;
       const verificationStatus = String((lead as QueueLead & { email_verification_status?: string | null }).email_verification_status || 'not_checked').trim().toLowerCase();
       const verificationReason = String((lead as QueueLead & { email_verification_reason?: string | null }).email_verification_reason || '').trim();
@@ -361,13 +452,13 @@ export async function sendDueEmails() {
         continue;
       }
 
-      const sendResult = await sendEmail(emailAccount.provider, emailAccount.config || {}, {
+      const sendResult = await sendEmail(emailAccount.provider, { ...(emailAccount.config || {}), __account_id: emailAccount.id }, {
         to: lead.email,
         fromName: senderName,
         fromEmail: senderEmail,
         replyTo,
         subject,
-        html,
+        html: trackedHtml,
         text,
         campaignId: campaign.id,
         leadId: lead.id,
@@ -415,6 +506,7 @@ export async function sendDueEmails() {
         email_type: emailType,
         step_number: nextStepNumber,
         provider_message_id: sendResult.messageId || null,
+        tracking_token: trackingToken,
         status: 'sent',
         sent_by: 'automation',
         sent_at: nowIso,

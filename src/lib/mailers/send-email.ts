@@ -5,6 +5,8 @@ import { sendSMTPEmail } from './providers/smtp';
 import { sendMailgunEmail } from './providers/mailgun';
 import { sendResendEmail } from './providers/resend';
 import { sendAmazonSESEmail } from './providers/amazon-ses';
+import { sendGmailEmail } from './providers/gmail';
+import { sendOutlookEmail } from './providers/outlook';
 import { EmailProviderType } from '@/types/email-provider';
 
 export async function sendEmail(
@@ -21,6 +23,10 @@ export async function sendEmail(
       return sendResendEmail(config as unknown as Parameters<typeof sendResendEmail>[0], payload);
     case 'amazon_ses':
       return sendAmazonSESEmail(config as unknown as Parameters<typeof sendAmazonSESEmail>[0], payload);
+    case 'gmail':
+      return sendGmailEmail(config, payload);
+    case 'outlook':
+      return sendOutlookEmail(config, payload);
     default:
       return {
         success: false,

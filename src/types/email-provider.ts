@@ -1,4 +1,4 @@
-export type EmailProviderType = 'smtp' | 'mailgun' | 'resend' | 'amazon_ses';
+export type EmailProviderType = 'smtp' | 'mailgun' | 'resend' | 'amazon_ses' | 'gmail' | 'outlook';
 
 export interface SMTPConfig {
   host: string;
@@ -27,7 +27,14 @@ export interface AmazonSESConfig {
   from_domain?: string;
 }
 
-export type EmailProviderConfig = SMTPConfig | MailgunConfig | ResendConfig | AmazonSESConfig;
+export interface OAuthMailConfig {
+  refresh_token?: string;
+  access_token?: string;
+  token_expires_at?: string; // ISO timestamp for access_token expiry
+  connected_at?: string;
+}
+
+export type EmailProviderConfig = SMTPConfig | MailgunConfig | ResendConfig | AmazonSESConfig | OAuthMailConfig;
 
 export type MaskedEmailAccountConfig = {
   [key: string]: string | number | boolean | null | undefined;
@@ -62,6 +69,10 @@ export function maskEmailAccountConfig(
   }
   if (!provider || provider === 'amazon_ses') {
     maskKey('secret_access_key');
+  }
+  if (!provider || provider === 'gmail' || provider === 'outlook') {
+    maskKey('refresh_token');
+    maskKey('access_token');
   }
 
   return masked;

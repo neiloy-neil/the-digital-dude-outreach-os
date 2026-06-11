@@ -14,7 +14,7 @@ export interface EmailPayload {
 
 export interface SendEmailResult {
   success: boolean;
-  provider: 'smtp' | 'mailgun' | 'resend' | 'amazon_ses';
+  provider: 'smtp' | 'mailgun' | 'resend' | 'amazon_ses' | 'gmail' | 'outlook';
   messageId?: string;
   error?: string;
   raw?: unknown;

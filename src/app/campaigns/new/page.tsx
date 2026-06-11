@@ -174,6 +174,7 @@ export default function CampaignWizardPage() {
     {
       step_number: 1,
       delay_days: 0,
+      condition: 'always',
       subject: 'Quick question {{first_name}}',
       body: 'Hi {{first_name}},\n\nI was looking at {{company_name}} and noticed {{pain_points}}.\n\n{{ai_personalized_first_line}}\n\nWould you be open to a quick call?\n\nBest,\n{{sender_name}}'
     }
@@ -341,6 +342,7 @@ export default function CampaignWizardPage() {
       {
         step_number: sequences.length + 1,
         delay_days: 2,
+        condition: 'always',
         subject: 'Re: Quick question',
         body: 'Hi {{first_name}},\n\nJust following up on my previous note. Would you be open to a 5-minute call next week?\n\nBest,\n{{sender_name}}'
       }
@@ -436,17 +438,25 @@ export default function CampaignWizardPage() {
 
       // 2. Create Sequences
       if (sequences.length > 0) {
-        const seqPayload = sequences.map(s => ({
+        const seqPayload = sequences.map((s, idx) => ({
           campaign_id: campaign.id,
           step_number: s.step_number,
           delay_days: Number(s.delay_days) || 0,
           subject: s.subject,
-          body: s.body
+          body: s.body,
+          condition: idx === 0 ? 'always' : (s.condition || 'always')
         }));
 
-        const { error: seqError } = await supabase
+        let { error: seqError } = await supabase
           .from('sequences')
           .insert(seqPayload);
+
+        if (seqError && String(seqError.message || '').toLowerCase().includes('condition')) {
+          // Databases without the conditions migration still accept plain steps.
+          const legacySeqPayload = seqPayload.map(({ condition: _condition, ...rest }) => rest);
+          const legacyResponse = await supabase.from('sequences').insert(legacySeqPayload);
+          seqError = legacyResponse.error;
+        }
 
         if (seqError) throw seqError;
       }
@@ -1151,6 +1161,19 @@ export default function CampaignWizardPage() {
                   <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
                     <span className="text-xs font-bold text-violet-400">Step {step.step_number} {idx === 0 ? '(First Contact)' : `(Follow-up)`}</span>
                     <div className="flex items-center gap-4">
+                      {idx > 0 && (
+                        <select
+                          value={step.condition || 'always'}
+                          onChange={(e) => handleUpdateSequenceField(idx, 'condition', e.target.value)}
+                          className="rounded border border-[var(--border)] bg-white px-2 py-1 text-xs text-zinc-700 focus:border-violet-500 focus:outline-none"
+                          title="Send this step only when the condition on the previous email is met"
+                        >
+                          <option value="always">Always send</option>
+                          <option value="not_opened">Only if NOT opened</option>
+                          <option value="opened">Only if opened</option>
+                          <option value="clicked">Only if link clicked</option>
+                        </select>
+                      )}
                       {idx > 0 && (
                         <div className="flex items-center gap-1.5 text-xs text-zinc-600">
                           <span>Delay:</span>

@@ -34,13 +34,13 @@ export default function AnalyticsCharts({ leads, sentEmails, dateRange }: Analyt
       daysToShow = 90; // Limit to 90 days for chart readability
     }
 
-    const dataMap: Record<string, { date: string; sent: number; replies: number; newLeads: number }> = {};
+    const dataMap: Record<string, { date: string; sent: number; opens: number; clicks: number; replies: number; newLeads: number }> = {};
 
     // Initialize dates
     for (let i = daysToShow - 1; i >= 0; i--) {
       const d = subDays(now, i);
       const key = format(d, 'MMM dd');
-      dataMap[key] = { date: key, sent: 0, replies: 0, newLeads: 0 };
+      dataMap[key] = { date: key, sent: 0, opens: 0, clicks: 0, replies: 0, newLeads: 0 };
     }
 
     const startDate = startOfDay(subDays(now, daysToShow - 1));
@@ -52,6 +52,26 @@ export default function AnalyticsCharts({ leads, sentEmails, dateRange }: Analyt
         const key = format(d, 'MMM dd');
         if (dataMap[key]) {
           dataMap[key].sent += 1;
+        }
+      }
+      // A click implies an open even when the tracking pixel was blocked.
+      const openedAt = email.opened_at || email.clicked_at;
+      if (openedAt) {
+        const od = new Date(openedAt);
+        if (isAfter(od, startDate)) {
+          const key = format(od, 'MMM dd');
+          if (dataMap[key]) {
+            dataMap[key].opens += 1;
+          }
+        }
+      }
+      if (email.clicked_at) {
+        const cd = new Date(email.clicked_at);
+        if (isAfter(cd, startDate)) {
+          const key = format(cd, 'MMM dd');
+          if (dataMap[key]) {
+            dataMap[key].clicks += 1;
+          }
         }
       }
       if (email.replied_at) {
@@ -127,6 +147,24 @@ export default function AnalyticsCharts({ leads, sentEmails, dateRange }: Analyt
                 strokeWidth={3}
                 dot={{ r: 4, strokeWidth: 2, fill: '#fff' }}
                 activeDot={{ r: 6, strokeWidth: 0 }}
+              />
+              <Line
+                type="monotone"
+                dataKey="opens"
+                name="Opens"
+                stroke="#f59e0b"
+                strokeWidth={2}
+                dot={{ r: 3, strokeWidth: 2, fill: '#fff' }}
+                activeDot={{ r: 5, strokeWidth: 0 }}
+              />
+              <Line
+                type="monotone"
+                dataKey="clicks"
+                name="Clicks"
+                stroke="#0ea5e9"
+                strokeWidth={2}
+                dot={{ r: 3, strokeWidth: 2, fill: '#fff' }}
+                activeDot={{ r: 5, strokeWidth: 0 }}
               />
               <Line
                 type="monotone"

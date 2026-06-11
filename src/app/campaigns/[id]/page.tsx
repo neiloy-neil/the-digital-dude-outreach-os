@@ -374,6 +374,7 @@ export default function CampaignDetailPage({ params }: PageProps) {
         campaign_id: campaignId,
         step_number: nextStepNum,
         delay_days: nextStepNum === 1 ? 0 : 2, // step 1 defaults to 0 (immediate), subsequent steps to 2 days
+        condition: 'always',
         subject: 'Quick question {{first_name}}',
         body: 'Hi {{first_name}},\n\n{{ai_personalization}}\n\nWould you be open to a quick call next week?\n\nBest,\n{{sender_name}}',
       }
@@ -410,17 +411,25 @@ export default function CampaignDetailPage({ params }: PageProps) {
 
       // 2. Insert new sequences if any
       if (sequences.length > 0) {
-        const insertPayload = sequences.map(({ step_number, delay_days, subject, body }) => ({
+        const insertPayload = sequences.map(({ step_number, delay_days, subject, body, condition }, idx) => ({
           campaign_id: campaignId,
           step_number,
           delay_days: Number(delay_days),
           subject,
           body,
+          condition: idx === 0 ? 'always' : (condition || 'always'),
         }));
 
-        const { error: insertError } = await supabase
+        let { error: insertError } = await supabase
           .from('sequences')
           .insert(insertPayload);
+
+        if (insertError && String(insertError.message || '').toLowerCase().includes('condition')) {
+          // Databases without the conditions migration still accept plain steps.
+          const legacyPayload = insertPayload.map(({ condition: _condition, ...rest }) => rest);
+          const legacyResponse = await supabase.from('sequences').insert(legacyPayload);
+          insertError = legacyResponse.error;
+        }
 
         if (insertError) throw insertError;
       }
@@ -685,12 +694,14 @@ export default function CampaignDetailPage({ params }: PageProps) {
     leads: leads.length,
     sent: sentEmails.length,
     delivered: sentEmails.filter((email) => email.status === 'delivered' || Boolean(email.delivered_at)).length,
-    opened: sentEmails.filter((email) => email.status === 'opened' || Boolean(email.opened_at)).length,
+    // A click implies an open even when the tracking pixel was blocked.
+    opened: sentEmails.filter((email) => email.status === 'opened' || Boolean(email.opened_at) || Boolean(email.clicked_at)).length,
     clicked: sentEmails.filter((email) => email.status === 'clicked' || Boolean(email.clicked_at)).length,
     replied: leads.filter((lead) => ['replied', 'interested', 'not_interested', 'demo_scheduled', 'proposal_sent', 'won', 'lost'].includes(String(lead.status || ''))).length,
     bounced: leads.filter((lead) => ['bounced', 'complained'].includes(String(lead.status || ''))).length,
     unsubscribed: leads.filter((lead) => lead.status === 'unsubscribed').length,
   };
+  const rateOfSent = (count: number) => (analytics.sent > 0 ? `${Math.round((count / analytics.sent) * 100)}% of sent` : null);
   const selectedEmailAccount = emailAccounts.find((account) => account.id === campaign?.email_account_id);
   const approvedLeadsCount = leads.filter((lead) => lead.approval_status === 'approved' || lead.ai_status === 'approved').length;
   const pendingReviewCount = leads.filter((lead) => lead.personalization_strategy && lead.approval_status === 'pending_review').length;
@@ -977,19 +988,20 @@ export default function CampaignDetailPage({ params }: PageProps) {
               </Link>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
-              {[
-                ['Leads', analytics.leads, 'text-slate-700 bg-slate-50 border-slate-200'],
-                ['Sent', analytics.sent, 'text-violet-700 bg-violet-50 border-violet-200'],
-                ['Delivered', analytics.delivered, 'text-teal-700 bg-teal-50 border-teal-200'],
-                ['Opened', analytics.opened, 'text-sky-700 bg-sky-50 border-sky-200'],
-                ['Clicked', analytics.clicked, 'text-indigo-700 bg-indigo-50 border-indigo-200'],
-                ['Replied', analytics.replied, 'text-emerald-700 bg-emerald-50 border-emerald-200'],
-                ['Bounced', analytics.bounced, 'text-rose-700 bg-rose-50 border-rose-200'],
-                ['Unsubscribed', analytics.unsubscribed, 'text-amber-700 bg-amber-50 border-amber-200'],
-              ].map(([label, value, tone]) => (
+              {([
+                ['Leads', analytics.leads, 'text-slate-700 bg-slate-50 border-slate-200', null],
+                ['Sent', analytics.sent, 'text-violet-700 bg-violet-50 border-violet-200', null],
+                ['Delivered', analytics.delivered, 'text-teal-700 bg-teal-50 border-teal-200', null],
+                ['Opened', analytics.opened, 'text-sky-700 bg-sky-50 border-sky-200', rateOfSent(analytics.opened)],
+                ['Clicked', analytics.clicked, 'text-indigo-700 bg-indigo-50 border-indigo-200', rateOfSent(analytics.clicked)],
+                ['Replied', analytics.replied, 'text-emerald-700 bg-emerald-50 border-emerald-200', rateOfSent(analytics.replied)],
+                ['Bounced', analytics.bounced, 'text-rose-700 bg-rose-50 border-rose-200', null],
+                ['Unsubscribed', analytics.unsubscribed, 'text-amber-700 bg-amber-50 border-amber-200', null],
+              ] as [string, number, string, string | null][]).map(([label, value, tone, rate]) => (
                 <div key={label} className={`rounded-2xl border px-3 py-3 ${tone}`}>
                   <div className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-75">{label}</div>
                   <div className="mt-2 text-2xl font-black tracking-tight">{value}</div>
+                  {rate && <div className="mt-0.5 text-[10px] font-semibold opacity-70">{rate}</div>}
                 </div>
               ))}
             </div>
@@ -1162,6 +1174,21 @@ export default function CampaignDetailPage({ params }: PageProps) {
                           </div>
 
                           <div className="flex items-center gap-4">
+                            {/* Send condition (vs previous email engagement) */}
+                            {index > 0 && (
+                              <select
+                                value={step.condition || 'always'}
+                                onChange={(e) => handleUpdateSequenceField(index, 'condition', e.target.value)}
+                                className="rounded border border-[var(--border)] bg-white px-2 py-1 text-xs text-zinc-700 focus:border-violet-500 focus:outline-none"
+                                title="Send this step only when the condition on the previous email is met"
+                              >
+                                <option value="always">Always send</option>
+                                <option value="not_opened">Only if NOT opened</option>
+                                <option value="opened">Only if opened</option>
+                                <option value="clicked">Only if link clicked</option>
+                              </select>
+                            )}
+
                             {/* Delay Days */}
                             <div className="flex items-center gap-2">
                               <span className="text-xs text-zinc-600">Delay:</span>

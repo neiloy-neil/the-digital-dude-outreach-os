@@ -5,6 +5,7 @@ import { createServiceClient } from '@/utils/supabase/service';
 import { sendEmail } from '@/lib/mailers/send-email';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
 import { buildEmailMessageBodies } from '@/lib/email/html';
+import { generateTrackingToken, instrumentEmailHtml } from '@/lib/email/tracking';
 import { appendEmailSignature } from '@/lib/email/signature';
 import { checkEmailQuality, hasBlockingEmailQualityIssue } from '@/lib/email/check-email-quality';
 import { verifyEmailLocally, type EmailVerificationStatus } from '@/lib/email-verification/local-verify';
@@ -15,7 +16,7 @@ import { checkSuppression } from '@/lib/suppression/check-suppression';
 import type { EmailProviderType } from '@/types/email-provider';
 
 function isSupportedProvider(provider: string): provider is EmailProviderType {
-  return ['smtp', 'mailgun', 'resend', 'amazon_ses'].includes(provider);
+  return ['smtp', 'mailgun', 'resend', 'amazon_ses', 'gmail', 'outlook'].includes(provider);
 }
 
 function isMissingColumnError(error: { message?: string; code?: string } | null | undefined) {
@@ -323,13 +324,17 @@ export async function POST(
       return NextResponse.json({ error: 'Recipient email is required' }, { status: 400 });
     }
 
-    const result = await sendEmail(emailAccount.provider, emailAccount.config || {}, {
+    // Test sends have no sent_emails row, so there is nothing to track.
+    const trackingToken = mode === 'test' ? null : generateTrackingToken();
+    const outboundHtml = trackingToken ? instrumentEmailHtml(html, trackingToken, appBaseUrl) : html;
+
+    const result = await sendEmail(emailAccount.provider, { ...(emailAccount.config || {}), __account_id: emailAccount.id }, {
       to,
       fromName: senderName,
       fromEmail: senderEmail,
       replyTo: senderEmail,
       subject: emailSubject,
-      html,
+      html: outboundHtml,
       text,
       leadId: lead.id,
       campaignId: lead.campaign_id || undefined,
@@ -425,6 +430,7 @@ export async function POST(
         email_type: emailType,
         step_number: typeof stepNumber === 'number' ? stepNumber : null,
         provider_message_id: result.messageId || null,
+        tracking_token: trackingToken,
         status: 'sent',
         sent_by: 'manual',
         sent_at: nowIso,

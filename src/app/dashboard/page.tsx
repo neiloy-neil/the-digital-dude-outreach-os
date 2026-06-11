@@ -27,6 +27,8 @@ import {
   Users,
   FolderOpen,
   CircleDashed,
+  Eye,
+  MousePointerClick,
 } from 'lucide-react';
 
 type LeadRow = {
@@ -66,6 +68,8 @@ type SentEmailRow = {
   status?: string | null;
   replied_at?: string | null;
   bounced_at?: string | null;
+  opened_at?: string | null;
+  clicked_at?: string | null;
   sent_at: string;
 };
 
@@ -100,7 +104,7 @@ export default function Dashboard() {
             .order('created_at', { ascending: false }),
           supabase
             .from('sent_emails')
-            .select('id,status,replied_at,bounced_at,sent_at')
+            .select('id,status,replied_at,bounced_at,opened_at,clicked_at,sent_at')
             .order('sent_at', { ascending: false })
             .limit(500),
           supabase
@@ -175,6 +179,11 @@ export default function Dashboard() {
     const replies = Math.max(repliedLeads, sentEmailReplies);
     const bounces = filteredSentEmails.filter((email) => Boolean(email.bounced_at) || email.status === 'bounced').length;
     const bounceRate = filteredSentEmails.length > 0 ? Math.round((bounces / filteredSentEmails.length) * 100) : 0;
+    // A click implies an open even when the tracking pixel was blocked.
+    const opens = filteredSentEmails.filter((email) => Boolean(email.opened_at) || Boolean(email.clicked_at) || email.status === 'opened').length;
+    const clicks = filteredSentEmails.filter((email) => Boolean(email.clicked_at) || email.status === 'clicked').length;
+    const openRate = filteredSentEmails.length > 0 ? Math.round((opens / filteredSentEmails.length) * 100) : 0;
+    const clickRate = filteredSentEmails.length > 0 ? Math.round((clicks / filteredSentEmails.length) * 100) : 0;
     const followUpsDue = leads.filter((lead) => {
       const nextFollowUp = lead.next_follow_up_at || lead.next_follow_up_date;
       if (!nextFollowUp) return false;
@@ -245,6 +254,10 @@ export default function Dashboard() {
       replies,
       followUpsDue,
       bounceRate,
+      opens,
+      clicks,
+      openRate,
+      clickRate,
       validEmailRate,
       readinessDistribution,
       interestedCount,
@@ -419,11 +432,13 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             <MetricCard label="Total Leads" value={metrics.totalLeads} description="All leads in your workspace" icon={Users} tone="slate" trend={`${campaignCount} campaigns`} />
             <MetricCard label="Ready to Send" value={metrics.readyToSend} description="Approved or draft-ready leads" icon={Mail} tone="violet" trend="Manual-first" />
             <MetricCard label="Emails Sent" value={metrics.emailsSent} description="In selected period" icon={Send} tone="teal" trend={`${metrics.replies} replies`} />
             <MetricCard label="Replies" value={metrics.replies} description="In selected period" icon={Reply} tone="sky" trend="Keep conversations warm" />
+            <MetricCard label="Open Rate" value={`${metrics.openRate}%`} description={`${metrics.opens} opened in period`} icon={Eye} tone="violet" trend="Tracked via pixel" />
+            <MetricCard label="Click Rate" value={`${metrics.clickRate}%`} description={`${metrics.clicks} clicked in period`} icon={MousePointerClick} tone="teal" trend="Tracked links" />
             <MetricCard label="Follow-ups Due" value={metrics.followUpsDue} description="Needs a next step today" icon={CalendarClock} tone="amber" trend="High priority" />
             <MetricCard label="Bounce Rate" value={`${metrics.bounceRate}%`} description="Delivery issues to review" icon={TrendingUp} tone="rose" trend={`${aiStats.callsToday} AI calls today`} />
           </div>
