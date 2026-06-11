@@ -9,6 +9,8 @@ import Link from 'next/link';
 import AppShell from '@/components/reachmira/AppShell';
 import PageHeader from '@/components/reachmira/PageHeader';
 import EmptyState from '@/components/reachmira/EmptyState';
+import Spinner from '@/components/reachmira/Spinner';
+import { Badge, Banner, Button, ConfirmDialog, Field, Input } from '@/components/reachmira/ui';
 
 type CampaignRow = {
   id: string;
@@ -106,9 +108,9 @@ export default function CampaignsPage() {
     }
   };
 
-  const handleDeleteCampaign = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this campaign? All leads, sequences, and outbox logs will be deleted.')) return;
+  const [deleteTarget, setDeleteTarget] = useState<CampaignRow | null>(null);
 
+  const handleDeleteCampaign = async (id: string) => {
     try {
       const { error } = await supabase
         .from('campaigns')
@@ -119,6 +121,8 @@ export default function CampaignsPage() {
       await loadCampaigns();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Error deleting campaign');
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
@@ -136,39 +140,34 @@ export default function CampaignsPage() {
         }
       />
 
-      {error && <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
+      {error && <Banner tone="error" className="mb-6" onDismiss={() => setError(null)}>{error}</Banner>}
 
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <section className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
           <h3 className="text-lg font-semibold text-zinc-950">Create New Campaign</h3>
           <p className="mt-1 text-sm text-zinc-500">Start with a clear offer and a simple sequence.</p>
           <form onSubmit={handleCreateCampaign} className="mt-5 space-y-4">
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">Campaign Name</label>
-              <input
+            <Field label="Campaign Name" htmlFor="new-campaign-name">
+              <Input
+                id="new-campaign-name"
                 type="text"
                 required
                 value={newCampaignName}
                 onChange={(e) => setNewCampaignName(e.target.value)}
                 placeholder="SaaS Founders Q2 Outreach"
-                className="mt-1 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none focus:border-violet-300 focus:bg-white"
               />
-            </div>
-            <button
-              type="submit"
-              disabled={creating}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 to-teal-500 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-violet-200/70 transition hover:-translate-y-0.5 hover:shadow-xl disabled:opacity-50"
-            >
-              {creating ? <div className="h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <Plus className="h-4 w-4" />}
+            </Field>
+            <Button type="submit" variant="primary" className="w-full" loading={creating}>
+              {!creating && <Plus className="h-4 w-4" />}
               Create Campaign
-            </button>
+            </Button>
           </form>
         </section>
 
         <section className="space-y-4">
           {loading ? (
-            <div className="flex h-48 items-center justify-center rounded-3xl border border-[var(--border)] bg-white">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
+            <div className="flex h-48 items-center justify-center rounded-3xl border border-[var(--border)] bg-white text-violet-500">
+              <Spinner size={32} />
             </div>
           ) : campaigns.length === 0 ? (
             <EmptyState
@@ -189,15 +188,9 @@ export default function CampaignsPage() {
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <h4 className="text-lg font-semibold text-zinc-950">{camp.name}</h4>
-                        <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
-                          camp.status === 'active'
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-                            : camp.status === 'paused'
-                              ? 'border-amber-200 bg-amber-50 text-amber-700'
-                              : 'border-zinc-200 bg-zinc-100 text-zinc-700'
-                        }`}>
+                        <Badge tone={camp.status === 'active' ? 'emerald' : camp.status === 'paused' ? 'amber' : 'zinc'} className="uppercase tracking-wide">
                           {camp.status}
-                        </span>
+                        </Badge>
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-zinc-500">
                         <span>{leadCount} leads</span>
@@ -208,25 +201,26 @@ export default function CampaignsPage() {
 
                     <div className="flex items-center gap-3">
                       {camp.status !== 'draft' && (
-                        <button
+                        <Button
                           onClick={() => handleToggleStatus(camp.id, camp.status)}
-                          className="inline-flex items-center justify-center rounded-xl border border-[var(--border)] bg-[var(--surface-muted)] px-3 py-2 text-sm font-semibold text-zinc-700 hover:bg-white"
+                          aria-label={camp.status === 'active' ? 'Pause Campaign' : 'Resume Campaign'}
                           title={camp.status === 'active' ? 'Pause Campaign' : 'Resume Campaign'}
                         >
                           {camp.status === 'active' ? <Pause className="h-4 w-4 text-amber-600" /> : <Play className="h-4 w-4 text-emerald-600" />}
-                        </button>
+                        </Button>
                       )}
                       <Link href={`/campaigns/${camp.id}`} className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700">
                         <Edit3 className="h-4 w-4" />
                         Edit Sequence
                       </Link>
-                      <button
-                        onClick={() => handleDeleteCampaign(camp.id)}
-                        className="inline-flex items-center justify-center rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-zinc-500 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700"
+                      <Button
+                        variant="danger"
+                        onClick={() => setDeleteTarget(camp)}
+                        aria-label={`Delete campaign ${camp.name}`}
                         title="Delete Campaign"
                       >
                         <Trash2 className="h-4 w-4" />
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -235,6 +229,17 @@ export default function CampaignsPage() {
           )}
         </section>
       </div>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete campaign?"
+        description={`"${deleteTarget?.name || 'This campaign'}" and all of its leads, sequences, and outbox logs will be deleted. This cannot be undone.`}
+        confirmLabel="Delete Campaign"
+        onConfirm={async () => {
+          if (deleteTarget) await handleDeleteCampaign(deleteTarget.id);
+        }}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </AppShell>
   );
 }
