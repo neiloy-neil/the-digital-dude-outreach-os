@@ -558,16 +558,37 @@ export default function CampaignWizardPage() {
         </div>
 
         {/* Step Progress indicators */}
-        <div className="flex gap-2 mb-6">
-          {[1, 2, 3, 4, 5].map(step => (
-            <div 
-              key={step} 
-              className={`h-2 flex-1 rounded-full transition-all ${
-                step === currentStep ? 'bg-violet-500 shadow-md shadow-violet-500/25' : 
-                step < currentStep ? 'bg-violet-800' : 'bg-[var(--surface-muted)]'
-              }`}
-            />
-          ))}
+        <div className="mb-6 grid grid-cols-5 gap-2">
+          {([
+            [1, 'Basics'],
+            [2, 'Leads'],
+            [3, 'AI Strategy'],
+            [4, 'Sequence'],
+            [5, 'Review'],
+          ] as [number, string][]).map(([step, label]) => {
+            const isDone = step < currentStep;
+            const isActive = step === currentStep;
+            return (
+              <button
+                key={step}
+                type="button"
+                onClick={() => isDone && setCurrentStep(step)}
+                disabled={!isDone && !isActive}
+                aria-current={isActive ? 'step' : undefined}
+                className={`group flex flex-col gap-1.5 rounded-xl px-1 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 ${isDone ? 'cursor-pointer' : ''}`}
+                title={isDone ? `Back to ${label}` : label}
+              >
+                <span
+                  className={`h-2 w-full rounded-full transition-all ${
+                    isActive ? 'bg-violet-500 shadow-md shadow-violet-500/25' : isDone ? 'bg-violet-800 group-hover:bg-violet-600' : 'bg-[var(--surface-muted)]'
+                  }`}
+                />
+                <span className={`hidden text-[11px] font-semibold sm:block ${isActive ? 'text-violet-700' : isDone ? 'text-zinc-600' : 'text-zinc-400'}`}>
+                  {step}. {label}
+                </span>
+              </button>
+            );
+          })}
         </div>
 
         {error && (

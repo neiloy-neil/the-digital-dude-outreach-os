@@ -156,6 +156,7 @@ export default function SuppressionListPage() {
             />
           ) : (
             <div className="overflow-hidden rounded-3xl border border-[var(--border)] bg-white shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
+              <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="border-b border-[var(--border)] bg-[var(--surface-muted)] text-xs uppercase tracking-[0.18em] text-zinc-400">
                   <tr>
@@ -183,6 +184,7 @@ export default function SuppressionListPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
               {items.length > pageSize && (
                 <div className="flex flex-col gap-3 border-t border-[var(--border)] px-5 py-4 text-xs text-zinc-500 sm:flex-row sm:items-center sm:justify-between">
                   <span>
