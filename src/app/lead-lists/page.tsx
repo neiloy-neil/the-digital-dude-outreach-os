@@ -8,6 +8,8 @@ import { FolderOpen, Plus, ArrowRight, Sparkles, Trash2 } from 'lucide-react';
 import AppShell from '@/components/reachmira/AppShell';
 import PageHeader from '@/components/reachmira/PageHeader';
 import EmptyState from '@/components/reachmira/EmptyState';
+import Spinner from '@/components/reachmira/Spinner';
+import { Banner, useConfirm } from '@/components/reachmira/ui';
 
 type LeadListRow = {
   id: string;
@@ -18,6 +20,7 @@ type LeadListRow = {
 };
 
 export default function LeadListsPage() {
+  const { confirm, confirmDialog } = useConfirm();
   const [loading, setLoading] = useState(true);
   const [lists, setLists] = useState<LeadListRow[]>([]);
   const [leadCounts, setLeadCounts] = useState<Record<string, number>>({});
@@ -82,7 +85,11 @@ export default function LeadListsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this lead list? Leads will stay in the library.')) return;
+    if (!(await confirm({
+      title: 'Delete lead list?',
+      description: 'The list will be removed. Leads will stay in the library.',
+      confirmLabel: 'Delete List',
+    }))) return;
     try {
       const response = await fetch(`/api/lead-lists/${id}`, { method: 'DELETE' });
       const data = await response.json();
@@ -107,7 +114,7 @@ export default function LeadListsPage() {
         }
       />
 
-      {error && <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
+      {error && <Banner tone="error" className="mb-6" onDismiss={() => setError(null)}>{error}</Banner>}
 
       <div className="grid gap-6 lg:grid-cols-[360px_1fr]">
         <form onSubmit={handleCreate} className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
@@ -143,8 +150,8 @@ export default function LeadListsPage() {
 
         <div className="space-y-4">
           {loading ? (
-            <div className="flex h-64 items-center justify-center rounded-3xl border border-[var(--border)] bg-white">
-              <div className="h-8 w-8 animate-spin rounded-full border-4 border-violet-500 border-t-transparent" />
+            <div className="flex h-64 items-center justify-center rounded-3xl border border-[var(--border)] bg-white text-violet-500">
+              <Spinner size={32} />
             </div>
           ) : lists.length === 0 ? (
             <EmptyState
@@ -175,7 +182,7 @@ export default function LeadListsPage() {
                       <Link href={`/lead-lists/${list.id}`} className="inline-flex items-center gap-1 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 hover:bg-violet-50 hover:text-violet-700">
                         Open <ArrowRight className="h-4 w-4" />
                       </Link>
-                      <button onClick={() => handleDelete(list.id)} className="inline-flex items-center justify-center rounded-xl border border-[var(--border)] bg-white p-2.5 text-zinc-500 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600">
+                      <button onClick={() => handleDelete(list.id)} aria-label={`Delete list ${list.name}`} className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-[var(--border)] bg-white p-2.5 text-zinc-500 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40">
                         <Trash2 className="h-4 w-4" />
                       </button>
                     </div>
@@ -186,6 +193,7 @@ export default function LeadListsPage() {
           )}
         </div>
       </div>
+      {confirmDialog}
     </AppShell>
   );
 }

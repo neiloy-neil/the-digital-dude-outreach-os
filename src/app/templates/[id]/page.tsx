@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { Copy, Save, Trash2 } from 'lucide-react';
 import AppShell from '@/components/reachmira/AppShell';
 import PageHeader from '@/components/reachmira/PageHeader';
+import { useConfirm } from '@/components/reachmira/ui';
 import { TEMPLATE_CATEGORIES, TEMPLATE_VARIABLES } from '@/lib/templates/template-helpers';
 
 type TemplateForm = {
@@ -23,6 +24,7 @@ export default function EditTemplatePage() {
   const params = useParams();
   const id = String(params.id || '');
   const router = useRouter();
+  const { confirm, confirmDialog } = useConfirm();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -88,7 +90,11 @@ export default function EditTemplatePage() {
   };
 
   const handleDelete = async () => {
-    if (!confirm('Delete this template?')) return;
+    if (!(await confirm({
+      title: 'Delete template?',
+      description: 'This template will be removed. Sequences that copied it are not affected.',
+      confirmLabel: 'Delete Template',
+    }))) return;
     const response = await fetch(`/api/templates/${id}`, { method: 'DELETE' });
     const data = await response.json();
     if (!response.ok) {
@@ -183,6 +189,7 @@ export default function EditTemplatePage() {
           </div>
         </form>
       )}
+      {confirmDialog}
     </AppShell>
   );
 }

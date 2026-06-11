@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from 'react';
 import AppShell from '@/components/reachmira/AppShell';
 import PageHeader from '@/components/reachmira/PageHeader';
 import Spinner from '@/components/reachmira/Spinner';
+import { useConfirm } from '@/components/reachmira/ui';
 import { useToast } from '@/lib/toast/toast-context';
 import { createClient } from '@/utils/supabase/client';
 import {
@@ -150,6 +151,7 @@ function SectionHeader({
 
 export default function SettingsPage() {
   const supabase = createClient();
+  const { confirm, confirmDialog } = useConfirm();
   const [activeTab, setActiveTab] = useState<SettingsTab>('profile');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -594,7 +596,11 @@ export default function SettingsPage() {
 
               const handleDeleteOffer = async (id: string, e: React.MouseEvent) => {
                 e.preventDefault();
-                if (!confirm('Are you sure you want to delete this offer?')) return;
+                if (!(await confirm({
+                  title: 'Delete offer?',
+                  description: 'This offer will be removed from your workspace. Leads that reference it are not changed.',
+                  confirmLabel: 'Delete Offer',
+                }))) return;
                 const { error: err } = await supabase
                   .from('offers')
                   .delete()
@@ -891,6 +897,7 @@ export default function SettingsPage() {
           </div>
         </form>
       )}
+      {confirmDialog}
     </AppShell>
   );
 }

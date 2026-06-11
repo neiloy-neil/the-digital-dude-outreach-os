@@ -8,6 +8,7 @@ import { Copy, Plus, Sparkles, Wand2, Trash2 } from 'lucide-react';
 import AppShell from '@/components/reachmira/AppShell';
 import PageHeader from '@/components/reachmira/PageHeader';
 import EmptyState from '@/components/reachmira/EmptyState';
+import { useConfirm } from '@/components/reachmira/ui';
 
 type TemplateRow = {
   id: string;
@@ -21,6 +22,7 @@ type TemplateRow = {
 };
 
 export default function TemplatesPage() {
+  const { confirm, confirmDialog } = useConfirm();
   const [loading, setLoading] = useState(true);
   const [templates, setTemplates] = useState<TemplateRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -48,7 +50,11 @@ export default function TemplatesPage() {
   }, []);
 
   const handleDelete = async (id: string) => {
-    if (!confirm('Delete this template?')) return;
+    if (!(await confirm({
+      title: 'Delete template?',
+      description: 'This template will be removed. Sequences that copied it are not affected.',
+      confirmLabel: 'Delete Template',
+    }))) return;
     const response = await fetch(`/api/templates/${id}`, { method: 'DELETE' });
     const data = await response.json();
     if (!response.ok) {
@@ -152,6 +158,7 @@ export default function TemplatesPage() {
           )}
         </div>
       )}
+      {confirmDialog}
     </AppShell>
   );
 }

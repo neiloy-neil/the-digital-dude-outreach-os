@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import AppShell from '@/components/reachmira/AppShell';
 import PageHeader from '@/components/reachmira/PageHeader';
 import EmptyState from '@/components/reachmira/EmptyState';
+import { Banner, useConfirm } from '@/components/reachmira/ui';
 import { ShieldAlert, MailPlus, Trash2, Plus } from 'lucide-react';
 
 type SuppressionRow = {
@@ -18,6 +19,7 @@ type SuppressionRow = {
 };
 
 export default function SuppressionListPage() {
+  const { confirm, confirmDialog } = useConfirm();
   const [loading, setLoading] = useState(true);
   const [items, setItems] = useState<SuppressionRow[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -73,7 +75,11 @@ export default function SuppressionListPage() {
 
   const handleDelete = async (id?: string) => {
     if (!id) return;
-    if (!confirm('Remove this suppression entry?')) return;
+    if (!(await confirm({
+      title: 'Remove suppression entry?',
+      description: 'This address or domain will become contactable again in future sends.',
+      confirmLabel: 'Remove Entry',
+    }))) return;
     try {
       const response = await fetch(`/api/suppressions/${id}`, { method: 'DELETE' });
       const data = await response.json();
@@ -96,7 +102,7 @@ export default function SuppressionListPage() {
         subtitle="Keep bounced, unsubscribed, and do-not-contact records out of future sends."
       />
 
-      {error && <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>}
+      {error && <Banner tone="error" className="mb-6" onDismiss={() => setError(null)}>{error}</Banner>}
 
       <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
         <form onSubmit={handleAdd} className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
@@ -204,6 +210,7 @@ export default function SuppressionListPage() {
           )}
         </div>
       </div>
+      {confirmDialog}
     </AppShell>
   );
 }
