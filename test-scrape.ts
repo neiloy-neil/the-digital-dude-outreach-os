@@ -15,7 +15,7 @@ async function test() {
     return;
   }
 
-  const rawResults = searchResult.data.map(item => ({
+  const rawResults = searchResult.data.map((item: any) => ({
     title: item.title,
     url: item.url,
     description: item.description,
