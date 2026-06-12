@@ -34,7 +34,7 @@ export async function firecrawlSearch(query: string, limit: number = 3): Promise
       return null;
     }
 
-    return { success: true, data } as SearchResponse;
+    return { success: true, data } as any;
   } catch (error) {
     console.error('Error performing Firecrawl search:', error);
     return null;
