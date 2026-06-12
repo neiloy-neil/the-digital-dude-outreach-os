@@ -41,7 +41,7 @@ export async function runEnrichmentPipeline(domainOrEmail: string, geminiApiKey:
   results.forEach((res, index) => {
     if (res && res.data) {
       combinedContext += `\n--- Search Query: ${queries[index]} ---\n`;
-      res.data.forEach(item => {
+      res.data.forEach((item: any) => {
         if (item.markdown) {
           combinedContext += `\nSource: ${item.url}\n${item.markdown.substring(0, 1500)}\n`;
         } else if (item.description) {
