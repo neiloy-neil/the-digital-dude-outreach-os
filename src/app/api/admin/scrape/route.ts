@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     }
 
     // Prepare text for Gemini extraction
-    const rawResults = searchResult.data.map(item => ({
+    const rawResults = searchResult.data.map((item: any) => ({
       title: item.title,
       url: item.url,
       description: item.description,
@@ -148,7 +148,7 @@ Return EXACTLY a JSON array of objects. Do not include markdown formatting like 
           
           // Format LinkedIn data if found
           if (linkedinRes && linkedinRes.data && linkedinRes.data.length > 0) {
-            linkedinText = linkedinRes.data.map(item => `Name/Title: ${item.title}\nDescription: ${item.description}`).join('\n\n');
+            linkedinText = linkedinRes.data.map((item: any) => `Name/Title: ${item.title}\nDescription: ${item.description}`).join('\n\n');
           }
           
           if (scrapeRes && scrapeRes.success !== false && markdownData) {
