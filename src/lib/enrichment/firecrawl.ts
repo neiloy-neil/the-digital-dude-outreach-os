@@ -1,4 +1,4 @@
-import FirecrawlApp, { ScrapeResponse, SearchResponse, MapResponse } from '@mendable/firecrawl-js';
+import FirecrawlApp from '@mendable/firecrawl-js';
 
 // Initialize the FirecrawlApp with the API key from the environment
 export const firecrawl = new FirecrawlApp({
@@ -8,7 +8,7 @@ export const firecrawl = new FirecrawlApp({
 /**
  * Perform a web search using Firecrawl
  */
-export async function firecrawlSearch(query: string, limit: number = 3): Promise<SearchResponse | null> {
+export async function firecrawlSearch(query: string, limit: number = 3): Promise<any | null> {
   try {
     const response: any = await firecrawl.search(query, {
       pageOptions: {
@@ -49,12 +49,12 @@ export async function firecrawlSearch(query: string, limit: number = 3): Promise
 /**
  * Scrape a specific URL using Firecrawl
  */
-export async function firecrawlScrape(url: string): Promise<ScrapeResponse | null> {
+export async function firecrawlScrape(url: string): Promise<any | null> {
   try {
     const response = await firecrawl.scrapeUrl(url, {
       formats: ['markdown'],
       onlyMainContent: true,
-    }) as ScrapeResponse;
+    }) as any;
 
     if (response.success === false) {
       console.error(`Firecrawl scrape failed: ${response.error}`);
@@ -72,7 +72,7 @@ export async function firecrawlScrape(url: string): Promise<ScrapeResponse | nul
 /**
  * Map a domain to discover its structure and subpages
  */
-export async function firecrawlMap(url: string): Promise<MapResponse | null> {
+export async function firecrawlMap(url: string): Promise<any | null> {
   try {
     const response = await firecrawl.mapUrl(url);
 
