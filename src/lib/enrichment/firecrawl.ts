@@ -69,9 +69,9 @@ export async function firecrawlScrape(url: string): Promise<any | null> {
  */
 export async function firecrawlMap(url: string): Promise<any | null> {
   try {
-    const response = await firecrawl.mapUrl(url);
+    const response = await firecrawl.mapUrl(url) as any;
 
-    if (!response.success) {
+    if (response.success === false) {
       console.error(`Firecrawl map failed: ${response.error}`);
       return null;
     }
