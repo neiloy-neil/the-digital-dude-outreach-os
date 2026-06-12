@@ -59,6 +59,7 @@ function LeadImportPageInner() {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importInvalidRows, setImportInvalidRows] = useState(false);
+  const [contributeToGlobal, setContributeToGlobal] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [result, setResult] = useState<ImportResult | null>(null);
@@ -179,7 +180,7 @@ function LeadImportPageInner() {
       const response = await fetch(`/api/lead-lists/${leadListId}/import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ leads, importInvalidRows }),
+        body: JSON.stringify({ leads, importInvalidRows, contributeToGlobal }),
       });
       const data = (await response.json()) as ImportResult;
       if (!response.ok) throw new Error(data.error || 'Failed to import leads');
@@ -392,16 +393,27 @@ function LeadImportPageInner() {
                     </div>
                   ))}
                 </div>
-                <div className="flex items-center justify-between border-t border-[var(--border)] pt-4">
-                  <label className="inline-flex items-center gap-2 text-xs font-medium text-zinc-600">
-                    <input
-                      type="checkbox"
-                      checked={importInvalidRows}
-                      onChange={(e) => setImportInvalidRows(e.target.checked)}
-                      className="rounded border-zinc-300 text-violet-600 focus:ring-violet-500"
-                    />
-                    Import invalid emails too
-                  </label>
+                <div className="flex flex-col sm:flex-row items-center justify-between border-t border-[var(--border)] pt-4 gap-4">
+                  <div className="flex flex-col gap-2">
+                    <label className="inline-flex items-center gap-2 text-xs font-medium text-zinc-600">
+                      <input
+                        type="checkbox"
+                        checked={importInvalidRows}
+                        onChange={(e) => setImportInvalidRows(e.target.checked)}
+                        className="rounded border-zinc-300 text-violet-600 focus:ring-violet-500"
+                      />
+                      Import invalid emails too
+                    </label>
+                    <label className="inline-flex items-center gap-2 text-xs font-medium text-zinc-600">
+                      <input
+                        type="checkbox"
+                        checked={contributeToGlobal}
+                        onChange={(e) => setContributeToGlobal(e.target.checked)}
+                        className="rounded border-zinc-300 text-violet-600 focus:ring-violet-500"
+                      />
+                      Contribute to Global Database (Share with the community)
+                    </label>
+                  </div>
                   <button disabled={importing} onClick={handleImport} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-600/20 transition hover:opacity-95 disabled:opacity-50">
                     {importing ? <Spinner size={16} className="text-white" /> : <><Database className="h-4 w-4" /> Import to List</>}
                   </button>

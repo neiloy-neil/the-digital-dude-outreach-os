@@ -1134,6 +1134,40 @@ Before billing:
 
 ---
 
+# Phase 11: Deep Lead Enrichment (Fire-Enrich inspired)
+
+## Goal
+
+Add advanced, multi-agent lead enrichment using Firecrawl to find missing data (industry, funding, tech stack, leadership) using just an email or company domain.
+
+## Future Tasks
+
+### 11.1 Schema Updates
+- [ ] Add `funding_stage`, `total_raised`, `employee_count`, `year_founded`, `tech_stack`, `ceo_name` to `admin_leads_pool` and `leads` tables.
+
+### 11.2 Firecrawl Service Integration
+- [ ] Create `src/lib/enrichment/firecrawl.ts` utility wrapper.
+- [ ] Add `FIRECRAWL_API_KEY` to environment variables.
+
+### 11.3 Multi-Agent Enrichment Pipeline
+- [ ] Implement Phase 1: Discovery (Extract domain, find basic company info).
+- [ ] Implement Phase 2: Profile (Find industry and sub-categories).
+- [ ] Implement Phase 3: Financial (Search for funding).
+- [ ] Implement Phase 4: Tech Stack (Scan GitHub/HTML tags).
+- [ ] Implement Phase 5: Synthesis (Use Gemini to structure the raw scraped data).
+
+### 11.4 UI Integration
+- [ ] Add "Enrich Lead" button in Admin Leads table and User Lead Workspace.
+- [ ] Display the enriched data elegantly in the lead detail view.
+
+## Acceptance Criteria
+
+- [ ] Leads can be enriched on-demand or automatically.
+- [ ] Enrichment works robustly even if only an email address is provided.
+- [ ] Extracted data correctly populates new database columns.
+
+---
+
 # Global UI/UX Requirements
 
 ## Brand

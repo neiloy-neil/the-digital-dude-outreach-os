@@ -26,7 +26,7 @@ export async function POST(
   }
 
   try {
-    const { leads, importInvalidRows = false } = await request.json();
+    const { leads, importInvalidRows = false, contributeToGlobal = false } = await request.json();
     if (!Array.isArray(leads) || leads.length === 0) {
       return NextResponse.json({ error: 'No leads provided' }, { status: 400 });
     }
@@ -181,6 +181,28 @@ export async function POST(
           })
         )
       );
+
+      if (contributeToGlobal) {
+        const adminLeadsPayload = payload.map(lead => ({
+          company_name: lead.company_name || lead.company,
+          website: lead.website,
+          industry: lead.industry || lead.sub_industry,
+          location: lead.city || lead.country,
+          contact_name: [lead.first_name, lead.last_name].filter(Boolean).join(' '),
+          contact_title: lead.decision_maker_title,
+          contact_email: lead.email,
+          contact_linkedin: lead.linkedin_url,
+          tags: lead.tags || ['User Contributed']
+        }));
+
+        const { error: adminPoolError } = await supabase
+          .from('admin_leads_pool')
+          .insert(adminLeadsPayload);
+        
+        if (adminPoolError) {
+          console.error('Failed to insert to admin_leads_pool:', adminPoolError);
+        }
+      }
     }
 
     await createAuditLog({

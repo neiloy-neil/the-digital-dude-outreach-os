@@ -11,6 +11,7 @@ export default function WaitlistClient({ initialSignups }: { initialSignups: any
   const [statusFilter, setStatusFilter] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [notesEdit, setNotesEdit] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const toast = useToast();
 
   const handleUpdate = async (id: string, updates: any) => {
@@ -45,6 +46,36 @@ export default function WaitlistClient({ initialSignups }: { initialSignups: any
     return true;
   });
 
+  const handleBulkInvite = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Are you sure you want to approve and invite ${selectedIds.size} users?`)) return;
+
+    try {
+      await Promise.all(
+        Array.from(selectedIds).map(id =>
+          fetch(`/api/admin/waitlist/${id}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'invited' }),
+          })
+        )
+      );
+      
+      setSignups(prev => prev.map(s => selectedIds.has(s.id) ? { ...s, status: 'invited' } : s));
+      setSelectedIds(new Set());
+      toast.success(`Successfully invited ${selectedIds.size} users.`);
+    } catch (error) {
+      toast.error('Failed to process some invites.');
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    const newSelected = new Set(selectedIds);
+    if (newSelected.has(id)) newSelected.delete(id);
+    else newSelected.add(id);
+    setSelectedIds(newSelected);
+  };
+
   return (
     <div className="p-8 max-w-7xl mx-auto font-sans selection:bg-[#7C3AED]/20">
       <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8 gap-4">
@@ -78,6 +109,14 @@ export default function WaitlistClient({ initialSignups }: { initialSignups: any
           <div className="bg-[#7C3AED]/10 text-[#7C3AED] px-4 py-2 rounded-full font-bold">
             {filtered.length} Total
           </div>
+          {selectedIds.size > 0 && (
+            <button
+              onClick={handleBulkInvite}
+              className="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition"
+            >
+              Invite Selected ({selectedIds.size})
+            </button>
+          )}
         </div>
       </div>
 
@@ -86,6 +125,17 @@ export default function WaitlistClient({ initialSignups }: { initialSignups: any
           <table className="w-full text-left text-sm text-[#111827]">
             <thead className="bg-[#F8FAFC] border-b border-[#E5E7EB] text-[#6B7280] font-medium uppercase tracking-wider text-xs">
               <tr>
+                <th className="px-6 py-4 w-12">
+                  <input
+                    type="checkbox"
+                    className="rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                    onChange={(e) => {
+                      if (e.target.checked) setSelectedIds(new Set(filtered.map(s => s.id)));
+                      else setSelectedIds(new Set());
+                    }}
+                    checked={filtered.length > 0 && selectedIds.size === filtered.length}
+                  />
+                </th>
                 <th className="px-6 py-4">Name / Email</th>
                 <th className="px-6 py-4">Company & Role</th>
                 <th className="px-6 py-4">Outreach & Volume</th>
@@ -97,13 +147,21 @@ export default function WaitlistClient({ initialSignups }: { initialSignups: any
             <tbody className="divide-y divide-[#E5E7EB]">
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-[#6B7280]">
+                  <td colSpan={7} className="px-6 py-8 text-center text-[#6B7280]">
                     No waitlist signups found.
                   </td>
                 </tr>
               )}
               {filtered.map((s) => (
                 <tr key={s.id} className="hover:bg-[#F8FAFC]/50 transition-colors">
+                  <td className="px-6 py-4">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(s.id)}
+                      onChange={() => toggleSelect(s.id)}
+                      className="rounded border-gray-300 text-violet-600 focus:ring-violet-500"
+                    />
+                  </td>
                   <td className="px-6 py-4">
                     <div className="font-semibold text-[#111827]">{s.full_name}</div>
                     <div className="text-[#6B7280]">{s.email}</div>

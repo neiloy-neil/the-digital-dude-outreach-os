@@ -32,8 +32,6 @@ export default async function AdminWaitlistPage() {
     .order('created_at', { ascending: false });
 
   return (
-    <AppShell>
-      <WaitlistClient initialSignups={signups || []} />
-    </AppShell>
+    <WaitlistClient initialSignups={signups || []} />
   );
 }
