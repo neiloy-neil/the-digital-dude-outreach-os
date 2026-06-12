@@ -40,7 +40,7 @@ export async function POST(request: Request) {
       last_name: poolLead.contact_name ? poolLead.contact_name.split(' ').slice(1).join(' ') : null,
       decision_maker_name: poolLead.contact_name,
       decision_maker_title: poolLead.contact_title,
-      email: poolLead.contact_email,
+      email: poolLead.contact_email || '',
       company_size: poolLead.employee_count,
       estimated_revenue: poolLead.revenue,
       tech_stack: poolLead.tech_stack,

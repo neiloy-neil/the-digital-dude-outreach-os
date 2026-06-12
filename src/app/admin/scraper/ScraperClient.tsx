@@ -167,8 +167,10 @@ export default function ScraperClient() {
     }
   };
 
+  const [viewingLead, setViewingLead] = useState<QueueItem | null>(null);
+
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 relative">
       <PageHeader 
         title="Lead Scraper" 
         subtitle="Search for new leads and stage them for review before approving to the global pool."
@@ -269,6 +271,13 @@ export default function ScraperClient() {
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button
+                        onClick={() => setViewingLead(item)}
+                        title="View Details"
+                        className="rounded-lg border border-[var(--border)] bg-white p-2 text-zinc-600 transition hover:bg-zinc-50 disabled:opacity-50"
+                      >
+                        <Search className="h-4 w-4" />
+                      </button>
+                      <button
                         onClick={() => handleDeepEnrich(item)}
                         disabled={actioningId !== null}
                         title="Run Deep Enrichment"
@@ -298,6 +307,74 @@ export default function ScraperClient() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* View Details Modal */}
+      {viewingLead && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl bg-white p-8 shadow-2xl">
+            <button
+              onClick={() => setViewingLead(null)}
+              className="absolute right-6 top-6 rounded-full p-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <h3 className="text-xl font-bold text-zinc-900 mb-6 border-b pb-4">Lead Details</h3>
+
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Company</label>
+                  <p className="font-medium text-zinc-900 mt-1">{viewingLead.company_name}</p>
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Website</label>
+                  <p className="font-medium text-blue-600 mt-1">
+                    {viewingLead.website ? <a href={viewingLead.website} target="_blank" rel="noreferrer">{viewingLead.website}</a> : 'N/A'}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Contact Person</label>
+                <div className="mt-1 flex items-center gap-4">
+                  <p className="font-medium text-zinc-900">{viewingLead.contact_name || 'N/A'}</p>
+                  {viewingLead.contact_email && (
+                    <Badge variant="success">{viewingLead.contact_email}</Badge>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Description</label>
+                <p className="text-sm text-zinc-700 mt-1 bg-zinc-50 p-3 rounded-xl border border-[var(--border)]">
+                  {viewingLead.description || 'No description available.'}
+                </p>
+              </div>
+
+              {viewingLead.ai_company_summary && (
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500 text-violet-600 flex items-center gap-1">
+                    <Sparkles className="h-3 w-3" /> AI Summary
+                  </label>
+                  <p className="text-sm text-zinc-700 mt-1 bg-violet-50/50 p-3 rounded-xl border border-violet-100">
+                    {viewingLead.ai_company_summary}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-8 flex justify-end">
+              <button
+                onClick={() => setViewingLead(null)}
+                className="rounded-xl bg-zinc-100 px-6 py-2.5 font-medium text-zinc-900 hover:bg-zinc-200"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -22,12 +22,17 @@ type PoolLead = {
   employee_count: string;
   revenue: string;
   created_at: string;
+  ai_company_summary?: string;
+  pain_points?: string;
+  ai_solution_angle?: string;
+  recommended_offer?: string;
 };
 
 export default function DiscoverClient() {
   const [leads, setLeads] = useState<PoolLead[]>([]);
   const [loading, setLoading] = useState(true);
   const [actioningId, setActioningId] = useState<string | null>(null);
+  const [viewingLead, setViewingLead] = useState<PoolLead | null>(null);
   
   const supabase = createClient();
   const toast = useToast();
@@ -66,7 +71,10 @@ export default function DiscoverClient() {
       if (!response.ok) throw new Error(data.error || 'Failed to pull lead');
       
       toast.success('Lead successfully added to your library!');
-      router.push(`/leads/${data.lead_id}`);
+      if (viewingLead && viewingLead.id === leadId) {
+        setViewingLead(null);
+      }
+      setLeads(current => current.filter(l => l.id !== leadId));
     } catch (error: any) {
       toast.error(error.message);
       setActioningId(null);
@@ -74,7 +82,7 @@ export default function DiscoverClient() {
   };
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 relative">
       <PageHeader 
         title="Discover Leads" 
         subtitle="Browse fresh leads from our global database and instantly pull them into your personal library."
@@ -132,25 +140,118 @@ export default function DiscoverClient() {
                 )}
               </div>
 
-              <button
-                onClick={() => handlePullLead(lead.id)}
-                disabled={actioningId !== null}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50"
-              >
-                {actioningId === lead.id ? (
-                  <>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setViewingLead(lead)}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-zinc-100 px-4 py-2.5 text-sm font-semibold text-zinc-900 transition hover:bg-zinc-200"
+                >
+                  <Search className="h-4 w-4" />
+                  View Details
+                </button>
+                <button
+                  onClick={() => handlePullLead(lead.id)}
+                  disabled={actioningId !== null}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50"
+                >
+                  {actioningId === lead.id ? (
                     <Spinner size={16} className="text-white" />
-                    Adding...
-                  </>
-                ) : (
-                  <>
+                  ) : (
                     <ArrowDownToLine className="h-4 w-4" />
-                    Add to My Library
-                  </>
-                )}
-              </button>
+                  )}
+                  Pull Lead
+                </button>
+              </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* View Details Modal */}
+      {viewingLead && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="relative w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-3xl bg-white p-8 shadow-2xl">
+            <button
+              onClick={() => setViewingLead(null)}
+              className="absolute right-6 top-6 rounded-full p-2 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-600"
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+
+            <h3 className="text-xl font-bold text-zinc-900 mb-6 border-b pb-4">Lead Details</h3>
+
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Company</label>
+                  <p className="font-medium text-zinc-900 mt-1">{viewingLead.company_name}</p>
+                </div>
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Website</label>
+                  <p className="font-medium text-blue-600 mt-1">
+                    {viewingLead.website ? <a href={viewingLead.website} target="_blank" rel="noreferrer">{viewingLead.website}</a> : 'N/A'}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Contact Person</label>
+                <div className="mt-1 flex items-center gap-4">
+                  <p className="font-medium text-zinc-900">{viewingLead.contact_name || 'N/A'}</p>
+                  {viewingLead.contact_email && (
+                    <span className="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+                      {viewingLead.contact_email}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Description</label>
+                <p className="text-sm text-zinc-700 mt-1 bg-zinc-50 p-3 rounded-xl border border-[var(--border)]">
+                  {viewingLead.description || 'No description available.'}
+                </p>
+              </div>
+
+              {viewingLead.ai_company_summary && (
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-violet-600 flex items-center gap-1">
+                    AI Summary
+                  </label>
+                  <p className="text-sm text-zinc-700 mt-1 bg-violet-50/50 p-3 rounded-xl border border-violet-100">
+                    {viewingLead.ai_company_summary}
+                  </p>
+                </div>
+              )}
+
+              {viewingLead.pain_points && (
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wider text-red-600 flex items-center gap-1">
+                    Pain Points
+                  </label>
+                  <p className="text-sm text-zinc-700 mt-1 bg-red-50/50 p-3 rounded-xl border border-red-100">
+                    {viewingLead.pain_points}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-8 flex justify-end gap-3">
+              <button
+                onClick={() => setViewingLead(null)}
+                className="rounded-xl bg-zinc-100 px-6 py-2.5 font-medium text-zinc-900 hover:bg-zinc-200"
+              >
+                Close
+              </button>
+              <button
+                onClick={() => handlePullLead(viewingLead.id)}
+                disabled={actioningId !== null}
+                className="flex items-center justify-center gap-2 rounded-xl bg-violet-600 px-6 py-2.5 font-semibold text-white hover:bg-violet-700 disabled:opacity-50"
+              >
+                {actioningId === viewingLead.id ? <Spinner size={16} className="text-white" /> : <ArrowDownToLine className="h-4 w-4" />}
+                Add to My Library
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

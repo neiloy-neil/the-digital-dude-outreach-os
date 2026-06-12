@@ -24,8 +24,16 @@ export async function firecrawlSearch(query: string, limit: number = 3): Promise
       return null;
     }
     
-    // Normalize response if it comes back as { web: [...] }
-    const data = response.data || response.web;
+    // Safely extract data without triggering the getter error
+    let data;
+    if (response && typeof response === 'object') {
+      if ('web' in response) {
+        data = response.web;
+      } else if ('data' in response) {
+        data = response.data;
+      }
+    }
+    
     if (!data) {
       console.error('Firecrawl search returned unhandled response format:', response);
       return null;
@@ -48,11 +56,12 @@ export async function firecrawlScrape(url: string): Promise<ScrapeResponse | nul
       onlyMainContent: true,
     }) as ScrapeResponse;
 
-    if (!response.success) {
+    if (response.success === false) {
       console.error(`Firecrawl scrape failed: ${response.error}`);
       return null;
     }
     
+    // In some SDK versions, the data is returned directly
     return response;
   } catch (error) {
     console.error(`Error performing Firecrawl scrape on ${url}:`, error);
