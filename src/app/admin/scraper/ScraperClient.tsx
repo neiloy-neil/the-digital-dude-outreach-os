@@ -263,9 +263,9 @@ export default function ScraperClient() {
                   </td>
                   <td className="px-6 py-4">
                     {item.ai_company_summary ? (
-                      <Badge variant="success">Deep Enriched</Badge>
+                      <Badge tone="emerald">Deep Enriched</Badge>
                     ) : (
-                      <Badge variant="neutral">Basic Data</Badge>
+                      <Badge tone="zinc">Basic Data</Badge>
                     )}
                   </td>
                   <td className="px-6 py-4 text-right">
