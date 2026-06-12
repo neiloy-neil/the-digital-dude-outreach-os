@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { GoogleGenAI } from '@google/genai';
 import * as cheerio from 'cheerio';
+import { firecrawlScrape } from '@/lib/enrichment/firecrawl';
 
 export async function POST(
   request: Request,
@@ -87,11 +88,19 @@ export async function POST(
       }
     } catch (error) {
       console.warn(`Could not fetch website ${targetUrl}:`, error);
-      return NextResponse.json({ error: 'Failed to access the website for scraping. It may be blocking automated requests.' }, { status: 400 });
+    }
+
+    // Fall back to Firecrawl when the direct fetch is blocked or returns no usable text
+    if (!websiteText || websiteText.length < 50) {
+      const scraped = await firecrawlScrape(targetUrl);
+      const markdown = scraped?.markdown || scraped?.data?.markdown;
+      if (markdown) {
+        websiteText = markdown.replace(/\s+/g, ' ').trim();
+      }
     }
 
     if (!websiteText || websiteText.length < 50) {
-      return NextResponse.json({ error: 'Not enough readable text found on the website.' }, { status: 400 });
+      return NextResponse.json({ error: 'Failed to access the website for scraping. It may be blocking automated requests.' }, { status: 400 });
     }
 
     // Truncate to save tokens (approx 3000 chars is enough for summary)
