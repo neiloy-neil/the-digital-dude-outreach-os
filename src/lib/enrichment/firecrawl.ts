@@ -11,13 +11,8 @@ export const firecrawl = new FirecrawlApp({
 export async function firecrawlSearch(query: string, limit: number = 3): Promise<any | null> {
   try {
     const response: any = await firecrawl.search(query, {
-      pageOptions: {
-        onlyMainContent: true,
-      },
-      searchOptions: {
-        limit,
-      },
-    });
+      limit,
+    } as any);
 
     if (response.success === false) {
       console.error(`Firecrawl search failed: ${response.error}`);
