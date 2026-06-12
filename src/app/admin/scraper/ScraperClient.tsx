@@ -342,7 +342,7 @@ export default function ScraperClient() {
                 <div className="mt-1 flex items-center gap-4">
                   <p className="font-medium text-zinc-900">{viewingLead.contact_name || 'N/A'}</p>
                   {viewingLead.contact_email && (
-                    <Badge variant="success">{viewingLead.contact_email}</Badge>
+                    <Badge tone="emerald">{viewingLead.contact_email}</Badge>
                   )}
                 </div>
               </div>
