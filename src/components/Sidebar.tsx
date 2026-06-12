@@ -17,6 +17,8 @@ import {
   Users,
   Inbox,
   ShieldAlert,
+  Sparkles,
+  Database,
 } from 'lucide-react';
 
 type NavItem = {
@@ -40,6 +42,7 @@ export default function Sidebar() {
     const items = [
       { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
       { name: 'Inbox', href: '/inbox', icon: Inbox },
+      { name: 'Discover', href: '/leads/discover', icon: Sparkles },
       { name: 'Leads', href: '/leads', icon: Users },
       { name: 'Campaigns', href: '/campaigns', icon: Megaphone },
       { name: 'Manual Emails', href: '/manual-emails', icon: MailPlus },
@@ -48,6 +51,7 @@ export default function Sidebar() {
       { name: 'Settings', href: '/settings', icon: Settings },
     ];
     if (isAdmin) {
+      items.push({ name: 'Lead Scraper', href: '/admin/scraper', icon: Database });
       items.push({ name: 'Admin Waitlist', href: '/admin/waitlist', icon: ShieldAlert });
     }
     return items;
@@ -106,7 +110,7 @@ export default function Sidebar() {
 
       // Realtime subscription
       channel = supabase
-        .channel('inbox-changes')
+        .channel(`inbox-changes-${Date.now()}`)
         .on(
           'postgres_changes',
           {

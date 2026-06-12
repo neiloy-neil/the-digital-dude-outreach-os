@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.8.0",
+    "@mendable/firecrawl-js": "^4.25.3",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.107.0",
     "cheerio": "^1.2.0",

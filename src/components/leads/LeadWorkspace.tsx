@@ -207,6 +207,12 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
     manual_email_approved: false,
     next_follow_up_at: '',
     reply_outcome: '',
+    funding_stage: '',
+    total_raised: '',
+    employee_count: '',
+    year_founded: '',
+    tech_stack: '',
+    ceo_name: '',
   });
 
   const loadLead = useCallback(
@@ -294,6 +300,12 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
           manual_email_approved: Boolean(nextLead.manual_email_approved),
           next_follow_up_at: nextLead.next_follow_up_at ? nextLead.next_follow_up_at.substring(0, 16) : '',
           reply_outcome: nextLead.reply_outcome || '',
+          funding_stage: (nextLead as any).funding_stage || '',
+          total_raised: (nextLead as any).total_raised || '',
+          employee_count: (nextLead as any).employee_count || '',
+          year_founded: (nextLead as any).year_founded ? String((nextLead as any).year_founded) : '',
+          tech_stack: Array.isArray((nextLead as any).tech_stack) ? ((nextLead as any).tech_stack).join(', ') : ((nextLead as any).tech_stack || ''),
+          ceo_name: (nextLead as any).ceo_name || '',
         });
       } catch (loadError: unknown) {
         toast.error(loadError instanceof Error ? loadError.message : 'Failed to load lead');
@@ -702,6 +714,30 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
       await loadLead({ silent: true });
     } catch (researchError: unknown) {
       toast.error(researchError instanceof Error ? researchError.message : 'Failed to auto-research');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEnrichLead = async () => {
+    setSaving(true);
+    try {
+      const response = await fetch('/api/enrich', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          target: form.website || form.email || lead?.website || lead?.email || '', 
+          leadId: leadId, 
+          isAdminPool: false 
+        }),
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || 'Failed to enrich lead');
+      
+      toast.success('Deep enrichment complete!');
+      await loadLead({ silent: true });
+    } catch (error: unknown) {
+      toast.error(error instanceof Error ? error.message : 'Failed to enrich lead');
     } finally {
       setSaving(false);
     }
@@ -1218,6 +1254,10 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                         {saving ? <Spinner size={16} className="text-white" /> : <Sparkles className="h-4 w-4" />}
                         {saving ? 'Researching...' : 'Auto-Research Lead'}
                       </button>
+                      <button onClick={handleEnrichLead} disabled={saving || !(lead?.website || lead?.email)} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:opacity-50">
+                        {saving ? <Spinner size={16} className="text-white" /> : <Database className="h-4 w-4" />}
+                        {saving ? 'Enriching...' : 'Deep Enrich Lead'}
+                      </button>
                       <button onClick={handleSaveLead} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:opacity-50">
                         <Save className="h-4 w-4" /> Save
                       </button>
@@ -1249,6 +1289,23 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                       <div key={key} className={key === 'ai_personalized_first_line' ? 'md:col-span-2' : ''}>
                         <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">{label}</label>
                         <textarea value={form[key as keyof typeof form] as string} onChange={(e) => setForm((current) => ({ ...current, [key]: e.target.value }))} rows={4} className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100" />
+                      </div>
+                    ))}
+                  </div>
+                  
+                  <div className="mt-4 grid gap-4 md:grid-cols-2">
+                    {[
+                      ['ceo_name', 'CEO / Founder'],
+                      ['industry', 'Industry'],
+                      ['employee_count', 'Employee Count'],
+                      ['year_founded', 'Year Founded'],
+                      ['funding_stage', 'Funding Stage'],
+                      ['total_raised', 'Total Raised'],
+                      ['tech_stack', 'Tech Stack'],
+                    ].map(([key, label]) => (
+                      <div key={key} className={key === 'tech_stack' ? 'md:col-span-2' : ''}>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">{label}</label>
+                        <input value={form[key as keyof typeof form] as string} onChange={(e) => setForm((current) => ({ ...current, [key]: e.target.value }))} className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100" />
                       </div>
                     ))}
                   </div>
