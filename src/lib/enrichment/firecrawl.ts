@@ -1,16 +1,24 @@
 import FirecrawlApp from '@mendable/firecrawl-js';
 
-// Initialize the FirecrawlApp with the API key from the environment
-export const firecrawl = new FirecrawlApp({
-  apiKey: process.env.FIRECRAWL_API_KEY || '',
-});
+// Lazily initialize the FirecrawlApp — the SDK throws at construction time
+// when no API key is set, which breaks the build during page data collection.
+let _firecrawl: FirecrawlApp | null = null;
+
+function getFirecrawl(): FirecrawlApp {
+  if (!_firecrawl) {
+    _firecrawl = new FirecrawlApp({
+      apiKey: process.env.FIRECRAWL_API_KEY || '',
+    });
+  }
+  return _firecrawl;
+}
 
 /**
  * Perform a web search using Firecrawl
  */
 export async function firecrawlSearch(query: string, limit: number = 3): Promise<any | null> {
   try {
-    const response: any = await firecrawl.search(query, {
+    const response: any = await getFirecrawl().search(query, {
       limit,
     } as any);
 
@@ -46,7 +54,7 @@ export async function firecrawlSearch(query: string, limit: number = 3): Promise
  */
 export async function firecrawlScrape(url: string): Promise<any | null> {
   try {
-    const response = await firecrawl.scrapeUrl(url, {
+    const response = await getFirecrawl().scrapeUrl(url, {
       formats: ['markdown'],
       onlyMainContent: true,
     }) as any;
@@ -69,7 +77,7 @@ export async function firecrawlScrape(url: string): Promise<any | null> {
  */
 export async function firecrawlMap(url: string): Promise<any | null> {
   try {
-    const response = await firecrawl.mapUrl(url) as any;
+    const response = await getFirecrawl().mapUrl(url) as any;
 
     if (response.success === false) {
       console.error(`Firecrawl map failed: ${response.error}`);
