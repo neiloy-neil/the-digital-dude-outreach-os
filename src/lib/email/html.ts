@@ -62,13 +62,35 @@ export function buildEmailMessageBodies(body: string, unsubscribeUrl: string) {
       ? normalizedHtml
       : appendUnsubscribeFooter(normalizedHtml, unsubscribeUrl);
 
+  const htmlWrapped = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #111827; }
+    p { margin: 0 0 1em 0; }
+    ul, ol { margin: 0 0 1em 0; padding-left: 24px; }
+    ul { list-style-type: disc; }
+    ol { list-style-type: decimal; }
+    li { margin-bottom: 0.25em; }
+    a { color: #2563eb; text-decoration: underline; }
+    b, strong { font-weight: bold; }
+    i, em { font-style: italic; }
+    u { text-decoration: underline; }
+  </style>
+</head>
+<body>
+${htmlWithUnsubscribe}
+</body>
+</html>`;
+
   const plainText = htmlToPlainText(htmlWithUnsubscribe);
   const textWithUnsubscribe = /unsubscribe/i.test(plainText) || plainText.includes(unsubscribeUrl)
     ? plainText
     : `${plainText}\n\nUnsubscribe: ${unsubscribeUrl}`;
 
   return {
-    html: htmlWithUnsubscribe,
+    html: htmlWrapped,
     text: textWithUnsubscribe,
   };
 }

@@ -27,7 +27,7 @@ export default function RichTextEditor({ value, onChange, placeholder, className
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
-    if (editor.innerHTML !== value) {
+    if (editor.innerHTML !== value && document.activeElement !== editor) {
       editor.innerHTML = value || '<p><br></p>';
     }
   }, [value]);
@@ -84,7 +84,7 @@ export default function RichTextEditor({ value, onChange, placeholder, className
           const text = event.clipboardData.getData('text/plain');
           runCommand('insertText', text);
         }}
-        className="min-h-[280px] px-4 py-3 text-sm leading-6 text-zinc-900 outline-none empty:before:pointer-events-none empty:before:text-zinc-400 empty:before:content-[attr(data-placeholder)]"
+        className="min-h-[280px] px-4 py-3 text-sm leading-6 text-zinc-900 outline-none empty:before:pointer-events-none empty:before:text-zinc-400 empty:before:content-[attr(data-placeholder)] [&_b]:font-bold [&_strong]:font-bold [&_i]:italic [&_em]:italic [&_u]:underline [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-2 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-2 [&_li]:mb-1 [&_a]:text-blue-600 [&_a]:underline"
         dangerouslySetInnerHTML={{ __html: value || '<p><br></p>' }}
       />
     </div>
