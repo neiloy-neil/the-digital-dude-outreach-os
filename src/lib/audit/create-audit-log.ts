@@ -9,6 +9,7 @@ interface AuditLogPayload {
   action: string;
   message?: string | null;
   metadata?: Record<string, unknown>;
+  supabase?: any;
 }
 
 export async function createAuditLog({
@@ -18,10 +19,11 @@ export async function createAuditLog({
   action,
   message,
   metadata = {},
+  supabase,
 }: AuditLogPayload) {
   try {
-    const supabase = createServiceClient();
-    const { error } = await supabase
+    const client = supabase || createServiceClient();
+    const { error } = await client
       .from('audit_logs')
       .insert({
         user_id: userId,

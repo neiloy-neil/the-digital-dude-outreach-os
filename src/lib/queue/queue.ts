@@ -7,65 +7,26 @@ import { Lead } from '@/types/database.types';
  * Claims leads that are pending AI analysis.
  * Handles retry for stuck leads (processing for > 15 minutes).
  */
-export async function claimLeadsForAIProcessing(limit: number): Promise<Lead[]> {
-  const supabase = createServiceClient();
-  const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+export async function claimLeadsForAIProcessing(limit: number, supabaseClient?: any): Promise<Lead[]> {
+  const supabase = supabaseClient || createServiceClient();
+  
+  const { data, error } = await supabase.rpc('claim_leads_for_ai', {
+    p_limit: limit,
+  });
 
-  const [pendingResult, staleResult] = await Promise.all([
-    supabase
-      .from('leads')
-      .select('*')
-      .eq('ai_status', 'pending')
-      .order('created_at', { ascending: true })
-      .limit(limit),
-    supabase
-      .from('leads')
-      .select('*')
-      .eq('ai_status', 'processing')
-      .lt('processing_started_at', fifteenMinutesAgo)
-      .order('processing_started_at', { ascending: true })
-      .limit(limit),
-  ]);
-
-  const selectError = pendingResult.error || staleResult.error;
-  const pendingLeads = [...(pendingResult.data || []), ...(staleResult.data || [])]
-    .slice(0, limit);
-
-  if (selectError || pendingLeads.length === 0) {
+  if (error) {
+    console.error('Error claiming leads for AI processing:', error);
     return [];
   }
 
-  const ids = pendingLeads.map((l) => l.id);
-
-  // 2. Mark them as processing
-  const { error: updateError } = await supabase
-    .from('leads')
-    .update({
-      ai_status: 'processing',
-      processing_started_at: new Date().toISOString(),
-      processing_error: null,
-    })
-    .in('id', ids);
-
-  if (updateError) {
-    console.error('Error claiming leads for AI processing:', updateError);
-    return [];
-  }
-
-  // Fetch fresh claimed data to return
-  const { data: claimedLeads } = await supabase
-    .from('leads')
-    .select('*')
-    .in('id', ids);
-
-  return claimedLeads || [];
+  return data || [];
 }
 
 /**
  * Resets leads stuck in 'processing' status back to 'pending'.
  */
-export async function releaseStuckProcessingLeads(): Promise<number> {
-  const supabase = createServiceClient();
+export async function releaseStuckProcessingLeads(supabaseClient?: any): Promise<number> {
+  const supabase = supabaseClient || createServiceClient();
   const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
 
   const { data, error } = await supabase
@@ -90,8 +51,8 @@ export async function releaseStuckProcessingLeads(): Promise<number> {
 /**
  * Retrieves leads that are due to receive sequence emails for a campaign.
  */
-export async function claimLeadsForEmailSending(campaignId: string, limit: number): Promise<Lead[]> {
-  const supabase = createServiceClient();
+export async function claimLeadsForEmailSending(campaignId: string, limit: number, supabaseClient?: any): Promise<Lead[]> {
+  const supabase = supabaseClient || createServiceClient();
   const now = new Date().toISOString();
 
   const excludedStatuses = ['replied', 'bounced', 'unsubscribed', 'do_not_contact', 'excluded', 'interested', 'not_interested', 'won', 'lost'];
@@ -132,8 +93,8 @@ export async function claimLeadsForEmailSending(campaignId: string, limit: numbe
     .slice(0, limit);
 }
 
-export async function getCampaignDailySendCount(campaignId: string): Promise<number> {
-  const supabase = createServiceClient();
+export async function getCampaignDailySendCount(campaignId: string, supabaseClient?: any): Promise<number> {
+  const supabase = supabaseClient || createServiceClient();
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
 
@@ -155,8 +116,8 @@ export async function getCampaignDailySendCount(campaignId: string): Promise<num
  * Calculates and manages daily send limit capacity for an email account.
  * Resets the count automatically if the last reset date was before today.
  */
-export async function getAvailableSendCapacity(emailAccountId: string): Promise<number> {
-  const supabase = createServiceClient();
+export async function getAvailableSendCapacity(emailAccountId: string, supabaseClient?: any): Promise<number> {
+  const supabase = supabaseClient || createServiceClient();
   const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
 
   // Fetch current account status
@@ -202,8 +163,8 @@ export async function getAvailableSendCapacity(emailAccountId: string): Promise<
 /**
  * Increments the daily sent count of an email account.
  */
-export async function incrementDailySentCount(emailAccountId: string, count: number = 1): Promise<void> {
-  const supabase = createServiceClient();
+export async function incrementDailySentCount(emailAccountId: string, count: number = 1, supabaseClient?: any): Promise<void> {
+  const supabase = supabaseClient || createServiceClient();
   
   const { error } = await supabase.rpc('increment_email_account_sent_count', {
     p_account_id: emailAccountId,

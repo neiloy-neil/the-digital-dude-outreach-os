@@ -238,7 +238,6 @@ export default function LeadListDetailPage() {
                   </tbody>
                 </table>
               </div>
-              </div>
 
               {totalLeads > pageSize && (
                 <div className="flex flex-col gap-3 border-t border-[var(--border)] p-4 text-xs text-zinc-500 sm:flex-row sm:items-center sm:justify-between">

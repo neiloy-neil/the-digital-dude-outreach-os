@@ -90,26 +90,20 @@ export async function POST(request: Request) {
 
       const { data: leads, error: leadsError } = await supabase
         .from('leads')
-        .select('id, tags')
+        .select('id')
         .in('id', leadIds)
         .eq('user_id', user.id);
 
       if (leadsError) throw leadsError;
 
-      await Promise.all(
-        (leads || []).map((lead) => {
-          const tags = String(lead.tags || '')
-            .split(',')
-            .map((item) => item.trim())
-            .filter(Boolean);
-          const normalizedTags = Array.from(new Set([...tags, nextTag]));
-          return supabase
-            .from('leads')
-            .update({ tags: normalizedTags.join(', '), updated_at: new Date().toISOString() })
-            .eq('id', lead.id)
-            .eq('user_id', user.id);
-        })
-      );
+      const validLeadIds = (leads || []).map((l) => l.id);
+      if (validLeadIds.length > 0) {
+        const { error: rpcError } = await supabase.rpc('bulk_add_tag_to_leads', {
+          p_lead_ids: validLeadIds,
+          p_new_tag: nextTag,
+        });
+        if (rpcError) throw rpcError;
+      }
 
       await createAuditLog({
         userId: user.id,

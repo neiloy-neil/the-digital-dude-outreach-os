@@ -25,7 +25,7 @@ function isMissingColumnError(error: { message?: string; code?: string } | null 
   return error?.code === '42703' || message.includes('does not exist') || message.includes('undefined column');
 }
 
-export async function checkSuppression(userId: string, email: string): Promise<SuppressionMatch | null> {
+export async function checkSuppression(userId: string, email: string, supabaseClient?: any): Promise<SuppressionMatch | null> {
   const normalizedEmail = normalizeEmail(email);
   const domain = getEmailDomain(normalizedEmail);
 
@@ -33,7 +33,7 @@ export async function checkSuppression(userId: string, email: string): Promise<S
     return null;
   }
 
-  const supabase = createServiceClient();
+  const supabase = supabaseClient || createServiceClient();
   const { data: emailMatch, error: emailError } = await supabase
     .from('suppressions')
     .select('id, reason, domain, source, email')

@@ -211,14 +211,14 @@ export async function sendDueEmails() {
     const senderEmail = emailAccount.email_address;
     const allowRiskyEmails = Boolean((campaign as { allow_risky_emails?: boolean | null }).allow_risky_emails);
 
-    const campaignDailySent = await getCampaignDailySendCount(campaign.id);
+    const campaignDailySent = await getCampaignDailySendCount(campaign.id, supabase);
     const campaignRemaining = Math.max(0, (campaign.daily_limit || 0) - campaignDailySent);
     if (campaignRemaining <= 0) {
       summary.push({ campaignId: campaign.id, sent: 0, skipped: 0, failed: 0, reasons: ['Campaign daily limit reached'] });
       continue;
     }
 
-    const accountRemaining = await getAvailableSendCapacity(emailAccount.id);
+    const accountRemaining = await getAvailableSendCapacity(emailAccount.id, supabase);
     if (accountRemaining <= 0) {
       summary.push({ campaignId: campaign.id, sent: 0, skipped: 0, failed: 0, reasons: ['Email account daily limit reached'] });
       continue;
@@ -231,7 +231,7 @@ export async function sendDueEmails() {
     }
 
     const maxForThisCampaign = Math.min(perCampaignLimit, batchLimit - totalSent, campaignRemaining, accountRemaining);
-    const dueLeads = await claimLeadsForEmailSending(campaign.id, maxForThisCampaign);
+    const dueLeads = await claimLeadsForEmailSending(campaign.id, maxForThisCampaign, supabase);
     if (dueLeads.length === 0) {
       summary.push({ campaignId: campaign.id, sent: 0, skipped: 0, failed: 0, reasons: ['No due leads'] });
       continue;
@@ -352,6 +352,7 @@ export async function sendDueEmails() {
               was_clicked: wasClicked,
               next_email_at: followingEmailAt,
             },
+            supabase,
           });
 
           skipped++;
@@ -430,6 +431,7 @@ export async function sendDueEmails() {
             verification_reason: verificationReason || null,
             policy: 'campaign_verification_block',
           },
+          supabase,
         });
         continue;
       }
@@ -449,6 +451,7 @@ export async function sendDueEmails() {
             verification_reason: verificationReason || null,
             allow_risky_emails: allowRiskyEmails,
           },
+          supabase,
         });
         continue;
       }
@@ -472,6 +475,7 @@ export async function sendDueEmails() {
             reason: 'suppressed',
             matched_on: suppressedEmails.has(normalizedEmail) ? 'email' : 'domain',
           },
+          supabase,
         });
         continue;
       }
@@ -618,7 +622,7 @@ export async function sendDueEmails() {
         throw leadUpdateError;
       }
 
-      await incrementDailySentCount(emailAccount.id, 1);
+      await incrementDailySentCount(emailAccount.id, 1, supabase);
 
       await createAuditLog({
         userId: campaign.user_id,
@@ -631,6 +635,7 @@ export async function sendDueEmails() {
           messageId: sendResult.messageId || null,
           step_number: nextStepNumber,
         },
+        supabase,
       });
 
       sent++;

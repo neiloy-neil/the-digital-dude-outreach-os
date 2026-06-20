@@ -70,7 +70,7 @@ export async function GET(request: Request) {
 
   let query = (useListScopedServiceRead ? serviceSupabase : supabase)
     .from('leads')
-    .select('*')
+    .select('*', { count: 'exact' })
     .order('last_email_sent_at', { ascending: true, nullsFirst: true })
     .order('created_at', { ascending: false });
 
@@ -123,8 +123,7 @@ export async function GET(request: Request) {
 
   // Fetch paginated leads and total count
   const { data, error, count } = await query
-    .range(offset, offset + limit - 1)
-    .select('*', { count: 'exact' });
+    .range(offset, offset + limit - 1);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

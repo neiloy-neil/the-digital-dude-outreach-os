@@ -212,7 +212,7 @@ export async function analyzeSingleLead({
       stop_ai_when_limit_reached: aiSettings.stop_ai_when_limit_reached,
     },
     settings: aiSettings,
-    requestedDepth: requestedDepth || null,
+    requestedDepth: (requestedDepth as any) || null,
   });
 
   const leadDomain = getLeadDomain(lead.website);
