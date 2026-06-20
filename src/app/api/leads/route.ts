@@ -40,6 +40,13 @@ export async function GET(request: Request) {
   const unsubscribed = url.searchParams.get('unsubscribed');
   const lastContactedFrom = url.searchParams.get('lastContactedFrom');
   const lastContactedTo = url.searchParams.get('lastContactedTo');
+  const pageParam = url.searchParams.get('page');
+  const limitParam = url.searchParams.get('limit');
+  
+  const page = pageParam ? Math.max(1, parseInt(pageParam, 10)) : 1;
+  const limit = limitParam ? Math.min(200, Math.max(1, parseInt(limitParam, 10))) : 50;
+  const offset = (page - 1) * limit;
+
   const useListScopedServiceRead = Boolean(leadListId);
 
   if (useListScopedServiceRead) {
@@ -107,32 +114,24 @@ export async function GET(request: Request) {
     query = query.lte('last_email_sent_at', lastContactedTo);
   }
 
-  const { data, error } = await query;
+  if (search) {
+    const safeSearch = search.replace(/[%_]/g, '\\$&'); // simple escape
+    query = query.or(
+      `email.ilike.%${safeSearch}%,first_name.ilike.%${safeSearch}%,last_name.ilike.%${safeSearch}%,company_name.ilike.%${safeSearch}%,company.ilike.%${safeSearch}%,website.ilike.%${safeSearch}%,industry.ilike.%${safeSearch}%,city.ilike.%${safeSearch}%,country.ilike.%${safeSearch}%,tags.ilike.%${safeSearch}%`
+    );
+  }
+
+  // Fetch paginated leads and total count
+  const { data, error, count } = await query
+    .range(offset, offset + limit - 1)
+    .select('*', { count: 'exact' });
+
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
   const rawLeads = data || [];
-  const filtered = search
-    ? rawLeads.filter((lead) => {
-        const haystack = [
-          lead.email,
-          lead.first_name,
-          lead.last_name,
-          lead.company_name,
-          lead.company,
-          lead.website,
-          lead.industry,
-          lead.city,
-          lead.country,
-          lead.tags,
-        ]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
-        return haystack.includes(search);
-      })
-    : rawLeads;
+  const filtered = rawLeads;
 
   const leadListIds = Array.from(new Set(filtered.map((lead) => lead.lead_list_id).filter(Boolean)));
   const leadIds = filtered.map((lead) => lead.id);
@@ -144,7 +143,7 @@ export async function GET(request: Request) {
     leadIds.length > 0
       ? serviceSupabase
           .from('sent_emails')
-          .select('*')
+          .select('id, lead_id, email_type, sent_at, status, replied_at, bounced_at, metadata')
           .in('lead_id', leadIds)
           .order('sent_at', { ascending: false })
       : Promise.resolve({ data: [] as Array<Record<string, unknown>> }),
@@ -232,6 +231,9 @@ export async function GET(request: Request) {
       lead_lists: lead.lead_list_id ? leadListMap.get(lead.lead_list_id) || null : null,
       sent_emails: sentEmailMap.get(String(lead.id)) || [],
     })),
+    total: count || 0,
+    page,
+    limit,
   });
 }
 

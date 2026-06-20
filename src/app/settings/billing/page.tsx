@@ -105,47 +105,15 @@ export default function BillingPage() {
           </div>
         </div>
 
-        {/* Pricing Tiers */}
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Free Tier */}
-          <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-sm">
-            <h3 className="text-lg font-semibold text-zinc-950">Free Trial</h3>
-            <p className="mt-2 text-sm text-zinc-500">For testing out the platform.</p>
-            <div className="mt-4 text-3xl font-bold">$0<span className="text-sm font-normal text-zinc-500">/mo</span></div>
-            <ul className="mt-6 space-y-3">
-              {['Send up to 50 emails/day', 'Basic AI Personalization', 'Community Support'].map((feature, i) => (
-                <li key={i} className="flex items-center gap-3 text-sm text-zinc-600">
-                  <Check className="h-4 w-4 text-emerald-500" /> {feature}
-                </li>
-              ))}
-            </ul>
-            <button disabled className="mt-8 w-full rounded-xl bg-zinc-100 py-3 text-sm font-semibold text-zinc-400">
-              Current Plan
-            </button>
+        {/* Billing Coming Soon */}
+        <div className="rounded-3xl border border-dashed border-violet-200 bg-violet-50/50 p-10 text-center shadow-sm">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-violet-100 text-violet-600 mb-5">
+            <Zap className="h-7 w-7" />
           </div>
-
-          {/* Pro Tier */}
-          <div className="relative rounded-3xl border-2 border-violet-500 bg-white p-6 shadow-md">
-            <div className="absolute -top-3 right-6 rounded-full bg-violet-500 px-3 py-1 text-xs font-semibold uppercase text-white">Recommended</div>
-            <h3 className="text-lg font-semibold text-zinc-950">Growth Plan</h3>
-            <p className="mt-2 text-sm text-zinc-500">For scaling your outreach.</p>
-            <div className="mt-4 text-3xl font-bold">$49<span className="text-sm font-normal text-zinc-500">/mo</span></div>
-            <ul className="mt-6 space-y-3">
-              {['Unlimited email sending', 'Deep AI Research & Personalization', 'Priority Support', 'Custom Sending Domains'].map((feature, i) => (
-                <li key={i} className="flex items-center gap-3 text-sm text-zinc-600">
-                  <Check className="h-4 w-4 text-violet-500" /> {feature}
-                </li>
-              ))}
-            </ul>
-            <button
-              onClick={() => handleUpgrade('price_example_id_replace_me')}
-              disabled={upgrading || isSubscribed}
-              className="mt-8 flex w-full items-center justify-center gap-2 rounded-xl bg-violet-600 py-3 text-sm font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50"
-            >
-              <Zap className="h-4 w-4" />
-              {isSubscribed ? 'Subscribed' : upgrading ? 'Loading...' : 'Upgrade to Growth'}
-            </button>
-          </div>
+          <h3 className="text-xl font-semibold text-zinc-900">Paid plans coming soon</h3>
+          <p className="mt-2 text-sm text-zinc-500 max-w-sm mx-auto">
+            We&apos;re finalizing our pricing. In the meantime, you have full access to all features — no limits.
+          </p>
         </div>
       </div>
     </AppShell>

@@ -10,8 +10,20 @@ import PageHeader from '@/components/reachmira/PageHeader';
 import MetricCard from '@/components/reachmira/MetricCard';
 import EmptyState from '@/components/reachmira/EmptyState';
 import NextActionCard from '@/components/reachmira/NextActionCard';
+import nextDynamic from 'next/dynamic';
 import Spinner from '@/components/reachmira/Spinner';
-import AnalyticsCharts from '@/components/reachmira/AnalyticsCharts';
+
+const AnalyticsCharts = nextDynamic(
+  () => import('@/components/reachmira/AnalyticsCharts'),
+  {
+    loading: () => (
+      <div className="flex h-48 items-center justify-center rounded-3xl border border-[var(--border)] bg-white shadow-sm">
+        <Spinner size={28} className="text-violet-400" />
+      </div>
+    ),
+    ssr: false,
+  }
+);
 import { getLeadStatusLabel, isRepliedStatus } from '@/lib/leads/status';
 import { getLeadReadiness } from '@/lib/leads/library';
 import {

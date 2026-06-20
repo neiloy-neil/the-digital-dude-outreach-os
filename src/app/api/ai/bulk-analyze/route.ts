@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
+import { createServiceClient } from '@/utils/supabase/service';
+import { analyzeSingleLead } from '@/lib/ai/analyze-lead';
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -35,12 +37,9 @@ export async function POST(request: Request) {
       .eq('id', user.id)
       .single();
 
-    // Process a max of the configured batch size to prevent gateway/serverless timeouts
     const batchLimit = Math.max(1, Number(profile?.max_bulk_ai_batch_size || 5));
     const batchLeads = leadIds.slice(0, batchLimit);
-
-    const results = [];
-    const baseUrl = request.url.split('/api/')[0];
+    const serviceSupabase = createServiceClient();
 
     // Mark leads as processing first
     await supabase
@@ -48,32 +47,32 @@ export async function POST(request: Request) {
       .update({ ai_status: 'processing', processing_started_at: new Date().toISOString(), processing_error: null })
       .in('id', batchLeads);
 
-    // Run analyses
-    for (const leadId of batchLeads) {
-      try {
-        const response = await fetch(`${baseUrl}/api/ai/analyze-lead`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Cookie': request.headers.get('cookie') || '', // Forward cookie auth to inner route
-          },
-          body: JSON.stringify({ leadId, campaignId }),
-        });
+    const promises = batchLeads.map((leadId: string) => 
+      analyzeSingleLead({
+        supabase,
+        serviceSupabase,
+        user,
+        leadId,
+        campaignId,
+      }).catch((err: any) => {
+        return { error: err.message };
+      })
+    );
 
-        const data = await response.json();
-        if (!response.ok) {
-          results.push({ id: leadId, success: false, error: data.error || 'Failed to analyze' });
-        } else {
-          results.push({ id: leadId, success: true });
-        }
-      } catch (err: any) {
-        results.push({ id: leadId, success: false, error: err.message || 'Error occurred' });
-        await supabase
-          .from('leads')
-          .update({ ai_status: 'failed', processing_error: err.message || 'AI processing failed' })
-          .eq('id', leadId);
+    const resultsRaw = await Promise.allSettled(promises);
+    const results = resultsRaw.map((result, i) => {
+      const leadId = batchLeads[i];
+      if (result.status === 'fulfilled' && !(result.value as any).error) {
+         return { id: leadId, success: true, ...result.value };
+      } else {
+         const errReason = result.status === 'rejected' ? (result.reason as any)?.message : (result.value as any).error;
+         supabase
+           .from('leads')
+           .update({ ai_status: 'failed', processing_error: errReason || 'AI processing failed' })
+           .eq('id', leadId).then();
+         return { id: leadId, success: false, error: errReason || 'Failed to analyze' };
       }
-    }
+    });
 
     return NextResponse.json({ results });
   } catch (err: any) {

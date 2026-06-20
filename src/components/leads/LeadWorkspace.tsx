@@ -14,6 +14,7 @@ import { buildFollowUpPrompt, buildLeadContextPrompt, buildLeadSummary, type Com
 import { htmlToPlainText, normalizeDraftHtml } from '@/lib/email/html';
 import { checkEmailQuality, hasBlockingEmailQualityIssue } from '@/lib/email/check-email-quality';
 import { buildEmailSignatureHtml, buildSendSignatureHtml } from '@/lib/email/signature';
+import { sanitizeEmailHtml } from '@/lib/email/sanitize-html';
 import { applyTemplateVariables } from '@/lib/templates/template-helpers';
 import { EMAIL_TYPES, getLeadStatusLabel } from '@/lib/leads/status';
 import { createClient } from '@/utils/supabase/client';
@@ -1491,7 +1492,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
                         {selectedSendSignatureHtml && includeSignature && (
                           <div className="mt-4 rounded-2xl border border-[var(--border)] bg-white p-4 text-sm text-zinc-900">
                             <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Preview</div>
-                            <div dangerouslySetInnerHTML={{ __html: selectedSendSignatureHtml }} />
+                            <div dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(selectedSendSignatureHtml) }} />
                           </div>
                         )}
                       </div>
@@ -1846,7 +1847,7 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
               </div>
               {selectedEmail.body_html ? (
                 <div className="rounded-3xl border border-[var(--border)] bg-[var(--surface-muted)] p-5 text-sm text-zinc-900">
-                  <div dangerouslySetInnerHTML={{ __html: selectedEmail.body_html }} />
+                  <div dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(selectedEmail.body_html) }} />
                 </div>
               ) : (
                 <pre className="whitespace-pre-wrap rounded-3xl border border-[var(--border)] bg-[var(--surface-muted)] p-5 text-sm leading-6 text-zinc-900">

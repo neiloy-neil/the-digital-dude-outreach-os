@@ -205,27 +205,12 @@ export async function getAvailableSendCapacity(emailAccountId: string): Promise<
 export async function incrementDailySentCount(emailAccountId: string, count: number = 1): Promise<void> {
   const supabase = createServiceClient();
   
-  // We fetch first, then increment
-  const { data: account, error: getError } = await supabase
-    .from('email_accounts')
-    .select('daily_sent_count')
-    .eq('id', emailAccountId)
-    .single();
+  const { error } = await supabase.rpc('increment_email_account_sent_count', {
+    p_account_id: emailAccountId,
+    p_increment: count,
+  });
 
-  if (getError || !account) {
-    console.error('Error reading sent count for increment:', getError);
-    return;
-  }
-
-  const { error: updateError } = await supabase
-    .from('email_accounts')
-    .update({
-      daily_sent_count: account.daily_sent_count + count,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', emailAccountId);
-
-  if (updateError) {
-    console.error('Error incrementing daily sent count:', updateError);
+  if (error) {
+    console.error('Error incrementing daily sent count:', error);
   }
 }

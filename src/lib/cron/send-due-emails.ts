@@ -260,6 +260,22 @@ export async function sendDueEmails() {
     let failed = 0;
     const reasons: string[] = [];
 
+    // Bulk-prefetch all suppressions for this batch in one query instead of
+    // one round-trip per lead. Matches on email address OR domain.
+    const leadEmails = (dueLeads as QueueLead[]).map((l) => l.email.trim().toLowerCase());
+    const leadDomains = [...new Set(leadEmails.map((e) => e.includes('@') ? e.split('@').pop()! : ''))];
+    const { data: suppressionRows } = await supabase
+      .from('suppressions')
+      .select('email, domain, reason')
+      .eq('user_id', campaign.user_id)
+      .or(`email.in.(${leadEmails.map((e) => `"${e}"`).join(',')}),domain.in.(${leadDomains.filter(Boolean).map((d) => `"${d}"`).join(',')})`);
+    const suppressedEmails = new Set(
+      (suppressionRows || []).flatMap((r) => [
+        r.email?.trim().toLowerCase(),
+        r.domain?.trim().toLowerCase(),
+      ]).filter(Boolean)
+    );
+
     for (const lead of dueLeads as QueueLead[]) {
       if (totalSent >= batchLimit || sent >= perCampaignLimit) {
         break;
@@ -381,9 +397,15 @@ export async function sendDueEmails() {
         body = interpolateTemplate(sequence.body, lead, { name: senderName, email: senderEmail });
       }
 
-      const appBaseUrl = process.env.NODE_ENV === 'production'
-        ? 'https://reachmira.vercel.app'
-        : (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000');
+      const appBaseUrl = (() => {
+        const url = process.env.NEXT_PUBLIC_APP_URL;
+        if (!url && process.env.NODE_ENV === 'production') {
+          throw new Error(
+            '[send-due-emails] NEXT_PUBLIC_APP_URL is not set. Cannot build unsubscribe URLs — refusing to send emails with broken compliance links.'
+          );
+        }
+        return url || 'http://localhost:3000';
+      })();
       const unsubscribeUrl = `${appBaseUrl}/unsubscribe?token=${lead.unsubscribe_token}`;
       const bodyWithSignature = appendEmailSignature(body, emailAccount.config || {}, senderName, true);
       const { html, text } = buildEmailMessageBodies(bodyWithSignature, unsubscribeUrl);
@@ -431,11 +453,14 @@ export async function sendDueEmails() {
         continue;
       }
 
-      const suppression = await checkSuppression(campaign.user_id, lead.email);
+      // Check suppression using the pre-fetched set (email or domain match).
+      const normalizedEmail = lead.email.trim().toLowerCase();
+      const emailDomain = normalizedEmail.includes('@') ? normalizedEmail.split('@').pop()! : '';
+      const isSuppressed = suppressedEmails.has(normalizedEmail) || (emailDomain && suppressedEmails.has(emailDomain));
 
-      if (suppression) {
+      if (isSuppressed) {
         skipped++;
-        reasons.push(`Lead ${lead.email}: suppressed (${suppression.reason || 'suppressed'})`);
+        reasons.push(`Lead ${lead.email}: suppressed`);
         await createAuditLog({
           userId: campaign.user_id,
           campaignId: campaign.id,
@@ -444,9 +469,8 @@ export async function sendDueEmails() {
           message: `Blocked automated email to ${lead.email}`,
           metadata: {
             email: lead.email,
-            reason: suppression.reason || 'suppressed',
-            matched_on: suppression.matchedOn,
-            suppression_id: suppression.id,
+            reason: 'suppressed',
+            matched_on: suppressedEmails.has(normalizedEmail) ? 'email' : 'domain',
           },
         });
         continue;

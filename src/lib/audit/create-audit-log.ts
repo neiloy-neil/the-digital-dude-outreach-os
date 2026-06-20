@@ -21,7 +21,7 @@ export async function createAuditLog({
 }: AuditLogPayload) {
   try {
     const supabase = createServiceClient();
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('audit_logs')
       .insert({
         user_id: userId,
@@ -30,16 +30,14 @@ export async function createAuditLog({
         action,
         message,
         metadata,
-      })
-      .select()
-      .single();
+      });
 
     if (error) {
       console.error('Failed to create audit log:', error);
       return { success: false, error };
     }
 
-    return { success: true, data };
+    return { success: true };
   } catch (error: unknown) {
     console.error('Error in createAuditLog:', error);
     return { success: false, error };

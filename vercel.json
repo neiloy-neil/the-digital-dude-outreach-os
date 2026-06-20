@@ -1,3 +1,11 @@
 {
-  "version": 2
+  "version": 2,
+  "functions": {
+    "src/app/api/ai/analyze-lead/route.ts": { "maxDuration": 30 },
+    "src/app/api/ai/bulk-analyze/route.ts": { "maxDuration": 60 },
+    "src/app/api/cron/send-emails/route.ts": { "maxDuration": 30 },
+    "src/app/api/cron/send-due-emails/route.ts": { "maxDuration": 30 },
+    "src/app/api/cron/check-replies/route.ts": { "maxDuration": 60 },
+    "src/app/api/inbox/[id]/draft/route.ts": { "maxDuration": 30 }
+  }
 }

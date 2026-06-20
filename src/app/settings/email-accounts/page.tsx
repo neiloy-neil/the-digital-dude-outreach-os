@@ -7,6 +7,7 @@ import AppShell from '@/components/reachmira/AppShell';
 import PageHeader from '@/components/reachmira/PageHeader';
 import RichTextEditor from '@/components/leads/RichTextEditor';
 import { buildEmailSignatureHtml, buildSendSignatureHtml, sanitizeSignatureHtml } from '@/lib/email/signature';
+import { sanitizeEmailHtml } from '@/lib/email/sanitize-html';
 import {
   Mail, Plus, Trash2,
   Flame, Zap, Eye, Wand2
@@ -761,7 +762,7 @@ export default function EmailAccountsPage() {
                       )}
                     </div>
                     {sendSignaturePreviewHtml ? (
-                      <div dangerouslySetInnerHTML={{ __html: sendSignaturePreviewHtml }} />
+                      <div dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(sendSignaturePreviewHtml) }} />
                     ) : (
                       <div className="text-zinc-500">Add a sender name or signature details to preview what will be appended.</div>
                     )}
@@ -854,10 +855,10 @@ export default function EmailAccountsPage() {
 
             <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-5 text-sm text-zinc-900">
               <div dangerouslySetInnerHTML={{
-                __html: buildSendSignatureHtml(
+                __html: sanitizeEmailHtml(buildSendSignatureHtml(
                   previewSignatureAccount.config,
                   previewSignatureAccount.sender_name || previewSignatureAccount.email_address
-                )
+                ))
               }} />
             </div>
 

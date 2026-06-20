@@ -121,10 +121,12 @@ function LeadsPageContent() {
   const [bulkListId, setBulkListId] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(12);
+  const [totalLeads, setTotalLeads] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [bulkLoading, setBulkLoading] = useState(false);
   const [savingView, setSavingView] = useState(false);
   const toast = useToast();
+  const [prevFiltersStr, setPrevFiltersStr] = useState('');
 
   // Saved Views State
   const [savedViews, setSavedViews] = useState<Array<{ id: string; name: string; filters: Record<string, unknown>; is_default: boolean }>>([]);
@@ -247,9 +249,26 @@ function LeadsPageContent() {
 
   const loadData = useCallback(async () => {
     setLoading(true);
-    setCurrentPage(1);
     try {
+      const filtersObj = {
+        search, statusFilter, priorityFilter, aiStatusFilter, emailStatusFilter,
+        readinessFilter, leadListFilter, industryFilter, countryFilter, tagFilter,
+        lastContactedFrom, lastContactedTo, followUpDueFilter, missingPainFilter,
+        missingSolutionFilter, notContactedFilter, emailTypeFilter, repliedFilter,
+        followUpStageFilter, contactGuardFilter
+      };
+      const currentFiltersStr = JSON.stringify(filtersObj);
+      
+      let pageToFetch = currentPage;
+      if (currentFiltersStr !== prevFiltersStr) {
+        pageToFetch = 1;
+        setCurrentPage(1);
+        setPrevFiltersStr(currentFiltersStr);
+      }
+
       const params = new URLSearchParams();
+      params.set('page', pageToFetch.toString());
+      params.set('limit', pageSize.toString());
       if (search) params.set('search', search);
       if (statusFilter !== 'all') params.set('status', statusFilter);
       if (priorityFilter !== 'all') params.set('priority', priorityFilter);
@@ -280,6 +299,7 @@ function LeadsPageContent() {
       ]);
 
       setLeads(Array.isArray(leadsResponse.data?.leads) ? leadsResponse.data.leads : []);
+      setTotalLeads(leadsResponse.data?.total || 0);
       setCampaigns(campaignResponse.data || []);
       setLeadLists(Array.isArray(leadListsResponse.data?.leadLists) ? leadListsResponse.data.leadLists : []);
       setCampaignId(campaignResponse.data?.[0]?.id || '');
@@ -289,7 +309,7 @@ function LeadsPageContent() {
       setLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [aiStatusFilter, contactGuardFilter, countryFilter, emailStatusFilter, emailTypeFilter, followUpDueFilter, industryFilter, lastContactedFrom, lastContactedTo, leadListFilter, missingPainFilter, missingSolutionFilter, notContactedFilter, priorityFilter, readinessFilter, repliedFilter, search, statusFilter, supabase, followUpStageFilter, tagFilter]);
+  }, [aiStatusFilter, contactGuardFilter, countryFilter, emailStatusFilter, emailTypeFilter, followUpDueFilter, industryFilter, lastContactedFrom, lastContactedTo, leadListFilter, missingPainFilter, missingSolutionFilter, notContactedFilter, priorityFilter, readinessFilter, repliedFilter, search, statusFilter, supabase, followUpStageFilter, tagFilter, currentPage, pageSize, prevFiltersStr]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -302,12 +322,9 @@ function LeadsPageContent() {
     return leads.filter((lead) => lead.data_quality_label === qualityFilter);
   }, [leads, qualityFilter]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredLeads.length / pageSize));
+  const totalPages = Math.max(1, Math.ceil(totalLeads / pageSize));
   const safeCurrentPage = Math.min(currentPage, totalPages);
-  const paginatedLeads = useMemo(() => {
-    const start = (safeCurrentPage - 1) * pageSize;
-    return filteredLeads.slice(start, start + pageSize);
-  }, [filteredLeads, pageSize, safeCurrentPage]);
+  const paginatedLeads = filteredLeads;
 
   const toggleSelected = (leadId: string) => {
     setSelected((prev) => (prev.includes(leadId) ? prev.filter((id) => id !== leadId) : [...prev, leadId]));
@@ -1146,13 +1163,13 @@ function LeadsPageContent() {
               <div className="text-sm text-zinc-500">
                 Showing{' '}
                 <span className="font-semibold text-zinc-900">
-                  {filteredLeads.length === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1}
+                  {totalLeads === 0 ? 0 : (currentPage - 1) * pageSize + 1}
                 </span>{' '}
                 to{' '}
                 <span className="font-semibold text-zinc-900">
-                  {Math.min(currentPage * pageSize, filteredLeads.length)}
+                  {Math.min(currentPage * pageSize, totalLeads)}
                 </span>{' '}
-                of <span className="font-semibold text-zinc-900">{filteredLeads.length}</span> leads
+                of <span className="font-semibold text-zinc-900">{totalLeads}</span> leads
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <button

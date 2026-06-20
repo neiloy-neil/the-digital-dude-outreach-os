@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { createServiceClient } from '@/utils/supabase/service';
 import { sendTelegramReport } from '@/utils/telegram';
+import { verifyCronAuth } from '@/lib/cron/auth';
 import Imap from 'imap';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
 import { resolveLeadOwnerFromLead } from '@/lib/leads/resolve-lead-owner';
@@ -103,11 +104,8 @@ function extractEmailAddress(value: string) {
 }
 
 export async function GET(request: Request) {
-  // Validate Vercel Cron Secret (if set)
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const authError = verifyCronAuth(request);
+  if (authError) return authError;
 
   const supabase = createServiceClient();
 

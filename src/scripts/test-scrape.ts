@@ -1,6 +1,6 @@
-import { firecrawlSearch } from './src/lib/enrichment/firecrawl';
+import { firecrawlSearch } from '@/lib/enrichment/firecrawl';
 import { GoogleGenAI } from '@google/genai';
-import { AI_DEFAULT_MODEL } from './src/lib/ai/efficiency';
+import { AI_DEFAULT_MODEL } from '@/lib/ai/efficiency';
 
 async function test() {
   const query = 'marketing agencies in london';

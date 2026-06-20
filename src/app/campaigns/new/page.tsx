@@ -95,9 +95,11 @@ export default function CampaignWizardPage() {
   const [libraryLeads, setLibraryLeads] = useState<any[]>([]);
   const [selectedLibraryLeadIds, setSelectedLibraryLeadIds] = useState<string[]>([]);
   const [librarySearch, setLibrarySearch] = useState('');
-  const [loadingLibraryLeads, setLoadingLibraryLeads] = useState(false);
   const [libraryPage, setLibraryPage] = useState(1);
+  const [totalLibraryLeads, setTotalLibraryLeads] = useState(0);
+  const [loadingLibraryLeads, setLoadingLibraryLeads] = useState(false);
   const libraryPageSize = 10;
+  const [debouncedLibrarySearch, setDebouncedLibrarySearch] = useState('');
 
   // STEP 3: AI Strategy
   const [aiMode, setAiMode] = useState<'template_only' | 'basic_ai' | 'standard_ai' | 'deep_ai' | 'manual_only' | 'hybrid_smart'>('hybrid_smart');
@@ -152,13 +154,29 @@ export default function CampaignWizardPage() {
   }, []);
 
   useEffect(() => {
+    const t = setTimeout(() => setDebouncedLibrarySearch(librarySearch), 300);
+    return () => clearTimeout(t);
+  }, [librarySearch]);
+
+  useEffect(() => {
+    setLibraryPage(1);
+  }, [debouncedLibrarySearch]);
+
+  useEffect(() => {
     const loadLibraryLeads = async () => {
       setLoadingLibraryLeads(true);
       try {
-        const response = await fetch('/api/leads');
+        const params = new URLSearchParams({
+          page: libraryPage.toString(),
+          limit: libraryPageSize.toString()
+        });
+        if (debouncedLibrarySearch) params.set('search', debouncedLibrarySearch);
+
+        const response = await fetch(`/api/leads?${params.toString()}`);
         const data = await response.json();
         if (!response.ok) throw new Error(data.error || 'Failed to load lead library');
         setLibraryLeads(Array.isArray(data.leads) ? data.leads : []);
+        setTotalLibraryLeads(data.total || 0);
       } catch (err: any) {
         setError(err.message || 'Error loading lead library');
       } finally {
@@ -167,7 +185,7 @@ export default function CampaignWizardPage() {
     };
 
     loadLibraryLeads();
-  }, []);
+  }, [libraryPage, debouncedLibrarySearch]);
 
   // STEP 4: Sequences
   const [sequences, setSequences] = useState<any[]>([
@@ -294,27 +312,10 @@ export default function CampaignWizardPage() {
     setCurrentStep(3); // Advance
   };
 
-  const filteredLibraryLeads = libraryLeads.filter((lead) => {
-    if (!librarySearch.trim()) return true;
-    const haystack = [
-      lead.email,
-      lead.first_name,
-      lead.last_name,
-      lead.decision_maker_name,
-      lead.company_name,
-      lead.company,
-      lead.industry,
-      lead.country,
-      lead.tags,
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase();
-    return haystack.includes(librarySearch.trim().toLowerCase());
-  });
-  const libraryTotalPages = Math.max(1, Math.ceil(filteredLibraryLeads.length / libraryPageSize));
+  const filteredLibraryLeads = libraryLeads;
+  const libraryTotalPages = Math.max(1, Math.ceil(totalLibraryLeads / libraryPageSize));
   const safeLibraryPage = Math.min(libraryPage, libraryTotalPages);
-  const paginatedLibraryLeads = filteredLibraryLeads.slice((safeLibraryPage - 1) * libraryPageSize, safeLibraryPage * libraryPageSize);
+  const paginatedLibraryLeads = libraryLeads;
 
   const toggleLibraryLead = (leadId: string) => {
     setSelectedLibraryLeadIds((current) =>
@@ -838,10 +839,10 @@ export default function CampaignWizardPage() {
                     </div>
                   )}
 
-                  {filteredLibraryLeads.length > libraryPageSize && (
+                  {totalLibraryLeads > libraryPageSize && (
                     <div className="flex flex-col gap-3 border-t border-[var(--border)] pt-4 text-xs text-zinc-500 sm:flex-row sm:items-center sm:justify-between">
                       <span>
-                        Showing {(safeLibraryPage - 1) * libraryPageSize + 1}-{Math.min(safeLibraryPage * libraryPageSize, filteredLibraryLeads.length)} of {filteredLibraryLeads.length} library leads
+                        Showing {totalLibraryLeads === 0 ? 0 : (safeLibraryPage - 1) * libraryPageSize + 1}-{Math.min(safeLibraryPage * libraryPageSize, totalLibraryLeads)} of {totalLibraryLeads} library leads
                       </span>
                       <div className="flex items-center gap-2">
                         <button

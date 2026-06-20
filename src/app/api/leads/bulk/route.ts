@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
+import { createServiceClient } from '@/utils/supabase/service';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
+import { analyzeSingleLead } from '@/lib/ai/analyze-lead';
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -26,6 +28,58 @@ export async function POST(request: Request) {
         body: JSON.stringify({ leadIds, campaignId }),
       });
       return NextResponse.json(await response.json(), { status: response.status });
+    }
+
+    if (action === 'auto_research') {
+      if (!campaignId) {
+        return NextResponse.json({ error: 'campaignId is required for auto_research' }, { status: 400 });
+      }
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('max_bulk_ai_batch_size')
+        .eq('id', user.id)
+        .single();
+      
+      const batchLimit = Math.max(1, Number(profile?.max_bulk_ai_batch_size || 5));
+      const batchLeads = leadIds.slice(0, batchLimit);
+      const serviceSupabase = createServiceClient();
+
+      // Mark leads as processing first
+      await supabase
+        .from('leads')
+        .update({ ai_status: 'processing', processing_started_at: new Date().toISOString(), processing_error: null })
+        .in('id', batchLeads);
+
+      const promises = batchLeads.map((leadId: string) => 
+        analyzeSingleLead({
+          supabase,
+          serviceSupabase,
+          user,
+          leadId,
+          campaignId,
+        }).catch((err: any) => {
+          return { error: err.message };
+        })
+      );
+
+      const results = await Promise.allSettled(promises);
+      const output = results.map((result, i) => {
+        const leadId = batchLeads[i];
+        if (result.status === 'fulfilled' && !(result.value as any).error) {
+           return { id: leadId, success: true, ...result.value };
+        } else {
+           const errReason = result.status === 'rejected' ? (result.reason as any)?.message : (result.value as any).error;
+           // If error, we should also fail the lead here just in case analyzeSingleLead threw before updating DB
+           supabase
+             .from('leads')
+             .update({ ai_status: 'failed', processing_error: errReason || 'AI processing failed' })
+             .eq('id', leadId).then(); // fire and forget
+           return { id: leadId, success: false, error: errReason || 'Failed to analyze' };
+        }
+      });
+
+      return NextResponse.json({ success: true, processed: batchLeads.length, results: output });
     }
 
     if (action === 'add_tag') {

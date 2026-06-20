@@ -7,6 +7,7 @@ import { Button } from '@/components/reachmira/ui';
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/lib/toast/toast-context';
 import { Sparkles, Send, Mail, CheckCircle, RefreshCcw } from 'lucide-react';
+import { sanitizeEmailHtml } from '@/lib/email/sanitize-html';
 
 type Message = {
   id: string;
@@ -229,7 +230,7 @@ export default function InboxPage() {
                         <div className={`text-xs mb-2 ${tMsg.type === 'sent' ? 'text-violet-200' : 'text-zinc-500'}`}>
                           {formatDistanceToNow(new Date(tMsg.timestamp), { addSuffix: true })}
                         </div>
-                        <div className="text-sm whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: tMsg.body_html || tMsg.body_text }} />
+                        <div className="text-sm whitespace-pre-wrap" dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(tMsg.body_html || tMsg.body_text) }} />
                       </div>
                     </div>
                   ))

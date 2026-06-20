@@ -1,13 +1,11 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/utils/supabase/service';
 import { sendTelegramReport } from '@/utils/telegram';
+import { verifyCronAuth } from '@/lib/cron/auth';
 
 export async function GET(request: Request) {
-  // Validate Vercel Cron Secret (if set)
-  const authHeader = request.headers.get('authorization');
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  const authError = verifyCronAuth(request);
+  if (authError) return authError;
 
   const supabase = createServiceClient();
   const past24Hours = new Date();

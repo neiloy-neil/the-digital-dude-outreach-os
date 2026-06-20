@@ -22,10 +22,17 @@ function normalizeModelName(model?: string | null): AiModelName | string {
   return model;
 }
 
+const aiSettingsCache = new Map<string, { settings: AiSettings; expiresAt: number }>();
+
 export async function getAiSettingsForUser(
   supabase: SupabaseClient,
   userId: string
 ): Promise<AiSettings> {
+  const now = Date.now();
+  const cached = aiSettingsCache.get(userId);
+  if (cached && cached.expiresAt > now) {
+    return cached.settings;
+  }
   const { data, error } = await supabase
     .from('ai_settings')
     .select('*')
@@ -48,7 +55,7 @@ export async function getAiSettingsForUser(
     .eq('id', userId)
     .maybeSingle();
 
-  return {
+  const settings = {
     default_model: AI_DEFAULT_MODEL,
     deep_model: AI_DEEP_MODEL,
     daily_ai_limit: profile?.daily_ai_call_limit ?? 75,
@@ -61,6 +68,9 @@ export async function getAiSettingsForUser(
     deep_ai_only_for_high_priority: true,
     stop_ai_when_limit_reached: profile?.stop_ai_when_limit_reached ?? true,
   };
+
+  aiSettingsCache.set(userId, { settings, expiresAt: now + 5 * 60 * 1000 });
+  return settings;
 }
 
 export async function recordAiUsageLog(
@@ -141,85 +151,27 @@ export async function getAiUsageCounts(
   monthlyFromIso: string,
   monthlyToIso: string
 ) {
-  const [dailyResult, monthlyResult, flashLiteToday, flash25Today, todayTokens, monthTokens, cacheHits, skipped] = await Promise.all([
-    supabase
-      .from('ai_usage_logs')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('skipped', false)
-      .eq('cache_hit', false)
-      .gte('created_at', dailyFromIso)
-      .lt('created_at', dailyToIso),
-    supabase
-      .from('ai_usage_logs')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('skipped', false)
-      .eq('cache_hit', false)
-      .gte('created_at', monthlyFromIso)
-      .lt('created_at', monthlyToIso),
-    supabase
-      .from('ai_usage_logs')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('skipped', false)
-      .eq('cache_hit', false)
-      .eq('model', AI_DEFAULT_MODEL)
-      .gte('created_at', dailyFromIso)
-      .lt('created_at', dailyToIso),
-    supabase
-      .from('ai_usage_logs')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('skipped', false)
-      .eq('cache_hit', false)
-      .eq('model', AI_DEEP_MODEL)
-      .gte('created_at', dailyFromIso)
-      .lt('created_at', dailyToIso),
-    supabase
-      .from('ai_usage_logs')
-      .select('tokens_total')
-      .eq('user_id', userId)
-      .eq('skipped', false)
-      .eq('cache_hit', false)
-      .gte('created_at', dailyFromIso)
-      .lt('created_at', dailyToIso),
-    supabase
-      .from('ai_usage_logs')
-      .select('tokens_total')
-      .eq('user_id', userId)
-      .eq('skipped', false)
-      .eq('cache_hit', false)
-      .gte('created_at', monthlyFromIso)
-      .lt('created_at', monthlyToIso),
-    supabase
-      .from('ai_usage_logs')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('cache_hit', true)
-      .gte('created_at', monthlyFromIso)
-      .lt('created_at', monthlyToIso),
-    supabase
-      .from('ai_usage_logs')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('skipped', true)
-      .gte('created_at', monthlyFromIso)
-      .lt('created_at', monthlyToIso),
-  ]);
+  const { data, error } = await supabase.rpc('get_ai_usage_summary', {
+    p_user_id: userId,
+    p_daily_from: dailyFromIso,
+    p_monthly_from: monthlyFromIso,
+  });
 
-  const sumTokens = (rows: { tokens_total: number | null }[] | null | undefined) =>
-    (rows || []).reduce((total, row) => total + Number(row.tokens_total || 0), 0);
+  if (error) {
+    console.error('Error fetching AI usage summary:', error);
+  }
+
+  const summary = data || {};
 
   return {
-    calls: dailyResult.count || 0,
-    flashLiteCallsToday: flashLiteToday.count || 0,
-    flash25CallsToday: flash25Today.count || 0,
-    monthlyCalls: monthlyResult.count || 0,
-    tokens: sumTokens(todayTokens.data as { tokens_total: number | null }[] | null | undefined),
-    monthlyTokens: sumTokens(monthTokens.data as { tokens_total: number | null }[] | null | undefined),
-    cacheHits: cacheHits.count || 0,
-    skipped: skipped.count || 0,
+    calls: summary.calls || 0,
+    flashLiteCallsToday: summary.flashLiteCallsToday || 0,
+    flash25CallsToday: summary.flash25CallsToday || 0,
+    monthlyCalls: summary.monthlyCalls || 0,
+    tokens: summary.tokens || 0,
+    monthlyTokens: summary.monthlyTokens || 0,
+    cacheHits: summary.monthlyCacheHits || 0,
+    skipped: summary.monthlySkipped || 0,
   };
 }
 
@@ -230,61 +182,30 @@ export async function getAiCreditSummary(
   dailyFromIso: string,
   dailyToIso: string
 ): Promise<AiCreditSummary> {
-  const [dailyUsage, flashLiteUsage, deepUsage, cacheHits, skipped] = await Promise.all([
-    supabase
-      .from('ai_usage_logs')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('skipped', false)
-      .eq('cache_hit', false)
-      .gte('created_at', dailyFromIso)
-      .lt('created_at', dailyToIso),
-    supabase
-      .from('ai_usage_logs')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('skipped', false)
-      .eq('cache_hit', false)
-      .eq('model', AI_DEFAULT_MODEL)
-      .gte('created_at', dailyFromIso)
-      .lt('created_at', dailyToIso),
-    supabase
-      .from('ai_usage_logs')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('skipped', false)
-      .eq('cache_hit', false)
-      .eq('model', AI_DEEP_MODEL)
-      .gte('created_at', dailyFromIso)
-      .lt('created_at', dailyToIso),
-    supabase
-      .from('ai_usage_logs')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('cache_hit', true)
-      .gte('created_at', dailyFromIso)
-      .lt('created_at', dailyToIso),
-    supabase
-      .from('ai_usage_logs')
-      .select('id', { count: 'exact', head: true })
-      .eq('user_id', userId)
-      .eq('skipped', true)
-      .gte('created_at', dailyFromIso)
-      .lt('created_at', dailyToIso),
-  ]);
+  const { data, error } = await supabase.rpc('get_ai_usage_summary', {
+    p_user_id: userId,
+    p_daily_from: dailyFromIso,
+    p_monthly_from: dailyFromIso, // Monthly not strictly needed here, so use daily to limit scan
+  });
 
-  const totalUsed = resolveCount(dailyUsage.count);
-  const deepUsed = resolveCount(deepUsage.count);
+  if (error) {
+    console.error('Error fetching AI credit summary:', error);
+  }
+
+  const summary = data || {};
+  const totalUsed = summary.calls || 0;
+  const deepUsed = summary.flash25CallsToday || 0;
+
   const totalLimit = settings.daily_ai_limit ?? null;
   const deepLimit = settings.daily_deep_ai_limit ?? null;
 
   return {
     callsToday: totalUsed,
-    flashLiteCallsToday: resolveCount(flashLiteUsage.count),
+    flashLiteCallsToday: summary.flashLiteCallsToday || 0,
     flash25CallsToday: deepUsed,
     deepRemaining: deepLimit === null ? null : Math.max(0, deepLimit - deepUsed),
     totalRemaining: totalLimit === null ? null : Math.max(0, totalLimit - totalUsed),
-    cachedResultsReused: resolveCount(cacheHits.count),
-    leadsSkipped: resolveCount(skipped.count),
+    cachedResultsReused: summary.dailyCacheHits || 0,
+    leadsSkipped: summary.dailySkipped || 0,
   };
 }

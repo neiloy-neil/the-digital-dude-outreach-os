@@ -45,30 +45,52 @@ export default function LeadListDetailPage() {
   const [leads, setLeads] = useState<LeadRow[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignRow[]>([]);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selected, setSelected] = useState<string[]>([]);
   const [campaignId, setCampaignId] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(12);
+  const [totalLeads, setTotalLeads] = useState(0);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearch]);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
+      const params = new URLSearchParams({
+        leadListId: id,
+        page: currentPage.toString(),
+        limit: pageSize.toString()
+      });
+      if (debouncedSearch) params.set('search', debouncedSearch);
+
       const [listResponse, leadResponse, campaignResponse] = await Promise.all([
         fetch(`/api/lead-lists/${id}`).then(async (res) => (await res.json()) as { leadList?: LeadListRow; leadCount?: number; error?: string }),
-        fetch(`/api/leads?leadListId=${id}`).then(async (res) => (await res.json()) as { leads?: LeadRow[]; error?: string }),
+        fetch(`/api/leads?${params.toString()}`).then(async (res) => (await res.json()) as { leads?: LeadRow[]; total?: number; error?: string }),
         supabase.from('campaigns').select('id,name').order('created_at', { ascending: false }),
       ]);
 
       setList(listResponse.leadList || null);
       setLeadCount(listResponse.leadCount || 0);
       setLeads(Array.isArray(leadResponse.leads) ? leadResponse.leads : []);
+      setTotalLeads(leadResponse.total || 0);
       setCampaigns((campaignResponse.data || []) as CampaignRow[]);
-      setCampaignId(campaignResponse.data?.[0]?.id || '');
+      setCampaignId((prev) => prev || campaignResponse.data?.[0]?.id || '');
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load lead list');
     } finally {
       setLoading(false);
     }
-  }, [id, supabase]);
+  }, [id, supabase, currentPage, pageSize, debouncedSearch]);
 
   useEffect(() => {
     if (!id) return;
@@ -77,17 +99,9 @@ export default function LeadListDetailPage() {
     })();
   }, [id, loadData]);
 
-  const filteredLeads = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return leads;
-    return leads.filter((lead) =>
-      [lead.email, lead.company_name, lead.company, lead.decision_maker_name]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase()
-        .includes(q)
-    );
-  }, [search, leads]);
+  const filteredLeads = leads;
+  const totalPages = Math.max(1, Math.ceil(totalLeads / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
 
   const toggleSelected = (leadId: string) => {
     setSelected((prev) => (prev.includes(leadId) ? prev.filter((item) => item !== leadId) : [...prev, leadId]));
@@ -224,6 +238,34 @@ export default function LeadListDetailPage() {
                   </tbody>
                 </table>
               </div>
+              </div>
+
+              {totalLeads > pageSize && (
+                <div className="flex flex-col gap-3 border-t border-[var(--border)] p-4 text-xs text-zinc-500 sm:flex-row sm:items-center sm:justify-between">
+                  <span>
+                    Showing {totalLeads === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1}-{Math.min(safeCurrentPage * pageSize, totalLeads)} of {totalLeads} leads
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                      disabled={safeCurrentPage <= 1}
+                      className="rounded border border-[var(--border)] bg-white px-3 py-1.5 font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                    >
+                      Previous
+                    </button>
+                    <span className="font-medium text-zinc-700">
+                      Page {safeCurrentPage} of {totalPages}
+                    </span>
+                    <button
+                      onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                      disabled={safeCurrentPage >= totalPages}
+                      className="rounded border border-[var(--border)] bg-white px-3 py-1.5 font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
