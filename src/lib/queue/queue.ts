@@ -72,7 +72,7 @@ export async function claimLeadsForEmailSending(campaignId: string, limit: numbe
   }
 
   return (leads || [])
-    .filter((lead) => {
+    .filter((lead: any) => {
       const queuedLead = lead as Lead & {
         current_step?: number | null;
         emails_sent_count?: number | null;
