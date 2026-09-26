@@ -3,23 +3,30 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Ban, CheckCircle2, Copy, Database, Edit3, ExternalLink, History, Mail, MessageSquare, PlusCircle, Save, Send, Sparkles, WandSparkles, X, Clock3, AlertTriangle, Trash2, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, Ban, CheckCircle2, Database, Edit3, ExternalLink, History, Mail, MessageSquare, PlusCircle, Send, Sparkles, WandSparkles, Clock3, Trash2 } from 'lucide-react';
 import AppShell from '@/components/reachmira/AppShell';
 import Spinner from '@/components/reachmira/Spinner';
 import { Badge, useConfirm } from '@/components/reachmira/ui';
 import EmailVerificationBadge from '@/components/leads/EmailVerificationBadge';
 import StatusBadge from '@/components/leads/StatusBadge';
-import RichTextEditor from '@/components/leads/RichTextEditor';
 import { buildFollowUpPrompt, buildLeadContextPrompt, buildLeadSummary, type CompanyPromptContext } from '@/lib/leads/context-prompt';
 import { htmlToPlainText, normalizeDraftHtml } from '@/lib/email/html';
 import { checkEmailQuality, hasBlockingEmailQualityIssue } from '@/lib/email/check-email-quality';
 import { buildEmailSignatureHtml, buildSendSignatureHtml } from '@/lib/email/signature';
-import { sanitizeEmailHtml } from '@/lib/email/sanitize-html';
 import { applyTemplateVariables } from '@/lib/templates/template-helpers';
 import { EMAIL_TYPES, getLeadStatusLabel } from '@/lib/leads/status';
 import { createClient } from '@/utils/supabase/client';
 import { useToast } from '@/lib/toast/toast-context';
 import type { AuditLog, EmailAccount, Lead, SentEmail } from '@/types/database.types';
+import { normalizeWebsite, formatDate, eventTimestamp, escapeHtml, metadataString, metadataRecord, isReplyAction, getReplyBodyText } from '@/components/leads/workspace/utils';
+import TimelinePanel from '@/components/leads/workspace/TimelinePanel';
+import RawDataPanel from '@/components/leads/workspace/RawDataPanel';
+import EmailHistoryPanel from '@/components/leads/workspace/EmailHistoryPanel';
+import SentEmailModal from '@/components/leads/workspace/SentEmailModal';
+import IntelligencePanel from '@/components/leads/workspace/IntelligencePanel';
+import OverviewPanel from '@/components/leads/workspace/OverviewPanel';
+import RepliesPanel from '@/components/leads/workspace/RepliesPanel';
+import ManualEmailPanel from '@/components/leads/workspace/ManualEmailPanel';
 
 type LeadDetail = Lead & {
   lead_lists?: { id: string; name: string; description?: string | null } | null;
@@ -108,44 +115,6 @@ type Props = {
   backHref: string;
   backLabel: string;
 };
-
-function normalizeWebsite(website?: string | null) {
-  if (!website) return '';
-  return website.startsWith('http') ? website : `https://${website}`;
-}
-
-function formatDate(value?: string | null) {
-  if (!value) return '-';
-  return new Date(value).toLocaleString();
-}
-
-function eventTimestamp(event: { created_at?: string; sent_at?: string }) {
-  return event.created_at || event.sent_at || '';
-}
-
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-function metadataString(metadata: Record<string, unknown>, key: string) {
-  const value = metadata[key];
-  if (typeof value === 'string') return value;
-  if (value === null || value === undefined) return '';
-  return String(value);
-}
-
-function metadataRecord(value: unknown) {
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
-function isReplyAction(value?: string | null) {
-  return ['reply_received', 'replied', 'email_replied', 'lead_replied'].includes(String(value || '').toLowerCase());
-}
 
 export default function LeadWorkspace({ leadId, title, subtitle, backHref, backLabel }: Props) {
   const router = useRouter();
@@ -525,7 +494,6 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
   const isInitialLoading = loading && !lead;
 
   const getSentEmailBodyText = (email: SentEmail) => email.body_text || htmlToPlainText(email.body_html || '') || '';
-  const getReplyBodyText = (reply: ReplyEvent) => reply.bodyText || htmlToPlainText(reply.bodyHtml) || reply.snippet || '';
 
   const copySentEmail = async (email: SentEmail) => {
     await navigator.clipboard.writeText(`Subject: ${email.subject}\n\n${getSentEmailBodyText(email)}`);
@@ -1106,702 +1074,100 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
             </div>
 
             {activeTab === 'overview' && (
-              <div className="grid gap-6 xl:grid-cols-[1.5fr_0.85fr]">
-                <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
-                  <div className="mb-5 flex flex-col gap-3 border-b border-[var(--border)] pb-4 sm:flex-row sm:items-center sm:justify-between">
-                    <h3 className="text-base font-semibold text-zinc-950">Overview</h3>
-                    <button onClick={handleSaveLead} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-teal-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:opacity-50">
-                      {saving ? <Spinner size={16} className="text-white" /> : <Save className="h-4 w-4" />}
-                      {saving ? 'Saving...' : 'Save Lead'}
-                    </button>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {[
-                      { key: 'decision_maker_name', label: 'Decision Maker', multi: false },
-                      { key: 'decision_maker_title', label: 'Title', multi: false },
-                      { key: 'email', label: 'Email', multi: false },
-                      { key: 'company_name', label: 'Company', multi: false },
-                      { key: 'website', label: 'Website', multi: false },
-                      { key: 'industry', label: 'Industry', multi: false },
-                      { key: 'pain_points', label: 'Pain Points', multi: true },
-                    ].map(({ key, label, multi }) => (
-                      <div key={key} className={multi ? 'md:col-span-2' : ''}>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">{label}</label>
-                        {multi ? (
-                          <textarea value={form[key as keyof typeof form] as string} onChange={(e) => setForm((current) => ({ ...current, [key]: e.target.value }))} rows={3} className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100" />
-                        ) : (
-                          <input value={form[key as keyof typeof form] as string} onChange={(e) => setForm((current) => ({ ...current, [key]: e.target.value }))} className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100" />
-                        )}
-                      </div>
-                    ))}
-                    <div className="md:col-span-2">
-                      <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500 font-bold text-violet-600">Recommended Offer / Service</label>
-                      <select
-                        value={form.recommended_offer}
-                        onChange={(e) => setForm((current) => ({ ...current, recommended_offer: e.target.value }))}
-                        className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
-                      >
-                        <option value="">-- Select or type below --</option>
-                        {offers.map((offer) => (
-                          <option key={offer.id} value={offer.name}>{offer.name} {offer.description ? `(${offer.description})` : ''}</option>
-                        ))}
-                      </select>
-                      <input
-                        value={form.recommended_offer}
-                        onChange={(e) => setForm((current) => ({ ...current, recommended_offer: e.target.value }))}
-                        placeholder="Or type custom offer here..."
-                        className="mt-2 w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Status</label>
-                      <input value={form.status} onChange={(e) => setForm((current) => ({ ...current, status: e.target.value }))} className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100" />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Priority</label>
-                      <select value={form.priority} onChange={(e) => setForm((current) => ({ ...current, priority: e.target.value }))} className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100">
-                        <option value="low">Low</option>
-                        <option value="normal">Normal</option>
-                        <option value="medium">Medium</option>
-                        <option value="high">High</option>
-                      </select>
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500 font-bold text-violet-600">Next Follow-up Reminder & Snooze</label>
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                        <input
-                          type="datetime-local"
-                          value={form.next_follow_up_at}
-                          onChange={(e) => setForm((current) => ({ ...current, next_follow_up_at: e.target.value }))}
-                          className="flex-1 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100"
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const d = new Date();
-                              d.setDate(d.getDate() + 1);
-                              setForm((current) => ({ ...current, next_follow_up_at: d.toISOString().substring(0, 16) }));
-                              toast.info('Snoozed 1 day. Click "Save Lead" to persist.');
-                            }}
-                            className="rounded-xl border border-violet-200 bg-violet-50 px-3.5 py-2.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-100"
-                          >
-                            +1 Day
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const d = new Date();
-                              d.setDate(d.getDate() + 3);
-                              setForm((current) => ({ ...current, next_follow_up_at: d.toISOString().substring(0, 16) }));
-                              toast.info('Snoozed 3 days. Click "Save Lead" to persist.');
-                            }}
-                            className="rounded-xl border border-violet-200 bg-violet-50 px-3.5 py-2.5 text-xs font-semibold text-violet-700 transition hover:bg-violet-100"
-                          >
-                            +3 Days
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setForm((current) => ({ ...current, next_follow_up_at: '' }));
-                              toast.info('Follow-up cleared. Click "Save Lead" to persist.');
-                            }}
-                            className="rounded-xl border border-rose-200 bg-rose-50 px-3.5 py-2.5 text-xs font-semibold text-rose-700 transition hover:bg-rose-100"
-                          >
-                            Clear
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="md:col-span-2">
-                      <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Notes</label>
-                      <textarea value={form.notes} onChange={(e) => setForm((current) => ({ ...current, notes: e.target.value }))} rows={4} className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100" />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-6">
-                  <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
-                    <h3 className="mb-4 text-base font-semibold text-zinc-950">Quick Facts</h3>
-                    <div className="space-y-3 text-sm">
-                      <div className="flex items-start justify-between gap-4 rounded-2xl bg-[var(--surface-muted)] px-4 py-3"><span className="text-zinc-500">Company</span><span className="text-right font-medium text-zinc-900">{lead.company_name || lead.company || '-'}</span></div>
-                      <div className="flex items-start justify-between gap-4 rounded-2xl bg-[var(--surface-muted)] px-4 py-3"><span className="text-zinc-500">Email</span><span className="text-right font-medium text-zinc-900">{lead.email}</span></div>
-                      <div className="flex items-start justify-between gap-4 rounded-2xl bg-[var(--surface-muted)] px-4 py-3"><span className="text-zinc-500">Website</span><span className="text-right font-medium text-zinc-900">{lead.website ? <a href={normalizeWebsite(lead.website)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-violet-700 hover:text-violet-800">Visit <ExternalLink className="h-3.5 w-3.5" /></a> : <span>-</span>}</span></div>
-                      <div className="flex items-start justify-between gap-4 rounded-2xl bg-[var(--surface-muted)] px-4 py-3"><span className="text-zinc-500">Last Contacted</span><span className="text-right font-medium text-zinc-900">{formatDate(lead.last_email_sent_at || lead.last_contacted_at || lead.last_contacted)}</span></div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
-                    <h3 className="mb-4 text-base font-semibold text-zinc-950">Outreach Status</h3>
-                    <div className="space-y-3 text-sm">
-                      <div className="flex items-start justify-between gap-4 rounded-2xl bg-[var(--surface-muted)] px-4 py-3"><span className="text-zinc-500">Status</span><span className="text-right font-medium text-zinc-900">{getLeadStatusLabel(lead.status)}</span></div>
-                      <div className="flex items-start justify-between gap-4 rounded-2xl bg-[var(--surface-muted)] px-4 py-3"><span className="text-zinc-500">Reply status</span><span className="text-right font-medium text-zinc-900">{lead.reply_status || 'no_reply'}</span></div>
-                      <div className="flex items-start justify-between gap-4 rounded-2xl bg-[var(--surface-muted)] px-4 py-3"><span className="text-zinc-500">Next follow-up</span><span className="text-right font-medium text-zinc-900">{formatDate(lead.next_follow_up_at || lead.next_follow_up_date)}</span></div>
-                      <div className="flex items-start justify-between gap-4 rounded-2xl bg-[var(--surface-muted)] px-4 py-3"><span className="text-zinc-500">Tags</span><span className="text-right font-medium text-zinc-900">{lead.tags || '-'}</span></div>
-                      <div className="flex items-start justify-between gap-4 rounded-2xl bg-[var(--surface-muted)] px-4 py-3"><span className="text-zinc-500">Notes</span><span className="text-right font-medium text-zinc-900">{lead.notes || '-'}</span></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <OverviewPanel
+                form={form}
+                setForm={setForm}
+                offers={offers}
+                saving={saving}
+                lead={lead}
+                onSaveLead={handleSaveLead}
+              />
             )}
 
             {activeTab === 'intelligence' && (
-              <div className="grid gap-6 xl:grid-cols-[1.35fr_0.95fr]">
-                <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
-                  <div className="mb-5 flex flex-col gap-3 border-b border-[var(--border)] pb-4 sm:flex-row sm:items-center sm:justify-between">
-                    <h3 className="text-base font-semibold text-zinc-950">Lead Intelligence</h3>
-                    <div className="flex flex-wrap gap-2">
-                      <button onClick={handleAutoResearch} disabled={saving || !lead?.website} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:opacity-50">
-                        {saving ? <Spinner size={16} className="text-white" /> : <Sparkles className="h-4 w-4" />}
-                        {saving ? 'Researching...' : 'Auto-Research Lead'}
-                      </button>
-                      <button onClick={handleEnrichLead} disabled={saving || !(lead?.website || lead?.email)} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:opacity-50">
-                        {saving ? <Spinner size={16} className="text-white" /> : <Database className="h-4 w-4" />}
-                        {saving ? 'Enriching...' : 'Deep Enrich Lead'}
-                      </button>
-                      <button onClick={handleSaveLead} disabled={saving} className="inline-flex items-center gap-2 rounded-xl bg-zinc-950 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-zinc-800 disabled:opacity-50">
-                        <Save className="h-4 w-4" /> Save
-                      </button>
-                      <button onClick={() => navigator.clipboard.writeText(leadSummary)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
-                        <Copy className="h-4 w-4" /> Copy Summary
-                      </button>
-                      <button onClick={() => navigator.clipboard.writeText(leadContextPrompt)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
-                        <Copy className="h-4 w-4" /> Copy AI Prompt
-                      </button>
-                    </div>
-                  </div>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    {[
-                      ['pain_points', 'Pain Point'],
-                      ['ai_solution_angle', 'Solution Angle'],
-                      ['recommended_offer', 'Recommended Offer'],
-                    ].map(([key, label]) => (
-                      <div key={key} className="md:col-span-2">
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">{label}</label>
-                        <textarea value={form[key as keyof typeof form] as string} onChange={(e) => setForm((current) => ({ ...current, [key]: e.target.value }))} rows={3} className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100" />
-                      </div>
-                    ))}
-                    {[
-                      ['ai_company_summary', 'Company Summary'],
-                      ['ai_lead_analysis', 'Lead Analysis'],
-                      ['ai_outreach_strategy', 'Outreach Strategy'],
-                      ['ai_personalized_first_line', 'Personalized First Line'],
-                    ].map(([key, label]) => (
-                      <div key={key} className={key === 'ai_personalized_first_line' ? 'md:col-span-2' : ''}>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">{label}</label>
-                        <textarea value={form[key as keyof typeof form] as string} onChange={(e) => setForm((current) => ({ ...current, [key]: e.target.value }))} rows={4} className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100" />
-                      </div>
-                    ))}
-                  </div>
-                  
-                  <div className="mt-4 grid gap-4 md:grid-cols-2">
-                    {[
-                      ['ceo_name', 'CEO / Founder'],
-                      ['industry', 'Industry'],
-                      ['employee_count', 'Employee Count'],
-                      ['year_founded', 'Year Founded'],
-                      ['funding_stage', 'Funding Stage'],
-                      ['total_raised', 'Total Raised'],
-                      ['tech_stack', 'Tech Stack'],
-                    ].map(([key, label]) => (
-                      <div key={key} className={key === 'tech_stack' ? 'md:col-span-2' : ''}>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">{label}</label>
-                        <input value={form[key as keyof typeof form] as string} onChange={(e) => setForm((current) => ({ ...current, [key]: e.target.value }))} className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100" />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
-                  <h3 className="mb-4 text-base font-semibold text-zinc-950">AI Actions</h3>
-                  <div className="space-y-2">
-                    <button onClick={() => handleGenerateAi('basic', 'basic_ai')} disabled={saving} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 to-teal-500 px-4 py-3 text-sm font-semibold text-white transition hover:opacity-95 disabled:opacity-50">
-                      <Sparkles className="h-4 w-4" /> Generate Basic AI
-                    </button>
-                    <button onClick={() => handleGenerateAi('standard', 'standard_ai')} disabled={saving} className="flex w-full items-center justify-center gap-2 rounded-2xl border border-[var(--border)] bg-white px-4 py-3 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
-                      <Sparkles className="h-4 w-4 text-teal-500" /> Generate Standard AI
-                    </button>
-                    <button onClick={() => handleGenerateAi('deep', 'deep_ai')} disabled={saving} className="flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 px-4 py-3 text-sm font-semibold text-white transition hover:opacity-95">
-                      <Sparkles className="h-4 w-4" /> Generate Deep AI
-                    </button>
-                    <button onClick={() => handleGenerateAi('none', 'template_only')} disabled={saving} className="flex w-full items-center justify-center gap-2 rounded-2xl border border-[var(--border)] bg-white px-4 py-3 text-sm font-semibold text-zinc-700 transition hover:border-teal-200 hover:bg-teal-50 hover:text-teal-700">
-                      <Database className="h-4 w-4 text-teal-500" /> Use Template Only
-                    </button>
-                    <button onClick={handleSkipAi} className="flex w-full items-center justify-center gap-2 rounded-2xl border border-[var(--border)] bg-white px-4 py-3 text-sm font-semibold text-zinc-700 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700">
-                      <X className="h-4 w-4 text-rose-500" /> Skip AI
-                    </button>
-                  </div>
-                  <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                    This will use a Deep AI request. You have only 20/day. Flash Lite is recommended for bulk personalization.
-                  </div>
-                  <div className="mt-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-3 text-xs leading-5 text-zinc-600">
-                    Data quality: <span className="font-semibold text-zinc-900">{lead.data_quality_label || 'unknown'}</span>
-                    {lead.ai_usage_notes ? <div>{lead.ai_usage_notes}</div> : null}
-                    {lead.processing_error ? <div className="text-rose-700">{lead.processing_error}</div> : null}
-                  </div>
-                </div>
-              </div>
+              <IntelligencePanel
+                form={form}
+                setForm={setForm}
+                saving={saving}
+                lead={lead}
+                leadSummary={leadSummary}
+                leadContextPrompt={leadContextPrompt}
+                onAutoResearch={handleAutoResearch}
+                onEnrichLead={handleEnrichLead}
+                onSaveLead={handleSaveLead}
+                onGenerateAi={handleGenerateAi}
+                onSkipAi={handleSkipAi}
+              />
             )}
 
-            {activeTab === 'raw-data' && (
-              <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
-                <div className="mb-4 flex items-center justify-between border-b border-[var(--border)] pb-3">
-                  <h3 className="text-base font-semibold text-zinc-950">Raw Data</h3>
-                  <button onClick={() => navigator.clipboard.writeText(JSON.stringify(lead.raw_data || {}, null, 2))} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
-                    <Copy className="h-4 w-4" /> Copy Raw Data
-                  </button>
-                </div>
-                <div className="max-h-[560px] overflow-auto rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)]">
-                  <table className="w-full text-left text-xs">
-                    <tbody className="divide-y divide-[var(--border)]">
-                      {Object.entries(lead.raw_data || {})
-                        .filter(([, value]) => value !== null && value !== undefined && value !== '')
-                        .map(([key, value]) => (
-                          <tr key={key}>
-                            <td className="w-56 px-3 py-2 font-semibold text-zinc-500">{key}</td>
-                            <td className="px-3 py-2 text-zinc-900">{String(value)}</td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+            {activeTab === 'raw-data' && <RawDataPanel rawData={lead.raw_data || {}} />}
 
             {activeTab === 'manual' && (
-              <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-                <div className="space-y-6">
-                  <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
-                    <div className="mb-4 flex flex-col gap-3 border-b border-[var(--border)] pb-3 sm:flex-row sm:items-center sm:justify-between">
-                      <h3 className="text-base font-semibold text-zinc-950">Lead Context</h3>
-                      <div className="flex flex-wrap gap-2">
-                        <button onClick={() => navigator.clipboard.writeText(leadContextPrompt)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
-                          <Copy className="h-3.5 w-3.5" /> Copy Context
-                        </button>
-                        <button onClick={() => navigator.clipboard.writeText(followUpPrompt)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
-                          <Copy className="h-3.5 w-3.5" /> Copy Follow-up Prompt
-                        </button>
-                        <button onClick={() => navigator.clipboard.writeText(leadSummary)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
-                          <Copy className="h-3.5 w-3.5" /> Copy Lead Summary
-                        </button>
-                      </div>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      {[
-                        ['Company', lead.company_name || lead.company || '-'],
-                        ['Website', lead.website || '-'],
-                        ['Industry', lead.industry || '-'],
-                        ['Decision Maker', lead.decision_maker_name || leadName],
-                        ['Title', lead.decision_maker_title || '-'],
-                        ['Email', lead.email],
-                        ['Pain Points', form.pain_points || '-'],
-                        ['Solution Angle', form.ai_solution_angle || '-'],
-                        ['Recommended Offer', form.recommended_offer || '-'],
-                        ['Notes', form.notes || '-'],
-                        ['AI Outreach Strategy', form.ai_outreach_strategy || '-'],
-                        ['Raw Imported Data', Object.entries(lead.raw_data || {}).slice(0, 4).map(([key, value]) => `${key}: ${value}`).join('\n') || '-'],
-                      ].map(([label, value]) => (
-                        <div key={label} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
-                          <div className="mb-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-zinc-500">{label}</div>
-                          <div className="text-sm leading-6 text-zinc-900">{value}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-6">
-                  <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
-                    <div className="mb-4 flex flex-col gap-3 border-b border-[var(--border)] pb-4 sm:flex-row sm:items-center sm:justify-between">
-                      <h3 className="text-base font-semibold text-zinc-950">Manual Email</h3>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button onClick={() => handleSendManual('test')} disabled={sending} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 disabled:opacity-50">
-                          {sending ? <Spinner size={16} className="text-violet-600" /> : <Send className="h-4 w-4" />}
-                          {sending ? 'Sending...' : 'Send Test'}
-                        </button>
-                        <button onClick={() => handleSendManual('send_now')} disabled={sending} className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-95 disabled:opacity-50">
-                          {sending ? <Spinner size={16} className="text-white" /> : <CheckCircle2 className="h-4 w-4" />}
-                          {sending ? 'Sending...' : 'Send Now'}
-                        </button>
-                        <button onClick={() => navigator.clipboard.writeText(`Subject: ${form.manual_email_subject}\n\n${manualEmailBodyText}`)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
-                          <Copy className="h-4 w-4" /> Copy Email
-                        </button>
-                      </div>
-                    </div>
-                    <div className="space-y-4">
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">From Email Account</label>
-                          <select value={selectedEmailAccountId} onChange={(e) => setSelectedEmailAccountId(e.target.value)} className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100">
-                            <option value="">Use default</option>
-                            {emailAccounts.map((account) => <option key={account.id} value={account.id}>{account.sender_name || account.email_address}</option>)}
-                          </select>
-                        </div>
-                        <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">To Email</label>
-                          <input value={targetEmail} onChange={(e) => setTargetEmail(e.target.value)} className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100" />
-                        </div>
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Email Type</label>
-                        <select value={manualEmailType} onChange={(e) => setManualEmailType(e.target.value as (typeof EMAIL_TYPES)[number])} className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100">
-                          {EMAIL_TYPES.map((emailType) => <option key={emailType} value={emailType}>{getLeadStatusLabel(emailType)}</option>)}
-                        </select>
-                      </div>
-                      <div className="grid gap-3 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 md:grid-cols-[1fr_auto]">
-                        <div>
-                          <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Template</label>
-                          <select value={selectedTemplateId} onChange={(e) => setSelectedTemplateId(e.target.value)} className="w-full rounded-2xl border border-[var(--border)] bg-white px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100">
-                            <option value="">Select a template</option>
-                            {templateOptions.map((template) => (
-                              <option key={template.id} value={template.id}>{template.name} {template.category ? `- ${template.category}` : ''}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <button onClick={handleInsertTemplate} disabled={!selectedTemplateId} className="self-end rounded-2xl bg-violet-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-violet-700 disabled:opacity-50">
-                          Insert Template
-                        </button>
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Subject</label>
-                        <input value={form.manual_email_subject} onChange={(e) => setForm((current) => ({ ...current, manual_email_subject: e.target.value }))} className="w-full rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-900 outline-none transition focus:border-violet-300 focus:ring-2 focus:ring-violet-100" />
-                      </div>
-                      <div>
-                        <label className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Body</label>
-                        <RichTextEditor value={form.manual_email_body} onChange={(value) => setForm((current) => ({ ...current, manual_email_body: value }))} placeholder="Write a polished email. Use the toolbar to bold text, add lists, or insert links." className="mt-1" />
-                      </div>
-                      <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                          <div>
-                            <div className="text-sm font-semibold text-zinc-950">Email signature</div>
-                            <p className="mt-1 text-sm text-zinc-500">
-                              {selectedSignatureHtml
-                                ? `Signature found for ${selectedEmailAccount?.email_address}.`
-                                : `No custom signature yet. ReachMira will append ${selectedEmailAccount?.sender_name || selectedEmailAccount?.email_address || 'the sender name'} instead.`}
-                            </p>
-                          </div>
-                          <label className="inline-flex items-center gap-2 text-sm font-semibold text-zinc-700">
-                            <input
-                              type="checkbox"
-                              checked={includeSignature}
-                              onChange={(e) => setIncludeSignature(e.target.checked)}
-                              className="rounded border-zinc-300 text-violet-600 focus:ring-violet-500"
-                            />
-                            Append on send
-                          </label>
-                        </div>
-                        {selectedSendSignatureHtml && includeSignature && (
-                          <div className="mt-4 rounded-2xl border border-[var(--border)] bg-white p-4 text-sm text-zinc-900">
-                            <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-400">Preview</div>
-                            <div dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(selectedSendSignatureHtml) }} />
-                          </div>
-                        )}
-                      </div>
-                      <div className="grid gap-4 lg:grid-cols-[1fr_0.8fr]">
-                        <div className="flex flex-wrap gap-2">
-                          <button onClick={handleSaveLead} disabled={saving} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 disabled:opacity-50">
-                            <Save className="h-4 w-4" /> Save Draft
-                          </button>
-                          <button onClick={handleApproveManualEmail} disabled={saving} className="inline-flex items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-4 py-2.5 text-sm font-semibold text-teal-700 transition hover:bg-teal-100 disabled:opacity-50">
-                            <CheckCircle2 className="h-4 w-4" /> Approve Draft
-                          </button>
-                          <button onClick={() => navigator.clipboard.writeText(leadContextPrompt)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
-                            <Copy className="h-4 w-4" /> Copy Context
-                          </button>
-                          <button onClick={() => navigator.clipboard.writeText(manualEmailBodyText || '')} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-sm font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
-                            <Copy className="h-4 w-4" /> Copy Plain Text
-                          </button>
-                        </div>
-                        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
-                          <div className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">Send checklist</div>
-                          <div className="space-y-2">
-                            {sendChecklist.map((item) => (
-                              <div key={item.label} className="flex items-center justify-between rounded-xl bg-white px-3 py-2">
-                                <span className="text-sm text-zinc-700">{item.label}</span>
-                                <span className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${item.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
-                                  {item.ok ? 'Ready' : 'Needs work'}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      </div>
-                      {emailQualityIssues.length > 0 && (
-                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
-                          <div className="mb-2 flex items-center gap-2 text-sm font-semibold text-amber-900">
-                            <AlertTriangle className="h-4 w-4" /> Email quality notes
-                          </div>
-                          <div className="space-y-1 text-sm text-amber-800">
-                            {emailQualityIssues.map((issue) => (
-                              <div key={`${issue.severity}-${issue.message}`}>
-                                <span className="font-semibold">{issue.severity === 'error' ? 'Fix' : 'Check'}:</span> {issue.message}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                      {emailVerificationIssues.length > 0 && (
-                        <div className={`rounded-2xl p-4 ${emailVerificationIssues.some((issue) => issue.severity === 'error') ? 'border border-rose-200 bg-rose-50' : 'border border-amber-200 bg-amber-50'}`}>
-                          <div className={`mb-2 flex items-center gap-2 text-sm font-semibold ${emailVerificationIssues.some((issue) => issue.severity === 'error') ? 'text-rose-900' : 'text-amber-900'}`}>
-                            <AlertTriangle className="h-4 w-4" /> Email verification notes
-                          </div>
-                          <div className={`space-y-1 text-sm ${emailVerificationIssues.some((issue) => issue.severity === 'error') ? 'text-rose-800' : 'text-amber-800'}`}>
-                            {emailVerificationIssues.map((issue) => (
-                              <div key={`${issue.severity}-${issue.message}`}>
-                                <span className="font-semibold">{issue.severity === 'error' ? 'Blocked:' : 'Warning:'}</span> {issue.message}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* DNS / Authentication Guidance Box */}
-                      <div className="rounded-2xl border border-violet-100 bg-violet-50/70 p-4">
-                        <div className="flex items-center gap-2 text-sm font-semibold text-violet-900 mb-1">
-                          <ShieldAlert className="h-4 w-4 text-violet-600" />
-                          DNS & Sending Domain Authentication Guidance
-                        </div>
-                        <p className="text-xs text-violet-800/80 leading-relaxed">
-                          To protect domain reputation and avoid spam folders, verify that your sending domain has correct **SPF**, **DKIM**, and **DMARC** records set up in your DNS provider (e.g. Cloudflare, GoDaddy). If using custom SMTP, matching tracking records with custom bounce domains prevents SPF alignment errors.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <ManualEmailPanel
+                lead={lead}
+                leadName={leadName}
+                form={form}
+                setForm={setForm}
+                leadContextPrompt={leadContextPrompt}
+                followUpPrompt={followUpPrompt}
+                leadSummary={leadSummary}
+                manualEmailBodyText={manualEmailBodyText}
+                sending={sending}
+                saving={saving}
+                selectedEmailAccountId={selectedEmailAccountId}
+                onSelectedEmailAccountIdChange={setSelectedEmailAccountId}
+                emailAccounts={emailAccounts}
+                targetEmail={targetEmail}
+                onTargetEmailChange={setTargetEmail}
+                manualEmailType={manualEmailType}
+                onManualEmailTypeChange={setManualEmailType}
+                templateOptions={templateOptions}
+                selectedTemplateId={selectedTemplateId}
+                onSelectedTemplateIdChange={setSelectedTemplateId}
+                onInsertTemplate={handleInsertTemplate}
+                includeSignature={includeSignature}
+                onIncludeSignatureChange={setIncludeSignature}
+                selectedSignatureHtml={selectedSignatureHtml}
+                selectedSendSignatureHtml={selectedSendSignatureHtml}
+                selectedEmailAccount={selectedEmailAccount}
+                onSendManual={handleSendManual}
+                onSaveLead={handleSaveLead}
+                onApproveManualEmail={handleApproveManualEmail}
+                sendChecklist={sendChecklist}
+                emailQualityIssues={emailQualityIssues}
+                emailVerificationIssues={emailVerificationIssues}
+              />
             )}
 
             {activeTab === 'history' && (
-              <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
-                <div className="mb-5 flex flex-col gap-3 border-b border-[var(--border)] pb-4 sm:flex-row sm:items-center sm:justify-between">
-                  <h3 className="text-base font-semibold text-zinc-950">Email History</h3>
-                  <div className="flex items-center gap-3">
-                    {refreshing && (
-                      <span className="inline-flex items-center gap-2 rounded-full bg-violet-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-violet-700 ring-1 ring-violet-100">
-                        <span className="h-2 w-2 animate-spin rounded-full border border-violet-400 border-t-transparent" />
-                        Refreshing
-                      </span>
-                    )}
-                    <span className="text-xs text-zinc-500">{lead.sent_emails?.length || 0} emails</span>
-                  </div>
-                </div>
-                {refreshing && <div className="mb-4 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] px-4 py-3 text-sm text-zinc-600">Refreshing email history...</div>}
-                {(lead.sent_emails || []).length === 0 ? (
-                  <div className="rounded-3xl border border-dashed border-[var(--border)] bg-[var(--surface-muted)] p-8 text-center">
-                    <div className="text-sm font-semibold text-zinc-950">No sent emails yet</div>
-                    <p className="mt-2 text-sm text-zinc-500">Send a manual email or run a campaign step and the sent messages will appear here.</p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="hidden overflow-x-auto lg:block">
-                      <table className="min-w-[1100px] w-full text-left text-sm">
-                        <thead className="border-b border-[var(--border)] text-xs uppercase tracking-[0.18em] text-zinc-400">
-                          <tr>
-                            <th className="px-3 py-3">Sent At</th>
-                            <th className="px-3 py-3">Type</th>
-                            <th className="px-3 py-3">Sender</th>
-                            <th className="px-3 py-3">Recipient</th>
-                            <th className="px-3 py-3">Subject</th>
-                            <th className="px-3 py-3">Status</th>
-                            <th className="px-3 py-3">Provider</th>
-                            <th className="px-3 py-3">Signals</th>
-                            <th className="px-3 py-3">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[var(--border)]">
-                          {(lead.sent_emails || []).map((email) => (
-                            <tr key={email.id} className="cursor-pointer transition hover:bg-violet-50/50" onClick={() => setSelectedEmail(email)}>
-                              <td className="px-3 py-3 text-zinc-600">{formatDate(email.sent_at)}</td>
-                              <td className="px-3 py-3 text-zinc-600">{getLeadStatusLabel(email.email_type)}</td>
-                              <td className="px-3 py-3 text-zinc-600">{email.sender_email}</td>
-                              <td className="px-3 py-3 text-zinc-600">{email.recipient_email}</td>
-                              <td className="px-3 py-3 font-medium text-zinc-900">{email.subject}</td>
-                              <td className="px-3 py-3"><StatusBadge status={email.status} /></td>
-                              <td className="px-3 py-3 text-zinc-600">{email.provider}</td>
-                              <td className="px-3 py-3">
-                                <div className="flex flex-wrap gap-1">
-                                  {(email.opened_at || email.clicked_at) && <Badge tone="sky">Opened</Badge>}
-                                  {email.clicked_at && <Badge tone="indigo">Clicked</Badge>}
-                                  {email.replied_at && <Badge tone="emerald">Replied</Badge>}
-                                  {email.bounced_at && <Badge tone="rose">Bounced</Badge>}
-                                  {!email.opened_at && !email.clicked_at && !email.replied_at && !email.bounced_at && (
-                                    <span className="text-xs text-zinc-400">—</span>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="px-3 py-3">
-                                <div className="flex flex-wrap gap-2">
-                                  <button onClick={(event) => { event.stopPropagation(); setSelectedEmail(email); }} className="rounded-lg border border-[var(--border)] bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">View</button>
-                                  <button onClick={(event) => { event.stopPropagation(); copySentEmail(email); }} className="rounded-lg border border-[var(--border)] bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">Copy</button>
-                                  <button onClick={(event) => { event.stopPropagation(); handleUseEmailAsFollowUpContext(email); }} className="rounded-lg border border-[var(--border)] bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">Follow-up</button>
-                                  <button onClick={(event) => { event.stopPropagation(); handleResendEmail(email); }} disabled={sending} className="rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-700 transition hover:bg-teal-100 disabled:opacity-50">Resend</button>
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div className="grid gap-4 lg:hidden">
-                      {(lead.sent_emails || []).map((email) => (
-                        <div key={email.id} onClick={() => setSelectedEmail(email)} className="cursor-pointer rounded-3xl border border-[var(--border)] bg-[var(--surface-muted)] p-4 text-left transition hover:border-violet-200 hover:bg-violet-50/50">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <div className="text-sm font-semibold text-zinc-950">{email.subject}</div>
-                              <div className="mt-1 text-xs text-zinc-500">{formatDate(email.sent_at)} · {getLeadStatusLabel(email.email_type)}</div>
-                            </div>
-                            <StatusBadge status={email.status} />
-                          </div>
-                          <div className="mt-3 grid gap-1 text-sm text-zinc-600">
-                            <div><span className="font-medium text-zinc-900">From:</span> {email.sender_email}</div>
-                            <div><span className="font-medium text-zinc-900">To:</span> {email.recipient_email}</div>
-                            <div><span className="font-medium text-zinc-900">Provider:</span> {email.provider}</div>
-                          </div>
-                          <div className="mt-4 flex flex-wrap gap-2">
-                            <button onClick={(event) => { event.stopPropagation(); setSelectedEmail(email); }} className="rounded-lg border border-[var(--border)] bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-700">View</button>
-                            <button onClick={(event) => { event.stopPropagation(); copySentEmail(email); }} className="rounded-lg border border-[var(--border)] bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-700">Copy</button>
-                            <button onClick={(event) => { event.stopPropagation(); handleUseEmailAsFollowUpContext(email); }} className="rounded-lg border border-[var(--border)] bg-white px-2.5 py-1.5 text-xs font-semibold text-zinc-700">Follow-up</button>
-                            <button onClick={(event) => { event.stopPropagation(); handleResendEmail(email); }} disabled={sending} className="rounded-lg border border-teal-200 bg-teal-50 px-2.5 py-1.5 text-xs font-semibold text-teal-700 disabled:opacity-50">Resend</button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
+              <EmailHistoryPanel
+                sentEmails={lead.sent_emails || []}
+                refreshing={refreshing}
+                sending={sending}
+                onSelectEmail={setSelectedEmail}
+                onCopyEmail={copySentEmail}
+                onUseAsFollowUp={handleUseEmailAsFollowUpContext}
+                onResend={handleResendEmail}
+              />
             )}
 
             {activeTab === 'replies' && (
-              <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
-                <div className="mb-5 flex flex-col gap-3 border-b border-[var(--border)] pb-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <h3 className="text-base font-semibold text-zinc-950">Replies</h3>
-                    <p className="mt-1 text-sm text-zinc-500">Read inbound replies captured from Mailgun or IMAP reply detection.</p>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={handleCheckRepliesNow}
-                      disabled={refreshing || checkingReplies}
-                      className="inline-flex items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-700 transition hover:bg-teal-100 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      <Clock3 className={`h-3.5 w-3.5 ${refreshing || checkingReplies ? 'animate-spin' : ''}`} />
-                      {checkingReplies ? 'Checking inbox...' : refreshing ? 'Refreshing...' : 'Check inbox'}
-                    </button>
-                    {refreshing && (
-                      <span className="inline-flex items-center gap-2 rounded-full bg-violet-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-violet-700 ring-1 ring-violet-100">
-                        <span className="h-2 w-2 animate-spin rounded-full border border-violet-400 border-t-transparent" />
-                        Refreshing
-                      </span>
-                    )}
-                    <span className="rounded-full bg-teal-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-teal-700 ring-1 ring-teal-100">
-                      {replyEvents.length} replies
-                    </span>
-                  </div>
-                </div>
-
-                {/* Reply Outcome Classifier Box */}
-                <div className="mb-6 rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div>
-                      <div className="text-sm font-semibold text-zinc-950">Reply Outcome Classification</div>
-                      <p className="text-xs text-zinc-500 mt-1">Classify the prospect's interest level manually for tracking.</p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={form.reply_outcome}
-                        onChange={(e) => setForm((current) => ({ ...current, reply_outcome: e.target.value }))}
-                        className="rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs text-zinc-950 outline-none focus:border-violet-500"
-                      >
-                        <option value="">-- Unclassified --</option>
-                        <option value="Interested">Interested</option>
-                        <option value="Not interested">Not interested</option>
-                        <option value="Asked for details">Asked for details</option>
-                        <option value="Demo requested">Demo requested</option>
-                        <option value="Proposal requested">Proposal requested</option>
-                      </select>
-                      <button
-                        onClick={handleSaveLead}
-                        disabled={saving}
-                        className="rounded-xl bg-violet-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-violet-700 transition"
-                      >
-                        Save Outcome
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {replyEvents.length === 0 ? (
-                  <div className="rounded-3xl border border-dashed border-[var(--border)] bg-[var(--surface-muted)] p-8 text-center">
-                    <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-50 text-violet-700">
-                      <MessageSquare className="h-5 w-5" />
-                    </div>
-                    <div className="text-sm font-semibold text-zinc-950">No replies captured yet</div>
-                    <p className="mt-2 text-sm text-zinc-500">When a lead replies, the message will appear here and future follow-ups will stop automatically.</p>
-                  </div>
-                ) : (
-                  <div className="grid gap-4">
-                    {replyEvents.map((reply) => {
-                      const replyBody = getReplyBodyText(reply);
-                      return (
-                        <article key={reply.id} className="rounded-3xl border border-[var(--border)] bg-[var(--surface-muted)] p-5">
-                          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                            <div className="min-w-0">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="rounded-full bg-violet-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-violet-700 ring-1 ring-violet-100">
-                                  Reply received
-                                </span>
-                                <span className="text-xs text-zinc-500">{formatDate(reply.createdAt)}</span>
-                              </div>
-                              <h4 className="mt-3 text-base font-semibold text-zinc-950">{reply.subject}</h4>
-                              <div className="mt-2 grid gap-1 text-sm text-zinc-600">
-                                <div><span className="font-medium text-zinc-900">From:</span> {reply.sender || lead?.email || 'Unknown sender'}</div>
-                                {reply.recipient && <div><span className="font-medium text-zinc-900">To:</span> {reply.recipient}</div>}
-                                <div><span className="font-medium text-zinc-900">Source:</span> {reply.source.replace(/_/g, ' ')}</div>
-                              </div>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <button onClick={() => copyReply(reply)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
-                                <Copy className="h-3.5 w-3.5" /> Copy Reply
-                              </button>
-                              <button onClick={() => handleUseReplyAsFollowUpContext(reply)} className="inline-flex items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-700 transition hover:bg-teal-100">
-                                <Edit3 className="h-3.5 w-3.5" /> Use as Follow-up
-                              </button>
-                            </div>
-                          </div>
-                          <pre className="mt-4 max-h-[420px] overflow-auto whitespace-pre-wrap rounded-2xl border border-[var(--border)] bg-white p-4 text-sm leading-6 text-zinc-800">
-                            {replyBody || 'Reply body was not stored for this event. New inbound webhook replies will include the full message body.'}
-                          </pre>
-                        </article>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
+              <RepliesPanel
+                replyEvents={replyEvents}
+                refreshing={refreshing}
+                checkingReplies={checkingReplies}
+                onCheckRepliesNow={handleCheckRepliesNow}
+                replyOutcome={form.reply_outcome}
+                onReplyOutcomeChange={(value) => setForm((current) => ({ ...current, reply_outcome: value }))}
+                saving={saving}
+                onSaveOutcome={handleSaveLead}
+                leadEmail={lead?.email}
+                onCopyReply={copyReply}
+                onUseAsFollowUp={handleUseReplyAsFollowUpContext}
+              />
             )}
 
-            {activeTab === 'timeline' && (
-              <div className="rounded-3xl border border-[var(--border)] bg-white p-6 shadow-[0_12px_40px_rgba(15,23,42,0.04)]">
-                <div className="mb-5 flex items-center justify-between border-b border-[var(--border)] pb-4">
-                  <h3 className="text-base font-semibold text-zinc-950">Timeline</h3>
-                  <span className="text-xs text-zinc-500">{timeline.length} events</span>
-                </div>
-                <div className="grid gap-3">
-                  {timeline.map((item) => (
-                    <div key={item.id} className="rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] p-4">
-                      <div className="flex items-start justify-between gap-4">
-                        <div>
-                          <div className="font-semibold text-zinc-950">{item.title}</div>
-                          <div className="mt-1 text-sm leading-6 text-zinc-600">{item.message}</div>
-                        </div>
-                        <div className="text-xs text-zinc-500">{formatDate(eventTimestamp(item))}</div>
-                      </div>
-                      {item.metadata && Object.keys(item.metadata).length > 0 && (
-                        <pre className="mt-3 overflow-x-auto rounded-2xl bg-white p-3 text-[11px] text-zinc-600">{JSON.stringify(item.metadata, null, 2)}</pre>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {activeTab === 'timeline' && <TimelinePanel timeline={timeline} />}
           </div>
         ) : (
           <div className="rounded-3xl border border-rose-200 bg-rose-50 p-6 text-sm text-rose-700">
@@ -1810,53 +1176,15 @@ export default function LeadWorkspace({ leadId, title, subtitle, backHref, backL
           </div>
         )}
 
-        {selectedEmail && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm sm:p-6">
-            <div className="max-h-[90vh] w-full max-w-3xl overflow-auto rounded-3xl border border-[var(--border)] bg-white p-6 shadow-2xl">
-              <div className="mb-4 flex items-start justify-between gap-4 border-b border-[var(--border)] pb-4">
-                <div>
-                  <h3 className="text-lg font-semibold text-zinc-950">{selectedEmail.subject}</h3>
-                  <p className="mt-1 text-sm text-zinc-500">{selectedEmail.sender_email} to {selectedEmail.recipient_email}</p>
-                </div>
-                <button onClick={() => setSelectedEmail(null)} className="inline-flex h-10 w-10 items-center justify-center rounded-2xl border border-[var(--border)] bg-[var(--surface-muted)] text-zinc-500 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-              <div className="mb-4 flex flex-wrap gap-2">
-                <StatusBadge status={selectedEmail.status} />
-                <span className="rounded-full bg-violet-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-violet-700 ring-1 ring-violet-100">
-                  {getLeadStatusLabel(selectedEmail.email_type)}
-                </span>
-                <span className="rounded-full bg-teal-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-teal-700 ring-1 ring-teal-100">
-                  {selectedEmail.provider}
-                </span>
-              </div>
-              <div className="mb-4 flex flex-wrap gap-2">
-                <button onClick={() => copySentEmail(selectedEmail)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
-                  <Copy className="h-3.5 w-3.5" /> Copy Email
-                </button>
-                <button onClick={() => copyPreviousEmailPrompt(selectedEmail)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
-                  <Copy className="h-3.5 w-3.5" /> Copy Follow-up Prompt
-                </button>
-                <button onClick={() => handleUseEmailAsFollowUpContext(selectedEmail)} className="inline-flex items-center gap-2 rounded-xl border border-[var(--border)] bg-white px-3 py-2 text-xs font-semibold text-zinc-700 transition hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700">
-                  <Edit3 className="h-3.5 w-3.5" /> Use as Follow-up Context
-                </button>
-                <button onClick={() => handleResendEmail(selectedEmail)} disabled={sending} className="inline-flex items-center gap-2 rounded-xl border border-teal-200 bg-teal-50 px-3 py-2 text-xs font-semibold text-teal-700 transition hover:bg-teal-100 disabled:opacity-50">
-                  <Send className="h-3.5 w-3.5" /> Resend
-                </button>
-              </div>
-              {selectedEmail.body_html ? (
-                <div className="rounded-3xl border border-[var(--border)] bg-[var(--surface-muted)] p-5 text-sm text-zinc-900">
-                  <div dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(selectedEmail.body_html) }} />
-                </div>
-              ) : (
-                <pre className="whitespace-pre-wrap rounded-3xl border border-[var(--border)] bg-[var(--surface-muted)] p-5 text-sm leading-6 text-zinc-900">
-                  {selectedEmail.body_text || htmlToPlainText(selectedEmail.body_html || '') || 'No body available.'}
-                </pre>
-              )}
-            </div>
-          </div>
-        )}
+        <SentEmailModal
+          email={selectedEmail}
+          sending={sending}
+          onClose={() => setSelectedEmail(null)}
+          onCopyEmail={copySentEmail}
+          onCopyFollowUpPrompt={copyPreviousEmailPrompt}
+          onUseAsFollowUp={handleUseEmailAsFollowUpContext}
+          onResend={handleResendEmail}
+        />
       </div>
       {confirmDialog}
     </AppShell>
