@@ -27,6 +27,9 @@ interface EmailAccount {
   daily_sent_count: number;
   is_default: boolean;
   warmup_enabled: boolean;
+  warmup_started_at: string | null;
+  effective_daily_limit?: number;
+  warmup_day?: number | null;
   status: 'active' | 'inactive';
 }
 
@@ -498,15 +501,20 @@ export default function EmailAccountsPage() {
                       <div className="flex items-center gap-1.5 text-xs text-zinc-500">
                         <Flame className={`h-3.5 w-3.5 ${account.warmup_enabled ? 'animate-pulse text-orange-500' : 'text-zinc-400'}`} />
                         Warmup: 
-                        <button 
+                        <button
                           onClick={() => handleWarmupToggle(account)}
                           className="cursor-pointer font-medium text-violet-700 hover:underline"
                         >
                           {account.warmup_enabled ? 'ON' : 'OFF'}
                         </button>
+                        {account.warmup_enabled && account.warmup_day != null && (
+                          <span className="text-[10px] text-zinc-400">
+                            (day {account.warmup_day}/14{account.warmup_day >= 14 ? ' · ramped up' : ''})
+                          </span>
+                        )}
                       </div>
                       <div className="text-xs text-zinc-500">
-                        Today sent: <span className="font-medium text-zinc-900">{account.daily_sent_count}</span> / <span className="text-zinc-700">{account.daily_send_limit}</span>
+                        Today sent: <span className="font-medium text-zinc-900">{account.daily_sent_count}</span> / <span className="text-zinc-700">{account.effective_daily_limit ?? account.daily_send_limit}</span>
                       </div>
                     </div>
                   </div>

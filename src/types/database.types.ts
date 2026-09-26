@@ -379,6 +379,7 @@ export interface EmailAccount {
   last_sent_reset_date: string;
   is_default: boolean;
   warmup_enabled: boolean;
+  warmup_started_at: string | null;
   status: 'active' | 'inactive';
   created_at: string;
   updated_at: string;

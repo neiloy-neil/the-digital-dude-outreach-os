@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { maskEmailAccountConfig } from '@/types/email-provider';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
+import { calculateWarmupDailyLimit, WARMUP_RAMP_DAYS } from '@/lib/queue/queue';
 
 export async function GET() {
   const supabase = await createClient();
@@ -23,11 +24,25 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // Mask config secrets
-    const safeAccounts = (accounts || []).map(account => ({
-      ...account,
-      config: maskEmailAccountConfig(account.provider, account.config),
-    }));
+    // Mask config secrets, and surface the warmup-ramped effective limit
+    const safeAccounts = (accounts || []).map(account => {
+      const effectiveLimit = account.warmup_enabled
+        ? calculateWarmupDailyLimit(account.daily_send_limit, account.warmup_started_at)
+        : account.daily_send_limit;
+      const warmupDay = account.warmup_enabled
+        ? Math.min(
+            WARMUP_RAMP_DAYS,
+            Math.floor((Date.now() - new Date(account.warmup_started_at ?? Date.now()).getTime()) / 86_400_000) + 1
+          )
+        : null;
+
+      return {
+        ...account,
+        config: maskEmailAccountConfig(account.provider, account.config),
+        effective_daily_limit: effectiveLimit,
+        warmup_day: warmupDay,
+      };
+    });
 
     return NextResponse.json(safeAccounts);
   } catch (err: any) {

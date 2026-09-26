@@ -112,6 +112,38 @@ export async function getCampaignDailySendCount(campaignId: string, supabaseClie
   return count || 0;
 }
 
+export const WARMUP_START_VOLUME = 5;
+export const WARMUP_RAMP_DAYS = 14; // day 0..13; day 13+ = target, held steady
+
+/**
+ * Computes the effective daily send cap for an account during its warmup
+ * ramp: day 0 (the calendar day warmup_started_at falls on) starts at
+ * min(WARMUP_START_VOLUME, targetLimit), increasing linearly until day
+ * WARMUP_RAMP_DAYS - 1, where it reaches (and then holds at) targetLimit.
+ */
+export function calculateWarmupDailyLimit(
+  targetLimit: number,
+  warmupStartedAt: string | null,
+  now: Date = new Date()
+): number {
+  const startVolume = Math.min(WARMUP_START_VOLUME, targetLimit);
+
+  // Defensive: warmup_enabled=true but no anchor recorded yet — treat as day 0
+  // starting now rather than silently granting the full unramped target.
+  const anchor = warmupStartedAt ? warmupStartedAt.split('T')[0] : now.toISOString().split('T')[0];
+  const todayStr = now.toISOString().split('T')[0];
+  const anchorDate = new Date(`${anchor}T00:00:00Z`);
+  const todayDate = new Date(`${todayStr}T00:00:00Z`);
+  const dayIndex = Math.floor((todayDate.getTime() - anchorDate.getTime()) / 86_400_000);
+
+  if (dayIndex <= 0) return startVolume;
+  if (dayIndex >= WARMUP_RAMP_DAYS - 1) return targetLimit;
+
+  const progress = dayIndex / (WARMUP_RAMP_DAYS - 1);
+  const raw = startVolume + progress * (targetLimit - startVolume);
+  return Math.max(startVolume, Math.min(targetLimit, Math.floor(raw)));
+}
+
 /**
  * Calculates and manages daily send limit capacity for an email account.
  * Resets the count automatically if the last reset date was before today.
@@ -150,13 +182,20 @@ export async function getAvailableSendCapacity(emailAccountId: string, supabaseC
 
     if (resetError || !updatedAccount) {
       console.error('Error resetting daily sent count:', resetError);
-      return account.daily_send_limit;
+      return account.warmup_enabled
+        ? calculateWarmupDailyLimit(account.daily_send_limit, account.warmup_started_at)
+        : account.daily_send_limit;
     }
 
-    return updatedAccount.daily_send_limit;
+    return updatedAccount.warmup_enabled
+      ? calculateWarmupDailyLimit(updatedAccount.daily_send_limit, updatedAccount.warmup_started_at)
+      : updatedAccount.daily_send_limit;
   }
 
-  const available = account.daily_send_limit - account.daily_sent_count;
+  const effectiveLimit = account.warmup_enabled
+    ? calculateWarmupDailyLimit(account.daily_send_limit, account.warmup_started_at)
+    : account.daily_send_limit;
+  const available = effectiveLimit - account.daily_sent_count;
   return Math.max(0, available);
 }
 

@@ -298,6 +298,7 @@ CREATE TABLE IF NOT EXISTS public.email_accounts (
   last_sent_reset_date date DEFAULT current_date NOT NULL,
   is_default boolean DEFAULT false NOT NULL,
   warmup_enabled boolean DEFAULT false NOT NULL,
+  warmup_started_at timestamp with time zone,
   status text DEFAULT 'active' NOT NULL,
   created_at timestamp with time zone DEFAULT now() NOT NULL,
   updated_at timestamp with time zone DEFAULT now() NOT NULL

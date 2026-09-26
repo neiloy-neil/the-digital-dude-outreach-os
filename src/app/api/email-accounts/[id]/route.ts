@@ -35,7 +35,16 @@ export async function PATCH(
     if (email_address !== undefined) updateData.email_address = email_address;
     if (sender_name !== undefined) updateData.sender_name = sender_name;
     if (daily_send_limit !== undefined) updateData.daily_send_limit = daily_send_limit;
-    if (warmup_enabled !== undefined) updateData.warmup_enabled = warmup_enabled;
+    if (warmup_enabled !== undefined) {
+      updateData.warmup_enabled = warmup_enabled;
+      // Stamp the anchor only the first time warmup is ever enabled for this
+      // account. Toggling off and back on later resumes from the original
+      // start rather than restarting the ramp, so once set this is never
+      // overwritten again.
+      if (warmup_enabled === true && !existingAccount.warmup_started_at) {
+        updateData.warmup_started_at = new Date().toISOString();
+      }
+    }
     if (status !== undefined) updateData.status = status;
 
     // Merge config keys, preserving secrets if masked
