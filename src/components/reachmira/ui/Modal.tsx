@@ -25,6 +25,11 @@ const FOCUSABLE_SELECTOR =
 
 export default function Modal({ open, onClose, title, children, maxWidth = '3xl' }: ModalProps) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -39,7 +44,7 @@ export default function Modal({ open, onClose, title, children, maxWidth = '3xl'
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key === 'Tab' && panel) {
@@ -65,7 +70,12 @@ export default function Modal({ open, onClose, title, children, maxWidth = '3xl'
       document.body.style.overflow = previousOverflow;
       previouslyFocused?.focus?.();
     };
-  }, [open, onClose]);
+    // Only re-run when the modal opens/closes — not on every parent render.
+    // onClose is almost always a fresh inline closure at call sites, so
+    // including it here would re-trigger this effect (and panel.focus(),
+    // stealing focus from whatever's currently focused inside the modal,
+    // e.g. an input mid-keystroke) on every unrelated state update.
+  }, [open]);
 
   if (!open) return null;
 
