@@ -73,6 +73,79 @@ export async function getAiSettingsForUser(
   return settings;
 }
 
+export interface AiBudgetReservation {
+  reservationId: string | null;
+  dailyCalls: number;
+  monthlyCalls: number;
+  dailyDeepCalls: number;
+  reason: 'daily' | 'monthly' | 'deep' | null;
+}
+
+/**
+ * Atomically checks and reserves one AI-call slot against a user's daily/
+ * monthly/deep budget via the reserve_ai_call_budget RPC, which serializes
+ * concurrent callers with a per-user advisory lock and inserts a real
+ * ai_usage_logs row (skipped=false) as the reservation itself — so a
+ * concurrent bulk-analyze batch can't all read the same stale count and
+ * overshoot the configured limit. On success, update the returned
+ * reservationId with real usage details via updateAiUsageLog once the
+ * Gemini call completes; on failure (reservationId is null), nothing was
+ * inserted, so there is nothing to release.
+ */
+export async function reserveAiCallBudget(
+  supabase: SupabaseClient,
+  params: {
+    userId: string;
+    dailyLimit: number;
+    monthlyLimit: number;
+    dailyDeepLimit: number;
+    isDeep: boolean;
+    model: string;
+  }
+): Promise<AiBudgetReservation> {
+  const { data, error } = await supabase.rpc('reserve_ai_call_budget', {
+    p_user_id: params.userId,
+    p_daily_limit: params.dailyLimit,
+    p_monthly_limit: params.monthlyLimit,
+    p_daily_deep_limit: params.dailyDeepLimit,
+    p_is_deep: params.isDeep,
+    p_model: params.model,
+  });
+
+  if (error) {
+    console.error('Failed to reserve AI call budget:', error);
+    return { reservationId: null, dailyCalls: 0, monthlyCalls: 0, dailyDeepCalls: 0, reason: 'daily' };
+  }
+
+  const result = (data || {}) as Record<string, unknown>;
+  return {
+    reservationId: (result.reservation_id as string | null) ?? null,
+    dailyCalls: Number(result.daily_calls || 0),
+    monthlyCalls: Number(result.monthly_calls || 0),
+    dailyDeepCalls: Number(result.daily_deep_calls || 0),
+    reason: (result.reason as AiBudgetReservation['reason']) ?? null,
+  };
+}
+
+export async function updateAiUsageLog(
+  supabase: SupabaseClient,
+  id: string,
+  entry: Partial<Omit<AiUsageLog, 'id' | 'created_at' | 'user_id'>>
+) {
+  const payload = {
+    ...entry,
+    model_used: entry.model_used ?? entry.model ?? undefined,
+    input_tokens: entry.input_tokens ?? entry.tokens_prompt ?? undefined,
+    output_tokens: entry.output_tokens ?? entry.tokens_completion ?? undefined,
+    total_tokens: entry.total_tokens ?? entry.tokens_total ?? undefined,
+  } as Record<string, unknown>;
+
+  const { error } = await supabase.from('ai_usage_logs').update(payload).eq('id', id);
+  if (error) {
+    console.error('Failed to update AI usage log:', error);
+  }
+}
+
 export async function recordAiUsageLog(
   supabase: SupabaseClient,
   entry: Omit<AiUsageLog, 'id' | 'created_at'>

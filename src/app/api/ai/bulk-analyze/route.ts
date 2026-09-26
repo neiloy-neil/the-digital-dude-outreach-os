@@ -4,6 +4,38 @@ import { createServiceClient } from '@/utils/supabase/service';
 import { analyzeSingleLead } from '@/lib/ai/analyze-lead';
 import { getAiSettingsForUser } from '@/lib/ai/runtime';
 
+const CONCURRENCY_LIMIT = 3;
+
+type SettledResult<T> = { status: 'fulfilled'; value: T } | { status: 'rejected'; reason: unknown };
+
+// Bounded-concurrency alternative to Promise.allSettled: correctness against
+// the daily/monthly AI budget no longer depends on this (reserve_ai_call_budget
+// serializes concurrent reservations atomically), but capping how many leads
+// hit Gemini at once still avoids needlessly hammering the API and the
+// per-user advisory lock for a whole batch at once.
+async function runWithConcurrencyLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<SettledResult<R>[]> {
+  const results: SettledResult<R>[] = new Array(items.length);
+  let cursor = 0;
+
+  async function worker() {
+    while (cursor < items.length) {
+      const index = cursor++;
+      try {
+        results[index] = { status: 'fulfilled', value: await fn(items[index]) };
+      } catch (reason) {
+        results[index] = { status: 'rejected', reason };
+      }
+    }
+  }
+
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
+  return results;
+}
+
 export async function POST(request: Request) {
   const supabase = await createClient();
 
@@ -43,23 +75,19 @@ export async function POST(request: Request) {
       .update({ ai_status: 'processing', processing_started_at: new Date().toISOString(), processing_error: null })
       .in('id', batchLeads);
 
-    const promises = batchLeads.map((leadId: string) => 
+    const resultsRaw = await runWithConcurrencyLimit(batchLeads, CONCURRENCY_LIMIT, (leadId: string) =>
       analyzeSingleLead({
         supabase,
         serviceSupabase,
         user,
         leadId,
         campaignId,
-      }).catch((err: any) => {
-        return { error: err.message };
       })
     );
-
-    const resultsRaw = await Promise.allSettled(promises);
     const results = resultsRaw.map((result, i) => {
       const leadId = batchLeads[i];
       if (result.status === 'fulfilled' && !(result.value as any).error) {
-         return { id: leadId, success: true, ...result.value };
+         return { id: leadId, ...result.value };
       } else {
          const errReason = result.status === 'rejected' ? (result.reason as any)?.message : (result.value as any).error;
          supabase

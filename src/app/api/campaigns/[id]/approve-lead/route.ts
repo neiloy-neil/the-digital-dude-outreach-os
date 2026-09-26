@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
+import { validateAiEmailContent } from '@/lib/ai/validate-content';
 
 export async function POST(
   request: Request,
@@ -39,6 +40,13 @@ export async function POST(
     }
 
     if (action === 'approve') {
+      if (subject || body) {
+        const validation = validateAiEmailContent(subject || '', body || '');
+        if (!validation.valid) {
+          return NextResponse.json({ error: `Cannot approve: ${validation.reason}` }, { status: 400 });
+        }
+      }
+
       // 1. Fetch Step 1 of the sequence
       const { data: sequences } = await supabase
         .from('sequences')

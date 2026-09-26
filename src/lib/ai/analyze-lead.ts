@@ -19,17 +19,12 @@ import {
   getAiSettingsForUser,
   getCompanyEnrichmentCache,
   recordAiUsageLog,
+  reserveAiCallBudget,
+  updateAiUsageLog,
   upsertCompanyEnrichmentCache,
 } from '@/lib/ai/runtime';
 
-const budgetCache = new Map<string, {
-  dailyCalls: number;
-  monthlyCalls: number;
-  dailyDeepCalls: number;
-  expiresAt: number;
-}>();
-
-function cleanHtml(html: string): string {
+export function cleanHtml(html: string): string {
   let text = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
   text = text.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
   text = text.replace(/<!--[\s\S]*?-->/g, '');
@@ -38,7 +33,7 @@ function cleanHtml(html: string): string {
   return text.trim();
 }
 
-async function scrapeWebsite(url: string): Promise<string> {
+export async function scrapeWebsite(url: string): Promise<string> {
   const targetUrl = url.startsWith('http') ? url : `https://${url}`;
   try {
     const controller = new AbortController();
@@ -63,7 +58,7 @@ async function scrapeWebsite(url: string): Promise<string> {
   }
 }
 
-function parseJsonResponse(responseText: string): Record<string, unknown> {
+export function parseJsonResponse(responseText: string): Record<string, unknown> {
   const trimmed = responseText.trim().replace(/^```json\s*/i, '').replace(/```$/i, '');
   try {
     return JSON.parse(trimmed);
@@ -77,19 +72,6 @@ function parseJsonResponse(responseText: string): Record<string, unknown> {
     }
     throw error;
   }
-}
-
-function startOfDayIso() {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return now.toISOString();
-}
-
-function startOfMonthIso() {
-  const now = new Date();
-  now.setDate(1);
-  now.setHours(0, 0, 0, 0);
-  return now.toISOString();
 }
 
 function mergeCompanySummary(
@@ -344,76 +326,41 @@ export async function analyzeSingleLead({
   const prompt = buildCompactAiPrompt(promptInput);
   const promptTokens = estimateTokensFromText(prompt);
 
-  const dailyFrom = startOfDayIso();
-  const monthlyFrom = startOfMonthIso();
   const nowIso = new Date().toISOString();
 
-  const budgetCacheKey = `${user.id}:${dailyFrom}`;
-  const cachedBudget = budgetCache.get(budgetCacheKey);
-  let dailyCalls = 0;
-  let monthlyCalls = 0;
-  let dailyDeepCalls = 0;
-
-  if (cachedBudget && cachedBudget.expiresAt > Date.now()) {
-    dailyCalls = cachedBudget.dailyCalls;
-    monthlyCalls = cachedBudget.monthlyCalls;
-    dailyDeepCalls = cachedBudget.dailyDeepCalls;
-  } else {
-    const [dailyUsage, monthlyUsage, dailyDeepUsage] = await Promise.all([
-      serviceSupabase
-        .from('ai_usage_logs')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('skipped', false)
-        .eq('cache_hit', false)
-        .gte('created_at', dailyFrom),
-      serviceSupabase
-        .from('ai_usage_logs')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('skipped', false)
-        .eq('cache_hit', false)
-        .gte('created_at', monthlyFrom),
-      serviceSupabase
-        .from('ai_usage_logs')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('skipped', false)
-        .eq('cache_hit', false)
-        .eq('model', 'gemini-2.5-flash')
-        .gte('created_at', dailyFrom),
-    ]);
-
-    dailyCalls = dailyUsage.count || 0;
-    monthlyCalls = monthlyUsage.count || 0;
-    dailyDeepCalls = dailyDeepUsage.count || 0;
-
-    budgetCache.set(budgetCacheKey, {
-      dailyCalls,
-      monthlyCalls,
-      dailyDeepCalls,
-      expiresAt: Date.now() + 30 * 1000,
-    });
-  }
   const dailyLimit = aiSettings.daily_ai_limit ?? 0;
   const monthlyLimit = aiSettings.monthly_ai_limit ?? 0;
   const dailyDeepLimit = aiSettings.daily_deep_ai_limit ?? 0;
-  const budgetExceeded =
-    Boolean(aiSettings.stop_ai_when_limit_reached) &&
-    ((dailyLimit > 0 && dailyCalls >= dailyLimit) || (monthlyLimit > 0 && monthlyCalls >= monthlyLimit));
-  const deepLimitExceeded =
-    decision.model === 'gemini-2.5-flash' &&
-    dailyDeepLimit > 0 &&
-    dailyDeepCalls >= dailyDeepLimit;
+  const isDeepModel = decision.model === 'gemini-2.5-flash';
+  const stopWhenLimitReached = Boolean(aiSettings.stop_ai_when_limit_reached);
+  const wouldAttemptGemini = decision.allowGemini && Boolean(profile.gemini_api_key);
 
-  if (budgetExceeded) {
-    usageSkipReason = `AI budget limit reached (${dailyCalls}/${dailyLimit} today, ${monthlyCalls}/${monthlyLimit} this month).`;
-  }
-  if (deepLimitExceeded) {
-    usageSkipReason = `Deep AI daily limit reached (${dailyDeepCalls}/${dailyDeepLimit}).`;
+  // Atomically reserve a budget slot (rather than reading a stale count and
+  // deciding locally) so concurrent bulk-analyze calls can't all see the
+  // same pre-batch count and overshoot the configured limit — see
+  // reserve_ai_call_budget in supabase/migrations for the transactional
+  // count-and-insert this wraps.
+  let reservationId: string | null = null;
+  if (wouldAttemptGemini) {
+    const reservation = await reserveAiCallBudget(serviceSupabase, {
+      userId: user.id,
+      dailyLimit: stopWhenLimitReached ? dailyLimit : 0,
+      monthlyLimit: stopWhenLimitReached ? monthlyLimit : 0,
+      dailyDeepLimit,
+      isDeep: isDeepModel,
+      model: decision.model,
+    });
+    reservationId = reservation.reservationId;
+
+    if (!reservationId) {
+      usageSkipReason =
+        reservation.reason === 'deep'
+          ? `Deep AI daily limit reached (${reservation.dailyDeepCalls}/${dailyDeepLimit}).`
+          : `AI budget limit reached (${reservation.dailyCalls}/${dailyLimit} today, ${reservation.monthlyCalls}/${monthlyLimit} this month).`;
+    }
   }
 
-  const shouldUseGemini = decision.allowGemini && !budgetExceeded && !deepLimitExceeded && Boolean(profile.gemini_api_key);
+  const shouldUseGemini = Boolean(reservationId);
   const localFallback = buildTemplateFallbackPrompt({
     campaign: campaignContext,
     lead: { ...leadContext, ai_depth: decision.depth, ai_company_summary: companySummary },
@@ -519,26 +466,47 @@ export async function analyzeSingleLead({
     throw updateError;
   }
 
-  await recordAiUsageLog(serviceSupabase, {
-    user_id: user.id,
-    campaign_id: campaignId,
-    lead_id: lead.id,
-    company_cache_id: companyCacheId,
-    operation: 'analyze_lead',
-    ai_mode: campaignContext.ai_mode || 'hybrid_smart',
-    ai_depth: decision.depth,
-    model_used: aiModelUsed,
-    input_hash: inputHash,
-    prompt_version: AI_PROMPT_VERSION,
-    cache_hit: aiCached,
-    skipped: aiStatus === 'skipped',
-    skip_reason: usageSkipReason || (aiStatus === 'skipped' ? decision.reason : null),
-    tokens_prompt: promptTokens,
-    tokens_completion: completionTokens,
-    tokens_total: totalTokens,
-    estimated_cost: estimateAiCost(totalTokens),
-    usage_notes: usageSkipReason || (companyCacheHit ? 'Company enrichment reused from cache.' : null),
-  });
+  if (reservationId) {
+    // The reservation already inserted a real (skipped=false) usage-log row
+    // atomically as part of the budget check — fill it in with the actual
+    // outcome instead of inserting a second row for the same call.
+    await updateAiUsageLog(serviceSupabase, reservationId, {
+      campaign_id: campaignId,
+      lead_id: lead.id,
+      company_cache_id: companyCacheId,
+      ai_mode: campaignContext.ai_mode || 'hybrid_smart',
+      ai_depth: decision.depth,
+      model_used: aiModelUsed,
+      input_hash: inputHash,
+      prompt_version: AI_PROMPT_VERSION,
+      tokens_prompt: promptTokens,
+      tokens_completion: completionTokens,
+      tokens_total: totalTokens,
+      estimated_cost: estimateAiCost(totalTokens),
+      usage_notes: companyCacheHit ? 'Company enrichment reused from cache.' : null,
+    });
+  } else {
+    await recordAiUsageLog(serviceSupabase, {
+      user_id: user.id,
+      campaign_id: campaignId,
+      lead_id: lead.id,
+      company_cache_id: companyCacheId,
+      operation: 'analyze_lead',
+      ai_mode: campaignContext.ai_mode || 'hybrid_smart',
+      ai_depth: decision.depth,
+      model_used: aiModelUsed,
+      input_hash: inputHash,
+      prompt_version: AI_PROMPT_VERSION,
+      cache_hit: aiCached,
+      skipped: aiStatus === 'skipped',
+      skip_reason: usageSkipReason || (aiStatus === 'skipped' ? decision.reason : null),
+      tokens_prompt: promptTokens,
+      tokens_completion: completionTokens,
+      tokens_total: totalTokens,
+      estimated_cost: estimateAiCost(totalTokens),
+      usage_notes: usageSkipReason || (companyCacheHit ? 'Company enrichment reused from cache.' : null),
+    });
+  }
 
   if (resultPayload && companyCacheId === null) {
     await upsertCompanyEnrichmentCache(serviceSupabase, {

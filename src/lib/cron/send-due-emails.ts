@@ -10,6 +10,7 @@ import { checkSuppression } from '@/lib/suppression/check-suppression';
 import { buildEmailMessageBodies } from '@/lib/email/html';
 import { generateTrackingToken, instrumentEmailHtml } from '@/lib/email/tracking';
 import { appendEmailSignature } from '@/lib/email/signature';
+import { validateAiEmailContent } from '@/lib/ai/validate-content';
 import type { EmailProviderType } from '@/types/email-provider';
 
 type CronResult = {
@@ -372,7 +373,12 @@ export async function sendDueEmails() {
           Boolean((lead as { manual_email_approved?: boolean }).manual_email_approved);
         const aiSubject = lead.ai_subject || lead.personalized_subject || '';
         const aiBody = lead.ai_email_body || lead.personalized_body || '';
-        const hasAiCopy = Boolean(aiSubject && aiBody);
+        const aiCopyPresent = Boolean(aiSubject && aiBody);
+        const aiContentValidation = aiCopyPresent ? validateAiEmailContent(aiSubject, aiBody) : null;
+        if (aiCopyPresent && aiContentValidation && !aiContentValidation.valid) {
+          reasons.push(`Lead ${lead.email}: AI copy failed validation (${aiContentValidation.reason}), falling back`);
+        }
+        const hasAiCopy = aiCopyPresent && Boolean(aiContentValidation?.valid);
 
         if (campaign.require_approval_before_send && !aiApproved) {
           if (campaign.allow_template_fallback && !hasAiCopy) {

@@ -26,68 +26,11 @@ import {
   getAiSettingsForUser,
   getCompanyEnrichmentCache,
   recordAiUsageLog,
+  reserveAiCallBudget,
+  updateAiUsageLog,
   upsertCompanyEnrichmentCache,
 } from '@/lib/ai/runtime';
-
-function cleanHtml(html: string): string {
-  let text = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-  text = text.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
-  text = text.replace(/<!--[\s\S]*?-->/g, '');
-  text = text.replace(/<[^>]+>/g, ' ');
-  text = text.replace(/\s+/g, ' ');
-  return text.trim();
-}
-
-async function scrapeWebsite(url: string): Promise<string> {
-  const targetUrl = url.startsWith('http') ? url : `https://${url}`;
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-    const response = await fetch(targetUrl, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-      },
-    });
-    clearTimeout(timeoutId);
-
-    if (!response.ok) return '';
-
-    const html = await response.text();
-    return cleanHtml(html).slice(0, 2400);
-  } catch {
-    return '';
-  }
-}
-
-function parseJsonResponse(responseText: string): Record<string, unknown> {
-  const trimmed = responseText.trim().replace(/^```json\s*/i, '').replace(/```$/i, '');
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    const start = trimmed.indexOf('{');
-    const end = trimmed.lastIndexOf('}');
-    if (start >= 0 && end > start) {
-      return JSON.parse(trimmed.slice(start, end + 1));
-    }
-    return {};
-  }
-}
-
-function startOfDayIso() {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return now.toISOString();
-}
-
-function startOfMonthIso() {
-  const now = new Date();
-  now.setDate(1);
-  now.setHours(0, 0, 0, 0);
-  return now.toISOString();
-}
+import { parseJsonResponse, scrapeWebsite } from '@/lib/ai/analyze-lead';
 
 export async function POST(
   request: Request,
@@ -158,39 +101,6 @@ export async function POST(
     if (!profile?.gemini_api_key) {
       return NextResponse.json({ error: 'Gemini API key is not configured.' }, { status: 400 });
     }
-
-    const dailyFrom = startOfDayIso();
-    const monthlyFrom = startOfMonthIso();
-    const [dailyUsage, monthlyUsage, deepUsage] = await Promise.all([
-      serviceSupabase
-        .from('ai_usage_logs')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('skipped', false)
-        .eq('cache_hit', false)
-        .gte('created_at', dailyFrom),
-      serviceSupabase
-        .from('ai_usage_logs')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('skipped', false)
-        .eq('cache_hit', false)
-        .gte('created_at', monthlyFrom),
-      serviceSupabase
-        .from('ai_usage_logs')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('skipped', false)
-        .eq('cache_hit', false)
-        .eq('model', AI_DEEP_MODEL)
-        .gte('created_at', dailyFrom),
-    ]);
-
-    const budgetExceeded =
-      Boolean(aiSettings.stop_ai_when_limit_reached) &&
-      (((aiSettings.daily_ai_limit ?? 0) > 0 && (dailyUsage.count || 0) >= (aiSettings.daily_ai_limit ?? 0)) ||
-        ((aiSettings.monthly_ai_limit ?? 0) > 0 && (monthlyUsage.count || 0) >= (aiSettings.monthly_ai_limit ?? 0)) ||
-        ((aiSettings.daily_deep_ai_limit ?? 0) > 0 && (deepUsage.count || 0) >= (aiSettings.daily_deep_ai_limit ?? 0)));
 
     const leadDomain = getLeadDomain(lead.website);
     const companyCache = leadDomain
@@ -341,11 +251,35 @@ export async function POST(
     let completionTokens = 0;
     const promptTokens = estimateTokensFromText(prompt);
     let totalTokens = promptTokens;
-    const skipReasonText = budgetExceeded
-      ? 'AI budget limit reached; local fallback used.'
-      : personalizationResult.reason || decision.reason;
+    let skipReasonText = personalizationResult.reason || decision.reason;
 
-    if (!budgetExceeded && decision.allowGemini) {
+    // Atomically reserve a budget slot (rather than checking a stale count)
+    // so this route can't race bulk-analyze/analyze-lead into overshooting
+    // the configured daily/monthly/deep limits.
+    const dailyLimit = aiSettings.daily_ai_limit ?? 0;
+    const monthlyLimit = aiSettings.monthly_ai_limit ?? 0;
+    const deepLimit = aiSettings.daily_deep_ai_limit ?? 0;
+    const stopWhenLimitReached = Boolean(aiSettings.stop_ai_when_limit_reached);
+    let reservationId: string | null = null;
+    if (decision.allowGemini) {
+      const reservation = await reserveAiCallBudget(serviceSupabase, {
+        userId: user.id,
+        dailyLimit: stopWhenLimitReached ? dailyLimit : 0,
+        monthlyLimit: stopWhenLimitReached ? monthlyLimit : 0,
+        dailyDeepLimit: deepLimit,
+        isDeep: decision.model === AI_DEEP_MODEL,
+        model: decision.model,
+      });
+      reservationId = reservation.reservationId;
+      if (!reservationId) {
+        skipReasonText =
+          reservation.reason === 'deep'
+            ? `Deep AI daily limit reached (${reservation.dailyDeepCalls}/${deepLimit}).`
+            : `AI budget limit reached (${reservation.dailyCalls}/${dailyLimit} today, ${reservation.monthlyCalls}/${monthlyLimit} this month).`;
+      }
+    }
+
+    if (reservationId) {
       const selectedModel = decision.model === AI_DEEP_MODEL ? AI_DEEP_MODEL : AI_DEFAULT_MODEL;
       try {
         const ai = new GoogleGenAI({ apiKey: profile.gemini_api_key });
@@ -420,30 +354,55 @@ export async function POST(
     const { error: updateError } = await serviceSupabase.from('leads').update(leadUpdate).eq('id', id);
     if (updateError) throw updateError;
 
-    await recordAiUsageLog(serviceSupabase, {
-      user_id: user.id,
-      campaign_id: lead.campaign_id || null,
-      lead_id: id,
-      action: skipped ? 'ai_skipped' : 'ai_generated',
-      model: aiModelUsed,
-      ai_depth: body.requestedDepth || lead.ai_depth || 'standard',
-      input_tokens: promptTokens,
-      output_tokens: completionTokens,
-      total_tokens: totalTokens,
-      cached: false,
-      skipped,
-      skip_reason: skipped ? skipReasonText : null,
-      operation: skipped ? 'ai_skipped' : 'ai_generated',
-      model_used: aiModelUsed,
-      input_hash: inputHash,
-      prompt_version: AI_PROMPT_VERSION,
-      cache_hit: false,
-      tokens_prompt: promptTokens,
-      tokens_completion: completionTokens,
-      tokens_total: totalTokens,
-      estimated_cost: estimateAiCost(totalTokens),
-      usage_notes: leadUpdate.ai_usage_notes,
-    });
+    if (reservationId) {
+      // The reservation already inserted a real usage-log row atomically as
+      // part of the budget check. If the Gemini call subsequently failed
+      // (caught above, falling back to the template), mark it skipped so it
+      // doesn't count against the budget — matching the pre-reservation
+      // behavior where only successful attempts were counted.
+      await updateAiUsageLog(serviceSupabase, reservationId, {
+        action: skipped ? 'ai_skipped' : 'ai_generated',
+        operation: skipped ? 'ai_skipped' : 'ai_generated',
+        campaign_id: lead.campaign_id || null,
+        lead_id: id,
+        ai_depth: body.requestedDepth || lead.ai_depth || 'standard',
+        model_used: aiModelUsed,
+        input_hash: inputHash,
+        prompt_version: AI_PROMPT_VERSION,
+        skipped,
+        skip_reason: skipped ? skipReasonText : null,
+        tokens_prompt: promptTokens,
+        tokens_completion: completionTokens,
+        tokens_total: totalTokens,
+        estimated_cost: estimateAiCost(totalTokens),
+        usage_notes: leadUpdate.ai_usage_notes,
+      });
+    } else {
+      await recordAiUsageLog(serviceSupabase, {
+        user_id: user.id,
+        campaign_id: lead.campaign_id || null,
+        lead_id: id,
+        action: skipped ? 'ai_skipped' : 'ai_generated',
+        model: aiModelUsed,
+        ai_depth: body.requestedDepth || lead.ai_depth || 'standard',
+        input_tokens: promptTokens,
+        output_tokens: completionTokens,
+        total_tokens: totalTokens,
+        cached: false,
+        skipped,
+        skip_reason: skipped ? skipReasonText : null,
+        operation: skipped ? 'ai_skipped' : 'ai_generated',
+        model_used: aiModelUsed,
+        input_hash: inputHash,
+        prompt_version: AI_PROMPT_VERSION,
+        cache_hit: false,
+        tokens_prompt: promptTokens,
+        tokens_completion: completionTokens,
+        tokens_total: totalTokens,
+        estimated_cost: estimateAiCost(totalTokens),
+        usage_notes: leadUpdate.ai_usage_notes,
+      });
+    }
 
     await createAuditLog({
       userId: user.id,

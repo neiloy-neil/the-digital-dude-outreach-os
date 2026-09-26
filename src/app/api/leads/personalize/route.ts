@@ -22,56 +22,12 @@ import {
   getAiSettingsForUser,
   getCompanyEnrichmentCache,
   recordAiUsageLog,
+  reserveAiCallBudget,
+  updateAiUsageLog,
   upsertCompanyEnrichmentCache,
 } from '@/lib/ai/runtime';
+import { parseJsonResponse, scrapeWebsite } from '@/lib/ai/analyze-lead';
 import { createAuditLog } from '@/lib/audit/create-audit-log';
-
-function cleanHtml(html: string): string {
-  let text = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-  text = text.replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, '');
-  text = text.replace(/<!--[\s\S]*?-->/g, '');
-  text = text.replace(/<[^>]+>/g, ' ');
-  text = text.replace(/\s+/g, ' ');
-  return text.trim();
-}
-
-async function scrapeWebsite(url: string): Promise<string> {
-  const targetUrl = url.startsWith('http') ? url : `https://${url}`;
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
-
-    const response = await fetch(targetUrl, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-      },
-    });
-    clearTimeout(timeoutId);
-
-    if (!response.ok) return '';
-
-    const html = await response.text();
-    return cleanHtml(html).slice(0, 2800);
-  } catch {
-    return '';
-  }
-}
-
-function parseJsonResponse(responseText: string): Record<string, unknown> {
-  const trimmed = responseText.trim().replace(/^```json\s*/i, '').replace(/```$/i, '');
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    const start = trimmed.indexOf('{');
-    const end = trimmed.lastIndexOf('}');
-    if (start >= 0 && end > start) {
-      return JSON.parse(trimmed.slice(start, end + 1));
-    }
-    return {};
-  }
-}
 
 function extractStringValue(value: unknown): string {
   if (typeof value === 'string') {
@@ -81,19 +37,6 @@ function extractStringValue(value: unknown): string {
     return String(value);
   }
   return '';
-}
-
-function startOfDayIso() {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return now.toISOString();
-}
-
-function startOfMonthIso() {
-  const now = new Date();
-  now.setDate(1);
-  now.setHours(0, 0, 0, 0);
-  return now.toISOString();
 }
 
 export async function POST(request: Request) {
@@ -163,41 +106,10 @@ export async function POST(request: Request) {
       body: sequenceStep?.body || 'Hi {{first_name}},\n\nI was looking into {{company}} and noticed...',
     };
 
-    const dailyFrom = startOfDayIso();
-    const monthlyFrom = startOfMonthIso();
-    const [dailyUsage, monthlyUsage, deepUsage] = await Promise.all([
-      serviceSupabase
-        .from('ai_usage_logs')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('skipped', false)
-        .eq('cache_hit', false)
-        .gte('created_at', dailyFrom),
-      serviceSupabase
-        .from('ai_usage_logs')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('skipped', false)
-        .eq('cache_hit', false)
-        .gte('created_at', monthlyFrom),
-      serviceSupabase
-        .from('ai_usage_logs')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .eq('skipped', false)
-        .eq('cache_hit', false)
-        .eq('model', 'gemini-2.5-flash')
-        .gte('created_at', dailyFrom),
-    ]);
-
     const dailyLimit = aiSettings.daily_ai_limit ?? 0;
     const monthlyLimit = aiSettings.monthly_ai_limit ?? 0;
     const deepLimit = aiSettings.daily_deep_ai_limit ?? 0;
-    const budgetExceeded =
-      Boolean(aiSettings.stop_ai_when_limit_reached) &&
-      ((dailyLimit > 0 && (dailyUsage.count || 0) >= dailyLimit) ||
-        (monthlyLimit > 0 && (monthlyUsage.count || 0) >= monthlyLimit) ||
-        (deepLimit > 0 && (deepUsage.count || 0) >= deepLimit));
+    const stopWhenLimitReached = Boolean(aiSettings.stop_ai_when_limit_reached);
 
     const results = [];
 
@@ -375,11 +287,33 @@ export async function POST(request: Request) {
         let skipped = true;
         let completionTokens = 0;
         let totalTokens = promptTokens;
-        const skipReasonText = budgetExceeded
-          ? 'AI budget limit reached; local fallback used.'
-          : personalizationResult.reason || decision.reason;
+        let skipReasonText = personalizationResult.reason || decision.reason;
 
-        if (!budgetExceeded && decision.allowGemini) {
+        // Atomically reserve a budget slot per lead (rather than checking a
+        // single stale count once for the whole batch) so this route can't
+        // race itself, bulk-analyze, or analyze-lead into overshooting the
+        // configured daily/monthly/deep limits.
+        let reservationId: string | null = null;
+        const wouldAttemptGemini = decision.allowGemini && Boolean(profile.gemini_api_key);
+        if (wouldAttemptGemini) {
+          const reservation = await reserveAiCallBudget(serviceSupabase, {
+            userId: user.id,
+            dailyLimit: stopWhenLimitReached ? dailyLimit : 0,
+            monthlyLimit: stopWhenLimitReached ? monthlyLimit : 0,
+            dailyDeepLimit: deepLimit,
+            isDeep: decision.model === 'gemini-2.5-flash',
+            model: decision.model,
+          });
+          reservationId = reservation.reservationId;
+          if (!reservationId) {
+            skipReasonText =
+              reservation.reason === 'deep'
+                ? `Deep AI daily limit reached (${reservation.dailyDeepCalls}/${deepLimit}).`
+                : `AI budget limit reached (${reservation.dailyCalls}/${dailyLimit} today, ${reservation.monthlyCalls}/${monthlyLimit} this month).`;
+          }
+        }
+
+        if (reservationId) {
           const selectedModel = decision.model === 'gemini-2.5-flash' ? 'gemini-2.5-flash' : 'gemini-3.1-flash-lite';
           const ai = new GoogleGenAI({ apiKey: profile.gemini_api_key! });
           const response = await ai.models.generateContent({
@@ -436,26 +370,48 @@ export async function POST(request: Request) {
           continue;
         }
 
-        await recordAiUsageLog(serviceSupabase, {
-          user_id: user.id,
-          campaign_id: campaignId,
-          lead_id: lead.id,
-          company_cache_id: companyCacheId,
-          operation: 'personalize_leads',
-          ai_mode: campaignContext.ai_mode || 'hybrid_smart',
-          ai_depth: decision.depth,
-          model_used: aiModelUsed,
-          input_hash: inputHash,
-          prompt_version: AI_PROMPT_VERSION,
-          cache_hit: false,
-          skipped,
-          skip_reason: skipped ? skipReasonText : null,
-          tokens_prompt: promptTokens,
-          tokens_completion: completionTokens,
-          tokens_total: totalTokens,
-          estimated_cost: estimateAiCost(totalTokens),
-          usage_notes: usageNotes,
-        });
+        if (reservationId) {
+          // The reservation already inserted a real (skipped=false)
+          // usage-log row atomically as part of the budget check — fill it
+          // in with the actual outcome instead of inserting a second row.
+          await updateAiUsageLog(serviceSupabase, reservationId, {
+            operation: 'personalize_leads',
+            campaign_id: campaignId,
+            lead_id: lead.id,
+            company_cache_id: companyCacheId,
+            ai_mode: campaignContext.ai_mode || 'hybrid_smart',
+            ai_depth: decision.depth,
+            model_used: aiModelUsed,
+            input_hash: inputHash,
+            prompt_version: AI_PROMPT_VERSION,
+            tokens_prompt: promptTokens,
+            tokens_completion: completionTokens,
+            tokens_total: totalTokens,
+            estimated_cost: estimateAiCost(totalTokens),
+            usage_notes: usageNotes,
+          });
+        } else {
+          await recordAiUsageLog(serviceSupabase, {
+            user_id: user.id,
+            campaign_id: campaignId,
+            lead_id: lead.id,
+            company_cache_id: companyCacheId,
+            operation: 'personalize_leads',
+            ai_mode: campaignContext.ai_mode || 'hybrid_smart',
+            ai_depth: decision.depth,
+            model_used: aiModelUsed,
+            input_hash: inputHash,
+            prompt_version: AI_PROMPT_VERSION,
+            cache_hit: false,
+            skipped,
+            skip_reason: skipped ? skipReasonText : null,
+            tokens_prompt: promptTokens,
+            tokens_completion: completionTokens,
+            tokens_total: totalTokens,
+            estimated_cost: estimateAiCost(totalTokens),
+            usage_notes: usageNotes,
+          });
+        }
 
         if (companyCacheId === null && shouldUseTemplateFallback) {
           await upsertCompanyEnrichmentCache(serviceSupabase, {
