@@ -5,26 +5,18 @@ export const dynamic = 'force-dynamic';
 import { useEffect, useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import AppShell from '@/components/reachmira/AppShell';
-import { 
-  ArrowLeft, 
-  Settings, 
-  Upload, 
-  FileSpreadsheet, 
-  Bot, 
-  Mail, 
-  Eye, 
-  CheckCircle,
-  Plus,
-  Trash2,
-  HelpCircle,
-  Database,
-  Users
-} from 'lucide-react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import Papa from 'papaparse';
-import { Banner, Button } from '@/components/reachmira/ui';
+import { Banner } from '@/components/reachmira/ui';
 import { calculateLeadDataQuality } from '@/utils/data-quality';
+import { useEmailAccounts } from '@/hooks/useEmailAccounts';
+import { useSequenceSteps } from '@/hooks/useSequenceSteps';
+import WizardHeader from '@/components/campaigns/wizard/WizardHeader';
+import Step1Basics from '@/components/campaigns/wizard/Step1Basics';
+import Step2Import, { DESTINATION_FIELDS } from '@/components/campaigns/wizard/Step2Import';
+import Step3AiStrategy from '@/components/campaigns/wizard/Step3AiStrategy';
+import Step4Sequence from '@/components/campaigns/wizard/Step4Sequence';
+import Step5Review from '@/components/campaigns/wizard/Step5Review';
 
 type TemplateOption = {
   id: string;
@@ -34,43 +26,13 @@ type TemplateOption = {
   body?: string | null;
 };
 
-const DESTINATION_FIELDS = [
-  { key: 'email', label: 'Email Address (Required)', aliases: ['email', 'email address', 'email_address', 'mail'] },
-  { key: 'first_name', label: 'First Name', aliases: ['first_name', 'first name', 'firstname', 'first'] },
-  { key: 'last_name', label: 'Last Name', aliases: ['last_name', 'last name', 'lastname', 'last'] },
-  { key: 'company_name', label: 'Company Name', aliases: ['company_name', 'company name', 'company', 'org', 'organization', 'firm'] },
-  { key: 'website', label: 'Website URL', aliases: ['website', 'web', 'site', 'url'] },
-  { key: 'industry', label: 'Industry', aliases: ['industry', 'sector'] },
-  { key: 'sub_industry', label: 'Sub-Industry', aliases: ['sub_industry', 'sub industry', 'subsector'] },
-  { key: 'country', label: 'Country', aliases: ['country', 'nation'] },
-  { key: 'city', label: 'City', aliases: ['city', 'town', 'location'] },
-  { key: 'company_size', label: 'Company Size', aliases: ['company_size', 'company size', 'size', 'employees'] },
-  { key: 'estimated_revenue', label: 'Estimated Revenue', aliases: ['estimated_revenue', 'estimated revenue', 'revenue', 'rev'] },
-  { key: 'decision_maker_name', label: 'Decision Maker Name', aliases: ['decision_maker_name', 'decision maker name', 'contact name', 'contact', 'name', 'full name', 'fullname', 'full_name'] },
-  { key: 'decision_maker_title', label: 'Decision Maker Title', aliases: ['decision_maker_title', 'decision maker title', 'title', 'role', 'position'] },
-  { key: 'linkedin_url', label: 'LinkedIn URL', aliases: ['linkedin_url', 'linkedin url', 'linkedin'] },
-  { key: 'tech_stack', label: 'Tech Stack', aliases: ['tech_stack', 'tech stack', 'technologies', 'tech'] },
-  { key: 'pain_points', label: 'Pain Points / Trigger', aliases: ['pain_points', 'pain points', 'pains', 'trigger', 'pain points / trigger', 'trigger event'] },
-  { key: 'solution', label: 'Solution / Offer', aliases: ['solution', 'our solution', 'proposed solution', 'recommended solution', 'offer solution'] },
-  { key: 'solution_score', label: 'Solution Score (0-100)', aliases: ['solution_score', 'solution score'] },
-  { key: 'solution_fit_score', label: 'Solution Fit Score (0-100)', aliases: ['solution_fit_score', 'solution fit score'] },
-  { key: 'lead_source', label: 'Lead Source', aliases: ['lead_source', 'lead source', 'source'] },
-  { key: 'qc_by', label: 'QC BY', aliases: ['qc_by', 'qc by', 'qc'] },
-  { key: 'outreach_channel', label: 'Outreach Channel', aliases: ['outreach_channel', 'outreach channel', 'channel'] },
-  { key: 'outreach_status', label: 'Outreach Status', aliases: ['outreach_status', 'outreach status', 'outreach'] },
-  { key: 'priority', label: 'Priority', aliases: ['priority', 'lead priority'] },
-  { key: 'assigned_to', label: 'Assigned To', aliases: ['assigned_to', 'assigned to', 'assignee'] },
-  { key: 'tags', label: 'Tags', aliases: ['tags', 'tag'] },
-  { key: 'notes', label: 'Notes', aliases: ['notes', 'note', 'comment'] }
-];
-
 export default function CampaignWizardPage() {
   const router = useRouter();
   const supabase = createClient();
   const [currentStep, setCurrentStep] = useState(1);
   const [error, setError] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
-  const [emailAccounts, setEmailAccounts] = useState<any[]>([]);
+  const { emailAccounts } = useEmailAccounts();
   const [templateOptions, setTemplateOptions] = useState<TemplateOption[]>([]);
 
   // STEP 1: Campaign Basics
@@ -81,6 +43,18 @@ export default function CampaignWizardPage() {
   const [senderEmail, setSenderEmail] = useState('');
   const [dailyLimit, setDailyLimit] = useState('100');
   const [emailAccountId, setEmailAccountId] = useState('');
+
+  // Replicate the wizard's original default-account auto-select (useEmailAccounts
+  // itself doesn't auto-select, since the campaign detail page doesn't need that).
+  useEffect(() => {
+    if (!emailAccountId && emailAccounts.length > 0) {
+      const defaultAccount = emailAccounts.find((account) => account.is_default) || emailAccounts[0];
+      if (defaultAccount) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setEmailAccountId(defaultAccount.id);
+      }
+    }
+  }, [emailAccounts, emailAccountId]);
 
   // STEP 2: Lead Import
   const [importTab, setImportTab] = useState<'library' | 'csv' | 'sheet'>('library');
@@ -114,29 +88,6 @@ export default function CampaignWizardPage() {
   const [allowDeepAi, setAllowDeepAi] = useState(true);
   const [requireManualApprovalForDeepAi, setRequireManualApprovalForDeepAi] = useState(false);
   const [useTemplateFallback, setUseTemplateFallback] = useState(true);
-
-  useEffect(() => {
-    const loadEmailAccounts = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data } = await supabase
-        .from('email_accounts')
-        .select('id, email_address, provider, is_default, status')
-        .eq('status', 'active')
-        .order('is_default', { ascending: false });
-
-      const accounts = data || [];
-      setEmailAccounts(accounts);
-
-      const defaultAccount = accounts.find((account) => account.is_default) || accounts[0];
-      if (defaultAccount) {
-        setEmailAccountId(defaultAccount.id);
-      }
-    };
-
-    loadEmailAccounts();
-  }, []);
 
   useEffect(() => {
     const loadTemplates = async () => {
@@ -187,8 +138,10 @@ export default function CampaignWizardPage() {
     loadLibraryLeads();
   }, [libraryPage, debouncedLibrarySearch]);
 
-  // STEP 4: Sequences
-  const [sequences, setSequences] = useState<any[]>([
+  // STEP 4: Sequences (shared CRUD/save logic; wizard keeps its own step-factory
+  // below so "Add Follow-up Step" preserves this wizard's own template text,
+  // which genuinely differs from the campaign detail page's defaults).
+  const { sequences, setSequences, updateStepField, removeStep, saveSequences } = useSequenceSteps([
     {
       step_number: 1,
       delay_days: 0,
@@ -312,7 +265,6 @@ export default function CampaignWizardPage() {
     setCurrentStep(3); // Advance
   };
 
-  const filteredLibraryLeads = libraryLeads;
   const libraryTotalPages = Math.max(1, Math.ceil(totalLibraryLeads / libraryPageSize));
   const safeLibraryPage = Math.min(libraryPage, libraryTotalPages);
   const paginatedLibraryLeads = libraryLeads;
@@ -336,12 +288,13 @@ export default function CampaignWizardPage() {
     );
   };
 
-  // Add step to sequence
+  // Add step to sequence (wizard-local factory: keeps this wizard's own
+  // follow-up template text, distinct from useSequenceSteps' addStep()).
   const addSeqStep = () => {
-    setSequences([
-      ...sequences,
+    setSequences((current) => [
+      ...current,
       {
-        step_number: sequences.length + 1,
+        step_number: current.length + 1,
         delay_days: 2,
         condition: 'always',
         subject: 'Re: Quick question',
@@ -350,33 +303,20 @@ export default function CampaignWizardPage() {
     ]);
   };
 
-  // Remove step
-  const removeSeqStep = (idx: number) => {
-    const updated = sequences.filter((_, i) => i !== idx).map((s, i) => ({
-      ...s,
-      step_number: i + 1
-    }));
-    setSequences(updated);
-  };
-
-  const handleUpdateSequenceField = (idx: number, field: string, value: any) => {
-    const updated = [...sequences];
-    updated[idx] = { ...updated[idx], [field]: value };
-    setSequences(updated);
-  };
-
   const handleInsertTemplateIntoSequence = (idx: number, templateId: string) => {
     const template = templateOptions.find((item) => item.id === templateId);
     if (!template) return;
 
-    const updated = [...sequences];
-    updated[idx] = {
-      ...updated[idx],
-      template_id: template.id,
-      subject: template.subject || updated[idx].subject,
-      body: template.body || updated[idx].body,
-    };
-    setSequences(updated);
+    setSequences((current) => {
+      const updated = [...current];
+      updated[idx] = {
+        ...updated[idx],
+        template_id: template.id,
+        subject: template.subject || updated[idx].subject,
+        body: template.body || updated[idx].body,
+      } as any;
+      return updated;
+    });
   };
 
   // Final wizard submit
@@ -438,29 +378,7 @@ export default function CampaignWizardPage() {
       if (campError) throw campError;
 
       // 2. Create Sequences
-      if (sequences.length > 0) {
-        const seqPayload = sequences.map((s, idx) => ({
-          campaign_id: campaign.id,
-          step_number: s.step_number,
-          delay_days: Number(s.delay_days) || 0,
-          subject: s.subject,
-          body: s.body,
-          condition: idx === 0 ? 'always' : (s.condition || 'always')
-        }));
-
-        let { error: seqError } = await supabase
-          .from('sequences')
-          .insert(seqPayload);
-
-        if (seqError && String(seqError.message || '').toLowerCase().includes('condition')) {
-          // Databases without the conditions migration still accept plain steps.
-          const legacySeqPayload = seqPayload.map(({ condition: _condition, ...rest }) => rest);
-          const legacyResponse = await supabase.from('sequences').insert(legacySeqPayload);
-          seqError = legacyResponse.error;
-        }
-
-        if (seqError) throw seqError;
-      }
+      await saveSequences(campaign.id);
 
       // 3. Import Leads
       if (importedLeads.length > 0) {
@@ -542,55 +460,7 @@ export default function CampaignWizardPage() {
   return (
     <AppShell showSearch={false}>
       <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        {/* Top Header */}
-        <div className="flex items-center gap-3 mb-6">
-          <Link href="/campaigns" className="p-2 bg-white border border-[var(--border)] rounded-lg text-zinc-600 hover:text-violet-700 transition-all">
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-          <div>
-            <h2 className="text-2xl font-bold text-zinc-950 tracking-tight">Campaign Creation Wizard</h2>
-            <p className="text-xs text-zinc-600">Step {currentStep} of 5 — {
-              currentStep === 1 ? 'Configure Basics' :
-              currentStep === 2 ? 'Import Prospect Leads' :
-              currentStep === 3 ? 'AI Strategy Setup' :
-              currentStep === 4 ? 'Sequence Templates' : 'Final Review & Creation'
-            }</p>
-          </div>
-        </div>
-
-        {/* Step Progress indicators */}
-        <div className="mb-6 grid grid-cols-5 gap-2">
-          {([
-            [1, 'Basics'],
-            [2, 'Leads'],
-            [3, 'AI Strategy'],
-            [4, 'Sequence'],
-            [5, 'Review'],
-          ] as [number, string][]).map(([step, label]) => {
-            const isDone = step < currentStep;
-            const isActive = step === currentStep;
-            return (
-              <button
-                key={step}
-                type="button"
-                onClick={() => isDone && setCurrentStep(step)}
-                disabled={!isDone && !isActive}
-                aria-current={isActive ? 'step' : undefined}
-                className={`group flex flex-col gap-1.5 rounded-xl px-1 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 ${isDone ? 'cursor-pointer' : ''}`}
-                title={isDone ? `Back to ${label}` : label}
-              >
-                <span
-                  className={`h-2 w-full rounded-full transition-all ${
-                    isActive ? 'bg-violet-500 shadow-md shadow-violet-500/25' : isDone ? 'bg-violet-800 group-hover:bg-violet-600' : 'bg-[var(--surface-muted)]'
-                  }`}
-                />
-                <span className={`hidden text-[11px] font-semibold sm:block ${isActive ? 'text-violet-700' : isDone ? 'text-zinc-600' : 'text-zinc-400'}`}>
-                  {step}. {label}
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        <WizardHeader currentStep={currentStep} onStepChange={setCurrentStep} />
 
         {error && (
           <Banner tone="error" className="mb-6" onDismiss={() => setError(null)}>
@@ -598,734 +468,138 @@ export default function CampaignWizardPage() {
           </Banner>
         )}
 
-        {/* STEP 1: CAMPAIGN BASICS */}
         {currentStep === 1 && (
-          <div className="rounded-xl border border-[var(--border)] bg-white/20 p-6 backdrop-blur-sm space-y-4">
-            <h3 className="font-bold text-zinc-950 text-md border-b border-[var(--border)] pb-3 flex items-center gap-2"><Settings className="h-5 w-5 text-violet-400" /> Campaign Parameters</h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Campaign Name</label>
-                <input 
-                  type="text" 
-                  value={campaignName}
-                  onChange={(e) => setCampaignName(e.target.value)}
-                  placeholder="e.g. Q3 SaaS Enterprise Outreach"
-                  className="mt-1 w-full rounded border border-[var(--border)] bg-white py-2 px-3 text-xs text-zinc-900 focus:border-violet-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Target Industry</label>
-                <input 
-                  type="text" 
-                  value={targetIndustry}
-                  onChange={(e) => setTargetIndustry(e.target.value)}
-                  placeholder="e.g. Healthcare, Fintech, E-commerce"
-                  className="mt-1 w-full rounded border border-[var(--border)] bg-white py-2 px-3 text-xs text-zinc-900 focus:border-violet-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Pitch Offer Type</label>
-                <select 
-                  value={offerType}
-                  onChange={(e) => setOfferType(e.target.value)}
-                  className="mt-1 w-full rounded border border-[var(--border)] bg-white py-2 px-3 text-xs text-zinc-900 focus:border-violet-500 focus:outline-none"
-                >
-                  <option value="Custom web applications">Custom web applications</option>
-                  <option value="ERP systems">Enterprise Resource Planning (ERP) systems</option>
-                  <option value="CRM systems">Customer Relationship Management (CRM) systems</option>
-                  <option value="SaaS platforms">SaaS platforms</option>
-                  <option value="AI chatbots">AI chatbots</option>
-                  <option value="Workflow automation">Workflow automation</option>
-                  <option value="Custom dashboards">Custom dashboards</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Daily Send Limit</label>
-                <input 
-                  type="number" 
-                  value={dailyLimit}
-                  onChange={(e) => setDailyLimit(e.target.value)}
-                  placeholder="100"
-                  className="mt-1 w-full rounded border border-[var(--border)] bg-white py-2 px-3 text-xs text-zinc-900 focus:border-violet-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Sender Display Name</label>
-                <input 
-                  type="text" 
-                  value={senderName}
-                  onChange={(e) => setSenderName(e.target.value)}
-                  placeholder="e.g. Wazid from ReachMira"
-                  className="mt-1 w-full rounded border border-[var(--border)] bg-white py-2 px-3 text-xs text-zinc-900 focus:border-violet-500 focus:outline-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Sender Outbound Email</label>
-                <input 
-                  type="email" 
-                  value={senderEmail}
-                  onChange={(e) => setSenderEmail(e.target.value)}
-                  placeholder="wazid@innovatewave.online"
-                  className="mt-1 w-full rounded border border-[var(--border)] bg-white py-2 px-3 text-xs text-zinc-900 focus:border-violet-500 focus:outline-none"
-                />
-              </div>
-
-              <div className="md:col-span-2">
-                <label className="block text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Email Account</label>
-                <select
-                  value={emailAccountId}
-                  onChange={(e) => setEmailAccountId(e.target.value)}
-                  className="mt-1 w-full rounded border border-[var(--border)] bg-white py-2 px-3 text-xs text-zinc-900 focus:border-violet-500 focus:outline-none"
-                >
-                  <option value="">Choose an active email account</option>
-                  {emailAccounts.map((account) => (
-                    <option key={account.id} value={account.id}>
-                      {account.email_address} - {account.provider.toUpperCase()}
-                      {account.is_default ? ' (Default)' : ''}
-                    </option>
-                  ))}
-                </select>
-                {!emailAccounts.length && (
-                  <p className="mt-2 text-[11px] text-amber-400">
-                    Please add an email account first. Campaigns can still be drafted, but launch will be blocked until one is selected.
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="flex justify-end pt-4">
-              <button
-                onClick={() => {
-                  if (!campaignName || !senderEmail) {
-                    setError('Campaign Name and Sender Email are required.');
-                    return;
-                  }
-                  setError(null);
-                  setCurrentStep(2);
-                }}
-                className="px-6 py-2 bg-gradient-to-r from-violet-600 to-teal-500 rounded-lg text-xs font-semibold text-white hover:opacity-90"
-              >
-                Proceed to Lead Imports
-              </button>
-            </div>
-          </div>
+          <Step1Basics
+            campaignName={campaignName}
+            onCampaignNameChange={setCampaignName}
+            targetIndustry={targetIndustry}
+            onTargetIndustryChange={setTargetIndustry}
+            offerType={offerType}
+            onOfferTypeChange={setOfferType}
+            dailyLimit={dailyLimit}
+            onDailyLimitChange={setDailyLimit}
+            senderName={senderName}
+            onSenderNameChange={setSenderName}
+            senderEmail={senderEmail}
+            onSenderEmailChange={setSenderEmail}
+            emailAccountId={emailAccountId}
+            onEmailAccountIdChange={setEmailAccountId}
+            emailAccounts={emailAccounts}
+            onNext={() => {
+              if (!campaignName || !senderEmail) {
+                setError('Campaign Name and Sender Email are required.');
+                return;
+              }
+              setError(null);
+              setCurrentStep(2);
+            }}
+          />
         )}
 
-        {/* STEP 2: LEAD IMPORT */}
         {currentStep === 2 && (
-          <div className="space-y-6">
-            <div className="rounded-xl border border-[var(--border)] bg-white/20 p-6 backdrop-blur-sm space-y-4">
-              <div className="flex border-b border-[var(--border)] gap-6 mb-4">
-                <button
-                  onClick={() => setImportTab('library')}
-                  className={`pb-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
-                    importTab === 'library' ? 'border-violet-500 text-violet-700' : 'border-transparent text-zinc-600 hover:text-zinc-900'
-                  }`}
-                >
-                  <Users className="h-4 w-4" /> Lead Library
-                </button>
-                <button 
-                  onClick={() => setImportTab('csv')}
-                  className={`pb-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
-                    importTab === 'csv' ? 'border-violet-500 text-violet-700' : 'border-transparent text-zinc-600 hover:text-zinc-900'
-                  }`}
-                >
-                  <Upload className="h-4 w-4" /> Upload CSV
-                </button>
-                <button 
-                  onClick={() => setImportTab('sheet')}
-                  className={`pb-3 text-xs font-semibold border-b-2 transition-all flex items-center gap-1.5 cursor-pointer ${
-                    importTab === 'sheet' ? 'border-violet-500 text-violet-700' : 'border-transparent text-zinc-600 hover:text-zinc-900'
-                  }`}
-                >
-                  <FileSpreadsheet className="h-4 w-4" /> Google Sheets
-                </button>
-              </div>
-
-              {importTab === 'library' && (
-                <div className="space-y-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                    <div>
-                      <h3 className="text-sm font-bold text-zinc-950">Select Existing Lead Library Prospects</h3>
-                      <p className="text-xs text-zinc-500">Attach saved ReachMira leads to this campaign during setup.</p>
-                    </div>
-                    <div className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-semibold text-violet-700">
-                      {selectedLibraryLeadIds.length} selected
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-3 sm:flex-row">
-                    <input
-                      value={librarySearch}
-                      onChange={(e) => { setLibrarySearch(e.target.value); setLibraryPage(1); }}
-                      placeholder="Search by email, company, industry..."
-                      className="w-full rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-xs text-zinc-900 outline-none focus:border-violet-400"
-                    />
-                    <button
-                      onClick={toggleAllVisibleLibraryLeads}
-                      disabled={paginatedLibraryLeads.length === 0}
-                      className="rounded-xl border border-[var(--border)] bg-white px-4 py-2.5 text-xs font-semibold text-zinc-700 hover:bg-violet-50 disabled:opacity-50"
-                    >
-                      Toggle visible
-                    </button>
-                  </div>
-
-                  {loadingLibraryLeads ? (
-                    <div className="rounded-2xl border border-[var(--border)] bg-white/60 p-8 text-center text-xs text-zinc-500">
-                      Loading lead library...
-                    </div>
-                  ) : filteredLibraryLeads.length === 0 ? (
-                    <div className="rounded-2xl border border-dashed border-[var(--border)] bg-white/60 p-8 text-center">
-                      <Users className="mx-auto mb-2 h-8 w-8 text-zinc-300" />
-                      <p className="text-sm font-semibold text-zinc-700">No library leads found</p>
-                      <p className="mt-1 text-xs text-zinc-500">Import leads into the Lead Library first, or use CSV/Google Sheets for this campaign.</p>
-                    </div>
-                  ) : (
-                    <div className="max-h-96 overflow-y-auto rounded-2xl border border-[var(--border)] bg-white">
-                      <table className="w-full text-left text-xs">
-                        <thead className="sticky top-0 bg-violet-50 text-[10px] font-bold uppercase tracking-[0.18em] text-violet-700">
-                          <tr>
-                            <th className="px-4 py-3">Select</th>
-                            <th className="px-4 py-3">Lead</th>
-                            <th className="px-4 py-3">Company</th>
-                            <th className="px-4 py-3">Status</th>
-                            <th className="px-4 py-3">Quality</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-[var(--border)]">
-                          {paginatedLibraryLeads.map((lead) => {
-                            const selected = selectedLibraryLeadIds.includes(lead.id);
-                            return (
-                              <tr key={lead.id} className={selected ? 'bg-violet-50/70' : 'hover:bg-zinc-50'}>
-                                <td className="px-4 py-3">
-                                  <input
-                                    type="checkbox"
-                                    checked={selected}
-                                    onChange={() => toggleLibraryLead(lead.id)}
-                                    className="rounded border-zinc-300 text-violet-600 focus:ring-violet-500"
-                                  />
-                                </td>
-                                <td className="px-4 py-3">
-                                  <div className="font-semibold text-zinc-950">
-                                    {lead.first_name || lead.last_name
-                                      ? `${lead.first_name || ''} ${lead.last_name || ''}`.trim()
-                                      : lead.decision_maker_name || lead.email}
-                                  </div>
-                                  <div className="font-mono text-[11px] text-zinc-500">{lead.email}</div>
-                                </td>
-                                <td className="px-4 py-3 text-zinc-700">
-                                  <div>{lead.company_name || lead.company || '-'}</div>
-                                  <div className="text-[11px] text-zinc-500">{lead.industry || 'General'}</div>
-                                </td>
-                                <td className="px-4 py-3">
-                                  <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-1 text-[10px] font-semibold uppercase text-zinc-600">
-                                    {lead.status || 'new'}
-                                  </span>
-                                </td>
-                                <td className="px-4 py-3 text-zinc-600">
-                                  {lead.data_quality_label || 'unknown'}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-
-                  {totalLibraryLeads > libraryPageSize && (
-                    <div className="flex flex-col gap-3 border-t border-[var(--border)] pt-4 text-xs text-zinc-500 sm:flex-row sm:items-center sm:justify-between">
-                      <span>
-                        Showing {totalLibraryLeads === 0 ? 0 : (safeLibraryPage - 1) * libraryPageSize + 1}-{Math.min(safeLibraryPage * libraryPageSize, totalLibraryLeads)} of {totalLibraryLeads} library leads
-                      </span>
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => setLibraryPage((page) => Math.max(1, page - 1))}
-                          disabled={safeLibraryPage <= 1}
-                          className="rounded-lg border border-[var(--border)] bg-white px-3 py-1.5 font-semibold text-zinc-700 transition hover:bg-violet-50 disabled:opacity-50"
-                        >
-                          Previous
-                        </button>
-                        <span className="font-semibold text-zinc-700">Page {safeLibraryPage} / {libraryTotalPages}</span>
-                        <button
-                          onClick={() => setLibraryPage((page) => Math.min(libraryTotalPages, page + 1))}
-                          disabled={safeLibraryPage >= libraryTotalPages}
-                          className="rounded-lg border border-[var(--border)] bg-white px-3 py-1.5 font-semibold text-zinc-700 transition hover:bg-violet-50 disabled:opacity-50"
-                        >
-                          Next
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="flex justify-between border-t border-[var(--border)] pt-4">
-                    <button onClick={() => setCurrentStep(1)} className="text-xs text-zinc-600 hover:text-zinc-950">Back</button>
-                    <button
-                      onClick={() => {
-                        setError(null);
-                        setCurrentStep(3);
-                      }}
-                      className="px-5 py-2 bg-gradient-to-r from-violet-600 to-teal-500 rounded text-xs font-semibold text-white"
-                    >
-                      Continue with {selectedLibraryLeadIds.length} Library Leads
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {importTab === 'csv' && !headers.length && (
-                <div className="border border-dashed border-[var(--border)] p-8 rounded-lg text-center flex flex-col items-center">
-                  <Upload className="h-8 w-8 text-violet-400 mb-2" />
-                  <span className="block text-xs text-zinc-700 font-semibold mb-3">Choose CSV file</span>
-                  <label className="px-4 py-2 bg-white border border-[var(--border)] hover:bg-violet-50 rounded text-xs text-zinc-700 cursor-pointer font-semibold">
-                    Select File
-                    <input type="file" accept=".csv" onChange={handleCSVUpload} className="hidden" />
-                  </label>
-                </div>
-              )}
-
-              {importTab === 'sheet' && !headers.length && (
-                <form onSubmit={handleSheetPreview} className="space-y-4 max-w-xl">
-                  <div>
-                    <label className="block text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Spreadsheet Sharing URL</label>
-                    <input 
-                      type="url" 
-                      required
-                      value={googleSheetUrl}
-                      onChange={(e) => setGoogleSheetUrl(e.target.value)}
-                      placeholder="https://docs.google.com/spreadsheets/d/.../edit"
-                      className="mt-1 w-full rounded border border-[var(--border)] bg-white py-2 px-3 text-xs text-zinc-900 focus:border-violet-500 focus:outline-none"
-                    />
-                  </div>
-                  <button type="submit" className="px-4 py-2 bg-white border border-[var(--border)] text-xs text-zinc-700 font-semibold rounded">
-                    Preview Sheets Content
-                  </button>
-                </form>
-              )}
-
-              {loadingPreview && (
-                <div className="py-8 text-center text-xs text-zinc-500">Parsing data columns...</div>
-              )}
-
-              {previewError && (
-                <Banner tone="error">{previewError}</Banner>
-              )}
-            </div>
-
-            {/* If headers loaded, show Mapper */}
-            {headers.length > 0 && (
-              <div className="space-y-6">
-                {/* Row preview */}
-                <div className="rounded-xl border border-[var(--border)] bg-white/20 p-6 backdrop-blur-sm overflow-hidden">
-                  <span className="block text-xs font-bold text-zinc-950 mb-2">Rows Preview ({rows.length} total)</span>
-                  <div className="overflow-x-auto max-h-32 border border-[var(--border)] rounded">
-                    <table className="w-full text-left text-[11px] text-zinc-600">
-                      <thead className="bg-white text-zinc-500">
-                        <tr>
-                          {headers.map((h, i) => (
-                            <th key={i} className="py-2 px-3">{h}</th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {rows.slice(0, 3).map((r, ri) => (
-                          <tr key={ri} className="border-t border-[var(--border)]">
-                            {headers.map((_, ci) => (
-                              <td key={ci} className="py-1.5 px-3 max-w-xs truncate">{r[ci]}</td>
-                            ))}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                {/* Mappings */}
-                <div className="rounded-xl border border-[var(--border)] bg-white/20 p-6 backdrop-blur-sm space-y-4">
-                  <span className="block text-xs font-bold text-zinc-950 mb-2">Map Destination Fields</span>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {DESTINATION_FIELDS.slice(0, 12).map((field) => {
-                      const isMapped = !!mappings[field.key];
-                      return (
-                        <div key={field.key} className="p-3 rounded bg-white/40 border border-[var(--border)]">
-                          <label className="block text-[10px] font-bold text-zinc-600">{field.label}</label>
-                          <select
-                            value={mappings[field.key] || ''}
-                            onChange={(e) => setMappings({ ...mappings, [field.key]: e.target.value })}
-                            className="mt-1 w-full rounded border border-[var(--border)] bg-white py-1 px-2 text-xs text-zinc-700 focus:outline-none"
-                          >
-                            <option value="">-- Ignore Column --</option>
-                            {headers.map((h, i) => (
-                              <option key={i} value={h}>{h}</option>
-                            ))}
-                          </select>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div className="flex justify-between pt-4 border-t border-[var(--border)]">
-                    <button onClick={() => { setHeaders([]); setRows([]); }} className="text-xs text-zinc-600 hover:text-zinc-950">Back / Reset</button>
-                    <button
-                      onClick={handleMapAndRegisterLeads}
-                      disabled={!mappings['email']}
-                      className="px-5 py-2 bg-gradient-to-r from-violet-600 to-teal-500 rounded text-xs font-semibold text-white disabled:opacity-50"
-                    >
-                      Map & Register {rows.length} Leads
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          <Step2Import
+            importTab={importTab}
+            onImportTabChange={setImportTab}
+            selectedLibraryLeadIds={selectedLibraryLeadIds}
+            librarySearch={librarySearch}
+            onLibrarySearchChange={(value) => { setLibrarySearch(value); setLibraryPage(1); }}
+            loadingLibraryLeads={loadingLibraryLeads}
+            paginatedLibraryLeads={paginatedLibraryLeads}
+            onToggleLibraryLead={toggleLibraryLead}
+            onToggleAllVisibleLibraryLeads={toggleAllVisibleLibraryLeads}
+            totalLibraryLeads={totalLibraryLeads}
+            libraryPageSize={libraryPageSize}
+            safeLibraryPage={safeLibraryPage}
+            libraryTotalPages={libraryTotalPages}
+            onLibraryPageChange={setLibraryPage}
+            onCSVUpload={handleCSVUpload}
+            googleSheetUrl={googleSheetUrl}
+            onGoogleSheetUrlChange={setGoogleSheetUrl}
+            onSheetPreview={handleSheetPreview}
+            loadingPreview={loadingPreview}
+            previewError={previewError}
+            headers={headers}
+            rows={rows}
+            mappings={mappings}
+            onMappingsChange={setMappings}
+            onResetPreview={() => { setHeaders([]); setRows([]); }}
+            onMapAndRegisterLeads={handleMapAndRegisterLeads}
+            onBack={() => setCurrentStep(1)}
+            onNext={() => {
+              setError(null);
+              setCurrentStep(3);
+            }}
+          />
         )}
 
-        {/* STEP 3: AI STRATEGY SETUP */}
         {currentStep === 3 && (
-          <div className="rounded-xl border border-[var(--border)] bg-white/20 p-6 backdrop-blur-sm space-y-6">
-            <h3 className="font-bold text-zinc-950 text-md border-b border-[var(--border)] pb-3 flex items-center gap-2"><Bot className="h-5 w-5 text-violet-400" /> AI Strategy Configuration</h3>
-            
-            <div className="space-y-4">
-              <div>
-                <label className="block text-[10px] text-zinc-500 font-bold uppercase tracking-wider mb-2">AI Mode</label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                    {[
-                    { id: 'hybrid_smart', title: 'Hybrid Smart', desc: 'Local scoring first, cache second, Gemini only for eligible leads.' },
-                    { id: 'basic_ai', title: 'Basic AI', desc: 'Flash Lite copy for low-cost personalization.' },
-                    { id: 'standard_ai', title: 'Standard AI', desc: 'Flash Lite with more context and website use.' },
-                    { id: 'deep_ai', title: 'Deep AI', desc: 'Use 2.5 Flash only on high-priority, strong-fit leads.' },
-                    { id: 'template_only', title: 'Template Only', desc: 'Never call Gemini. Use templates and local fallback copy only.' },
-                    { id: 'manual_only', title: 'Manual Only', desc: 'No automated AI generation. Drafts stay manual.' },
-                  ].map((mode) => (
-                    <button
-                      key={mode.id}
-                      onClick={() => setAiMode(mode.id as typeof aiMode)}
-                      className={`p-4 rounded-xl border text-left flex flex-col justify-between cursor-pointer transition-all ${
-                        aiMode === mode.id
-                          ? 'bg-violet-600/10 border-violet-500 shadow-md shadow-violet-500/5'
-                          : 'bg-white/20 border-[var(--border)] text-zinc-600 hover:bg-white/40'
-                      }`}
-                    >
-                      <span className="block text-xs font-bold text-zinc-950 mb-1">{mode.title}</span>
-                      <span className="block text-[10px] text-zinc-500 leading-relaxed">{mode.desc}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                <div className="rounded-xl border border-[var(--border)] bg-white/30 p-4 space-y-2">
-                  <label className="block text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Lead AI Depth</label>
-                  <select
-                    value={aiDepth}
-                      onChange={(e) => setAiDepth(e.target.value as typeof aiDepth)}
-                    className="w-full rounded border border-[var(--border)] bg-white py-2 px-3 text-xs text-zinc-900 focus:border-violet-500 focus:outline-none"
-                  >
-                    <option value="none">None</option>
-                    <option value="basic">Basic</option>
-                    <option value="standard">Standard</option>
-                    <option value="deep">Deep</option>
-                  </select>
-                  <p className="text-[10px] text-zinc-500">Controls how much context the AI layer should include for each lead.</p>
-                </div>
-
-                <label className="flex items-start gap-3 p-4 bg-white/40 border border-[var(--border)] rounded-lg cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={autoRunAiAfterImport}
-                    onChange={(e) => setAutoRunAiAfterImport(e.target.checked)}
-                    className="rounded border-[var(--border)] bg-white text-violet-500 focus:ring-0 mt-0.5"
-                  />
-                  <div>
-                    <span className="block text-xs font-semibold text-zinc-950">Auto-run AI after import</span>
-                    <span className="block text-[10px] text-zinc-500">Keep this off unless you explicitly want new imports queued for analysis.</span>
-                  </div>
-                </label>
-
-                <label className="flex items-start gap-3 p-4 bg-white/40 border border-[var(--border)] rounded-lg cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={fetchWebsiteHomepage}
-                    onChange={(e) => setFetchWebsiteHomepage(e.target.checked)}
-                    className="rounded border-[var(--border)] bg-white text-violet-500 focus:ring-0 mt-0.5"
-                  />
-                  <div>
-                    <span className="block text-xs font-semibold text-zinc-950">Fetch Website Homepage</span>
-                    <span className="block text-[10px] text-zinc-500">Crawl website visible text when the lead qualifies for Gemini.</span>
-                  </div>
-                </label>
-
-                <label className="flex items-start gap-3 p-4 bg-white/40 border border-[var(--border)] rounded-lg cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={requireApprovalBeforeSend}
-                    onChange={(e) => setRequireApprovalBeforeSend(e.target.checked)}
-                    className="rounded border-[var(--border)] bg-white text-violet-500 focus:ring-0 mt-0.5"
-                  />
-                  <div>
-                    <span className="block text-xs font-semibold text-zinc-950">Require Manual Approval</span>
-                    <span className="block text-[10px] text-zinc-500">Prevent cron from sending emails until drafts are manually approved.</span>
-                  </div>
-                </label>
-
-                <label className="flex items-start gap-3 p-4 bg-white/40 border border-[var(--border)] rounded-lg cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={allowRiskyEmails}
-                    onChange={(e) => setAllowRiskyEmails(e.target.checked)}
-                    className="rounded border-[var(--border)] bg-white text-violet-500 focus:ring-0 mt-0.5"
-                  />
-                  <div>
-                    <span className="block text-xs font-semibold text-zinc-950">Allow Risky Email Statuses</span>
-                    <span className="block text-[10px] text-zinc-500">When off, automation skips `not_checked`, `unknown`, `risky`, and failed-verification leads.</span>
-                  </div>
-                </label>
-
-                <label className="flex items-start gap-3 p-4 bg-white/40 border border-[var(--border)] rounded-lg cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={allowDeepAi}
-                    onChange={(e) => setAllowDeepAi(e.target.checked)}
-                    className="rounded border-[var(--border)] bg-white text-violet-500 focus:ring-0 mt-0.5"
-                  />
-                  <div>
-                    <span className="block text-xs font-semibold text-zinc-950">Allow Deep AI</span>
-                    <span className="block text-[10px] text-zinc-500">Only use 2.5 Flash for deep personalization.</span>
-                  </div>
-                </label>
-
-                <label className="flex items-start gap-3 p-4 bg-white/40 border border-[var(--border)] rounded-lg cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={requireManualApprovalForDeepAi}
-                    onChange={(e) => setRequireManualApprovalForDeepAi(e.target.checked)}
-                    className="rounded border-[var(--border)] bg-white text-violet-500 focus:ring-0 mt-0.5"
-                  />
-                  <div>
-                    <span className="block text-xs font-semibold text-zinc-950">Require Manual Approval for Deep AI</span>
-                    <span className="block text-[10px] text-zinc-500">Deep AI drafts need a human review before send.</span>
-                  </div>
-                </label>
-
-                <label className="flex items-start gap-3 p-4 bg-white/40 border border-[var(--border)] rounded-lg cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={useTemplateFallback}
-                    onChange={(e) => setUseTemplateFallback(e.target.checked)}
-                    className="rounded border-[var(--border)] bg-white text-violet-500 focus:ring-0 mt-0.5"
-                  />
-                  <div>
-                    <span className="block text-xs font-semibold text-zinc-950">Use Template Fallback</span>
-                    <span className="block text-[10px] text-zinc-500">Fallback to local templates instead of spending a credit when the lead is weak.</span>
-                  </div>
-                </label>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                <div>
-                  <label className="block text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Minimum Data Quality for AI</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={minDataQualityForAi}
-                    onChange={(e) => setMinDataQualityForAi(e.target.value)}
-                    className="mt-1 w-full rounded border border-[var(--border)] bg-white py-2 px-3 text-xs text-zinc-900 focus:border-violet-500 focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Full AI Minimum Solution Score</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={fullAiMinSolutionScore}
-                    onChange={(e) => setFullAiMinSolutionScore(e.target.value)}
-                    className="mt-1 w-full rounded border border-[var(--border)] bg-white py-2 px-3 text-xs text-zinc-900 focus:border-violet-500 focus:outline-none"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-between pt-4 border-t border-[var(--border)]">
-              <button onClick={() => setCurrentStep(2)} className="text-xs text-zinc-600 hover:text-zinc-950">Back</button>
-              <button onClick={() => setCurrentStep(4)} className="px-6 py-2 bg-gradient-to-r from-violet-600 to-teal-500 rounded-lg text-xs font-semibold text-white hover:opacity-90">Continue to Sequence</button>
-            </div>
-          </div>
+          <Step3AiStrategy
+            aiMode={aiMode}
+            onAiModeChange={setAiMode}
+            aiDepth={aiDepth}
+            onAiDepthChange={setAiDepth}
+            autoRunAiAfterImport={autoRunAiAfterImport}
+            onAutoRunAiAfterImportChange={setAutoRunAiAfterImport}
+            fetchWebsiteHomepage={fetchWebsiteHomepage}
+            onFetchWebsiteHomepageChange={setFetchWebsiteHomepage}
+            requireApprovalBeforeSend={requireApprovalBeforeSend}
+            onRequireApprovalBeforeSendChange={setRequireApprovalBeforeSend}
+            allowRiskyEmails={allowRiskyEmails}
+            onAllowRiskyEmailsChange={setAllowRiskyEmails}
+            allowDeepAi={allowDeepAi}
+            onAllowDeepAiChange={setAllowDeepAi}
+            requireManualApprovalForDeepAi={requireManualApprovalForDeepAi}
+            onRequireManualApprovalForDeepAiChange={setRequireManualApprovalForDeepAi}
+            useTemplateFallback={useTemplateFallback}
+            onUseTemplateFallbackChange={setUseTemplateFallback}
+            minDataQualityForAi={minDataQualityForAi}
+            onMinDataQualityForAiChange={setMinDataQualityForAi}
+            fullAiMinSolutionScore={fullAiMinSolutionScore}
+            onFullAiMinSolutionScoreChange={setFullAiMinSolutionScore}
+            onBack={() => setCurrentStep(2)}
+            onNext={() => setCurrentStep(4)}
+          />
         )}
 
-        {/* STEP 4: EMAIL SEQUENCE */}
         {currentStep === 4 && (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h3 className="font-bold text-zinc-950 text-md">Email Follow-up Sequence</h3>
-                <p className="text-xs text-zinc-600">Add follow-up templates. Step 1 can be upgraded by Gemini only when the selected AI mode allows it.</p>
-              </div>
-              <button 
-                onClick={addSeqStep}
-                className="px-3 py-1.5 border border-[var(--border)] hover:bg-violet-50 rounded-lg text-xs font-semibold text-zinc-700 cursor-pointer"
-              >
-                Add Follow-up Step
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              {sequences.map((step, idx) => (
-                <div key={idx} className="rounded-xl border border-[var(--border)] bg-white/20 p-6 backdrop-blur-sm space-y-4">
-                  <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
-                    <span className="text-xs font-bold text-violet-400">Step {step.step_number} {idx === 0 ? '(First Contact)' : `(Follow-up)`}</span>
-                    <div className="flex items-center gap-4">
-                      {idx > 0 && (
-                        <select
-                          value={step.condition || 'always'}
-                          onChange={(e) => handleUpdateSequenceField(idx, 'condition', e.target.value)}
-                          className="rounded border border-[var(--border)] bg-white px-2 py-1 text-xs text-zinc-700 focus:border-violet-500 focus:outline-none"
-                          title="Send this step only when the condition on the previous email is met"
-                        >
-                          <option value="always">Always send</option>
-                          <option value="not_opened">Only if NOT opened</option>
-                          <option value="opened">Only if opened</option>
-                          <option value="clicked">Only if link clicked</option>
-                        </select>
-                      )}
-                      {idx > 0 && (
-                        <div className="flex items-center gap-1.5 text-xs text-zinc-600">
-                          <span>Delay:</span>
-                          <input 
-                            type="number"
-                            min="1"
-                            value={step.delay_days}
-                            onChange={(e) => handleUpdateSequenceField(idx, 'delay_days', e.target.value)}
-                            className="w-12 border border-[var(--border)] bg-white text-center rounded text-xs font-semibold text-zinc-900"
-                          />
-                          <span>days</span>
-                        </div>
-                      )}
-                      {idx > 0 && (
-                        <button onClick={() => removeSeqStep(idx)} className="text-zinc-500 hover:text-rose-400"><Trash2 className="h-4 w-4" /></button>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="rounded-2xl border border-violet-100 bg-violet-50/70 p-4">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-                      <div className="flex-1">
-                        <label className="block text-[10px] text-violet-700 font-bold uppercase tracking-wider">Use Saved Template</label>
-                        <select
-                          value={step.template_id || ''}
-                          onChange={(e) => handleInsertTemplateIntoSequence(idx, e.target.value)}
-                          className="mt-1 w-full rounded-xl border border-violet-100 bg-white py-2.5 px-3 text-xs text-zinc-900 focus:border-violet-500 focus:outline-none"
-                        >
-                          <option value="">Select a template to fill this step</option>
-                          {templateOptions.map((template) => (
-                            <option key={template.id} value={template.id}>
-                              {template.name}{template.category ? ` - ${template.category}` : ''}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="text-xs leading-relaxed text-violet-700 lg:max-w-sm">
-                        Templates copy their saved subject and body into this sequence step. You can still edit the copy after inserting.
-                      </div>
-                    </div>
-                    {templateOptions.length === 0 && (
-                      <p className="mt-3 text-xs text-violet-700">
-                        No saved templates yet. Create one from Templates, or keep writing this sequence manually.
-                      </p>
-                    )}
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Subject Line</label>
-                    <input 
-                      type="text"
-                      value={step.subject}
-                      onChange={(e) => handleUpdateSequenceField(idx, 'subject', e.target.value)}
-                      placeholder="Subject Line"
-                      className="mt-1 w-full rounded border border-[var(--border)] bg-white py-2 px-3 text-xs text-zinc-900 focus:border-violet-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Email Body</label>
-                    <textarea 
-                      rows={5}
-                      value={step.body}
-                      onChange={(e) => handleUpdateSequenceField(idx, 'body', e.target.value)}
-                      placeholder="Hi {{first_name}}..."
-                      className="mt-1 w-full rounded border border-[var(--border)] bg-white p-2.5 text-xs text-zinc-900 focus:border-violet-500 focus:outline-none font-sans"
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="flex justify-between pt-4">
-              <button onClick={() => setCurrentStep(3)} className="text-xs text-zinc-600 hover:text-zinc-950">Back</button>
-              <button onClick={() => setCurrentStep(5)} className="px-6 py-2 bg-gradient-to-r from-violet-600 to-teal-500 rounded-lg text-xs font-semibold text-white hover:opacity-90">Review Details</button>
-            </div>
-          </div>
+          <Step4Sequence
+            sequences={sequences}
+            templateOptions={templateOptions}
+            onAddStep={addSeqStep}
+            onUpdateStepField={updateStepField}
+            onRemoveStep={removeStep}
+            onInsertTemplateIntoSequence={handleInsertTemplateIntoSequence}
+            onBack={() => setCurrentStep(3)}
+            onNext={() => setCurrentStep(5)}
+          />
         )}
 
-        {/* STEP 5: FINAL REVIEW */}
         {currentStep === 5 && (
-          <div className="rounded-xl border border-[var(--border)] bg-white/20 p-6 backdrop-blur-sm space-y-6">
-            <h3 className="font-bold text-zinc-950 text-md border-b border-[var(--border)] pb-3">Review & Create Campaign</h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
-              <div className="space-y-2 bg-white/20 p-4 border border-[var(--border)] rounded-lg">
-                <span className="block text-xs font-bold text-violet-400">Basics & Configuration</span>
-                <div className="text-xs text-zinc-600 space-y-1.5 pt-1.5">
-                  <div>Campaign Name: <span className="text-zinc-900 font-medium">{campaignName}</span></div>
-                  <div>Pitch Offer: <span className="text-zinc-900 font-medium">{offerType}</span></div>
-                  <div>Industry: <span className="text-zinc-900 font-medium">{targetIndustry || 'General'}</span></div>
-                  <div>Sender Name: <span className="text-zinc-900 font-medium">{senderName}</span></div>
-                  <div>Sender Email: <span className="text-zinc-900 font-medium">{senderEmail}</span></div>
-                  <div>Email Account: <span className="text-zinc-900 font-medium">{emailAccounts.find((account) => account.id === emailAccountId)?.email_address || 'Not selected'}</span></div>
-                  <div>Daily limit: <span className="text-zinc-900 font-medium">{dailyLimit} emails/day</span></div>
-                </div>
-              </div>
-
-              <div className="space-y-2 bg-white/20 p-4 border border-[var(--border)] rounded-lg">
-                <span className="block text-xs font-bold text-violet-400">AI Personalization Rules</span>
-                <div className="text-xs text-zinc-600 space-y-1.5 pt-1.5">
-                  <div>AI Mode: <span className="text-zinc-900 font-medium capitalize">{aiMode.replace('_', ' ')}</span></div>
-                  <div>Lead Depth: <span className="text-zinc-900 font-medium capitalize">{defaultAiDepth}</span></div>
-                  <div>Fetch Website Homepage: <span className="text-zinc-900 font-medium">{fetchWebsiteHomepage ? 'Yes' : 'No'}</span></div>
-                  <div>Require Manual Approval: <span className="text-zinc-900 font-medium">{requireApprovalBeforeSend ? 'Yes' : 'No'}</span></div>
-                  <div>Allow Risky Emails: <span className="text-zinc-900 font-medium">{allowRiskyEmails ? 'Yes' : 'No'}</span></div>
-                  <div>Auto-run AI After Import: <span className="text-zinc-900 font-medium">{autoRunAiAfterImport ? 'Yes' : 'No'}</span></div>
-                  <div>Deep AI Allowed: <span className="text-zinc-900 font-medium">{allowDeepAi ? 'Yes' : 'No'}</span></div>
-                  <div>Deep AI Needs Approval: <span className="text-zinc-900 font-medium">{requireManualApprovalForDeepAi ? 'Yes' : 'No'}</span></div>
-                  <div>Template Fallback: <span className="text-zinc-900 font-medium">{useTemplateFallback ? 'Allowed' : 'Not Allowed'}</span></div>
-                </div>
-              </div>
-
-              <div className="md:col-span-2 space-y-2 bg-white/20 p-4 border border-[var(--border)] rounded-lg">
-                <span className="block text-xs font-bold text-violet-400">Leads List & Sequence</span>
-                <div className="text-xs text-zinc-600 space-y-1.5 pt-1.5">
-                  <div>Total Leads Mapped: <span className="text-zinc-900 font-medium">{importedLeads.length} leads</span></div>
-                  <div>Library Leads Selected: <span className="text-zinc-900 font-medium">{selectedLibraryLeadIds.length} leads</span></div>
-                  <div>Sequence Steps: <span className="text-zinc-900 font-medium">{sequences.length} emails configured</span></div>
-                  <div>Estimated Send Duration: <span className="text-zinc-900 font-medium">{Math.ceil((importedLeads.length + selectedLibraryLeadIds.length) / (Number(dailyLimit) || 100))} days</span></div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex justify-between pt-4 border-t border-[var(--border)]">
-              <button onClick={() => setCurrentStep(4)} className="text-xs text-zinc-600 hover:text-violet-700" disabled={processing}>Back</button>
-              <Button variant="primary" size="sm" onClick={handleCreateCampaign} loading={processing}>
-                Create &amp; Start Campaign
-              </Button>
-            </div>
-          </div>
+          <Step5Review
+            campaignName={campaignName}
+            offerType={offerType}
+            targetIndustry={targetIndustry}
+            senderName={senderName}
+            senderEmail={senderEmail}
+            emailAccounts={emailAccounts}
+            emailAccountId={emailAccountId}
+            dailyLimit={dailyLimit}
+            aiMode={aiMode}
+            defaultAiDepth={defaultAiDepth}
+            fetchWebsiteHomepage={fetchWebsiteHomepage}
+            requireApprovalBeforeSend={requireApprovalBeforeSend}
+            allowRiskyEmails={allowRiskyEmails}
+            autoRunAiAfterImport={autoRunAiAfterImport}
+            allowDeepAi={allowDeepAi}
+            requireManualApprovalForDeepAi={requireManualApprovalForDeepAi}
+            useTemplateFallback={useTemplateFallback}
+            importedLeadsCount={importedLeads.length}
+            selectedLibraryLeadsCount={selectedLibraryLeadIds.length}
+            sequencesCount={sequences.length}
+            processing={processing}
+            onBack={() => setCurrentStep(4)}
+            onCreateCampaign={handleCreateCampaign}
+          />
         )}
       </main>
     </AppShell>
