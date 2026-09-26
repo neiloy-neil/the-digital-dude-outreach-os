@@ -11,6 +11,7 @@ import AppShell from '@/components/reachmira/AppShell';
 import PageHeader from '@/components/reachmira/PageHeader';
 import EmptyState from '@/components/reachmira/EmptyState';
 import Spinner from '@/components/reachmira/Spinner';
+import { Pagination } from '@/components/reachmira/ui';
 
 type LeadListRow = {
   id: string;
@@ -240,30 +241,14 @@ export default function LeadListDetailPage() {
               </div>
 
               {totalLeads > pageSize && (
-                <div className="flex flex-col gap-3 border-t border-[var(--border)] p-4 text-xs text-zinc-500 sm:flex-row sm:items-center sm:justify-between">
-                  <span>
-                    Showing {totalLeads === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1}-{Math.min(safeCurrentPage * pageSize, totalLeads)} of {totalLeads} leads
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                      disabled={safeCurrentPage <= 1}
-                      className="rounded border border-[var(--border)] bg-white px-3 py-1.5 font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-                    >
-                      Previous
-                    </button>
-                    <span className="font-medium text-zinc-700">
-                      Page {safeCurrentPage} of {totalPages}
-                    </span>
-                    <button
-                      onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-                      disabled={safeCurrentPage >= totalPages}
-                      className="rounded border border-[var(--border)] bg-white px-3 py-1.5 font-semibold text-zinc-700 hover:bg-zinc-50 disabled:opacity-50"
-                    >
-                      Next
-                    </button>
-                  </div>
-                </div>
+                <Pagination
+                  currentPage={safeCurrentPage}
+                  totalPages={totalPages}
+                  totalItems={totalLeads}
+                  pageSize={pageSize}
+                  onPageChange={setCurrentPage}
+                  variant="compact"
+                />
               )}
             </div>
           )}

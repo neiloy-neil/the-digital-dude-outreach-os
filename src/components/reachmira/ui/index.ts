@@ -6,3 +6,4 @@ export { default as Banner } from './Banner';
 export { default as Tabs } from './Tabs';
 export { Field, Input, Select, Textarea, LabeledInput } from './Field';
 export { useConfirm } from './useConfirm';
+export { default as Pagination } from './Pagination';
