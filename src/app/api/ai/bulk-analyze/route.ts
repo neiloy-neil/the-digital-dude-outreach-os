@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { createServiceClient } from '@/utils/supabase/service';
 import { analyzeSingleLead } from '@/lib/ai/analyze-lead';
+import { getAiSettingsForUser } from '@/lib/ai/runtime';
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -31,13 +32,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Campaign not found or access denied' }, { status: 403 });
     }
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('max_bulk_ai_batch_size')
-      .eq('id', user.id)
-      .single();
-
-    const batchLimit = Math.max(1, Number(profile?.max_bulk_ai_batch_size || 5));
+    const aiSettings = await getAiSettingsForUser(supabase, user.id);
+    const batchLimit = Math.max(1, Number(aiSettings.max_bulk_ai_batch_size || 5));
     const batchLeads = leadIds.slice(0, batchLimit);
     const serviceSupabase = createServiceClient();
 

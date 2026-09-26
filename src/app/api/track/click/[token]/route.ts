@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServiceClient } from '@/utils/supabase/service';
 import { verifyClickSignature } from '@/lib/email/tracking';
+import { getAppBaseUrl } from '@/lib/oauth/shared';
 
 export async function GET(
   request: Request,
@@ -11,7 +12,7 @@ export async function GET(
   const destination = url.searchParams.get('u') || '';
   const signature = url.searchParams.get('s') || '';
 
-  const fallbackUrl = process.env.NEXT_PUBLIC_APP_URL || url.origin;
+  const fallbackUrl = getAppBaseUrl(request);
 
   const isValidDestination = /^https?:\/\//i.test(destination);
   const isValidSignature =

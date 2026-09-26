@@ -13,6 +13,7 @@ import { getStatusForEmailType, isBlockedLeadStatus, type EmailType } from '@/li
 import { isMissingTableError } from '@/lib/supabase/schema-errors';
 import { getAvailableSendCapacity, incrementDailySentCount } from '@/lib/queue/queue';
 import { checkSuppression } from '@/lib/suppression/check-suppression';
+import { getAppBaseUrl } from '@/lib/oauth/shared';
 import type { EmailProviderType } from '@/types/email-provider';
 
 function isSupportedProvider(provider: string): provider is EmailProviderType {
@@ -313,9 +314,7 @@ export async function POST(
       senderName,
       Boolean(includeSignature)
     );
-    const appBaseUrl = process.env.NODE_ENV === 'production'
-      ? 'https://reachmira.vercel.app'
-      : (process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000');
+    const appBaseUrl = getAppBaseUrl(request);
     const unsubscribeUrl = `${appBaseUrl}/unsubscribe?token=${lead.unsubscribe_token}`;
     const { html, text } = buildEmailMessageBodies(bodyWithSignature, unsubscribeUrl);
     const to = mode === 'test' ? targetEmail || user.email || lead.email : recipientEmail || lead.email;

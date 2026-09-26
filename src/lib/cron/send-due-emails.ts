@@ -138,7 +138,8 @@ function interpolateTemplate(template: string, lead: QueueLead, sender: { name?:
 
   if (lead.variables && typeof lead.variables === 'object') {
     Object.entries(lead.variables).forEach(([key, val]) => {
-      text = text.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), String(val ?? ''));
+      const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      text = text.replace(new RegExp(`\\{\\{${escapedKey}\\}\\}`, 'g'), String(val ?? ''));
     });
   }
 
