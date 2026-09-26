@@ -17,6 +17,7 @@ type QueueItem = {
   description: string;
   contact_name: string;
   contact_email: string;
+  email_source?: string | null;
   status: string;
   pain_points?: string;
   ai_solution_angle?: string;
@@ -120,26 +121,11 @@ export default function ScraperClient() {
   const handleApprove = async (item: QueueItem) => {
     setActioningId(item.id);
     try {
-      // Move to admin_leads_pool
-      const { error: insertError } = await supabase
-        .from('admin_leads_pool')
-        .insert({
-          company_name: item.company_name,
-          website: item.website,
-          description: item.description,
-          contact_name: item.contact_name,
-          contact_email: item.contact_email,
-          // Note: we'd map other columns here, but currently admin_leads_pool 
-          // doesn't have AI columns, so we just map the basic ones.
-        });
-
-      if (insertError) throw insertError;
-
-      // Mark as approved
-      await supabase
-        .from('admin_scraping_queue')
-        .update({ status: 'approved' })
-        .eq('id', item.id);
+      const response = await fetch(`/api/admin/scraper/${item.id}/approve`, {
+        method: 'POST',
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to approve lead');
 
       setQueue(q => q.filter(i => i.id !== item.id));
       toast.success('Lead approved and moved to global pool');
@@ -153,15 +139,16 @@ export default function ScraperClient() {
   const handleReject = async (id: string) => {
     setActioningId(id);
     try {
-      await supabase
-        .from('admin_scraping_queue')
-        .update({ status: 'rejected' })
-        .eq('id', id);
+      const response = await fetch(`/api/admin/scraper/${id}/reject`, {
+        method: 'POST',
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to reject lead');
 
       setQueue(q => q.filter(i => i.id !== id));
       toast.success('Lead rejected');
     } catch (error: any) {
-      toast.error('Failed to reject lead');
+      toast.error(error.message || 'Failed to reject lead');
     } finally {
       setActioningId(null);
     }
@@ -259,7 +246,12 @@ export default function ScraperClient() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="font-medium text-zinc-900">{item.contact_name || <span className="text-zinc-400 italic">No name</span>}</div>
-                    <div className="text-xs text-zinc-500">{item.contact_email || <span className="text-zinc-400 italic">No email</span>}</div>
+                    <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+                      {item.contact_email || <span className="text-zinc-400 italic">No email</span>}
+                      {item.contact_email && item.email_source !== 'found' && (
+                        <Badge tone="amber">Unverified</Badge>
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-4">
                     {item.ai_company_summary ? (

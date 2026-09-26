@@ -3,38 +3,9 @@ import { createClient } from '@/utils/supabase/server';
 import { createServiceClient } from '@/utils/supabase/service';
 import { analyzeSingleLead } from '@/lib/ai/analyze-lead';
 import { getAiSettingsForUser } from '@/lib/ai/runtime';
+import { runWithConcurrencyLimit } from '@/lib/concurrency';
 
 const CONCURRENCY_LIMIT = 3;
-
-type SettledResult<T> = { status: 'fulfilled'; value: T } | { status: 'rejected'; reason: unknown };
-
-// Bounded-concurrency alternative to Promise.allSettled: correctness against
-// the daily/monthly AI budget no longer depends on this (reserve_ai_call_budget
-// serializes concurrent reservations atomically), but capping how many leads
-// hit Gemini at once still avoids needlessly hammering the API and the
-// per-user advisory lock for a whole batch at once.
-async function runWithConcurrencyLimit<T, R>(
-  items: T[],
-  limit: number,
-  fn: (item: T) => Promise<R>
-): Promise<SettledResult<R>[]> {
-  const results: SettledResult<R>[] = new Array(items.length);
-  let cursor = 0;
-
-  async function worker() {
-    while (cursor < items.length) {
-      const index = cursor++;
-      try {
-        results[index] = { status: 'fulfilled', value: await fn(items[index]) };
-      } catch (reason) {
-        results[index] = { status: 'rejected', reason };
-      }
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, () => worker()));
-  return results;
-}
 
 export async function POST(request: Request) {
   const supabase = await createClient();

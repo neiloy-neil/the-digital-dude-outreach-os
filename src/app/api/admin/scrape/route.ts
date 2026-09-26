@@ -4,8 +4,12 @@ import { requireAdmin } from '@/utils/supabase/admin';
 import { firecrawlSearch, firecrawlScrape } from '@/lib/enrichment/firecrawl';
 import { GoogleGenAI } from '@google/genai';
 import { AI_DEFAULT_MODEL } from '@/lib/ai/efficiency';
+import { runWithConcurrencyLimit } from '@/lib/concurrency';
+import { normalizeWebsiteForDedup } from '@/lib/dedup';
 
 export const maxDuration = 60; // Allow 60s for deep scraping
+
+const ENRICH_CONCURRENCY_LIMIT = 4;
 
 export async function POST(request: Request) {
   const supabase = await createClient();
@@ -104,28 +108,55 @@ Return EXACTLY a JSON array of objects. Do not include markdown formatting like 
 
     // Deduplicate and filter out invalid websites
     const uniqueLeadsMap = new Map();
+    const seenWebsites = new Set<string>();
     const invalidDomains = ['instagram.com', 'facebook.com', 'reddit.com', 'quora.com', 'youtube.com', 'tiktok.com', 'linkedin.com', 'ndtv.com', 'timesofindia', 'news', 'hindustantimes', 'threads.net'];
-    
+
     for (const lead of parsedResults) {
       const url = (lead.website || '').toLowerCase();
       if (!url || invalidDomains.some(domain => url.includes(domain))) {
          continue; // Must have a real company website
       }
-      
+
+      const websiteKey = normalizeWebsiteForDedup(lead.website);
+      if (!websiteKey || seenWebsites.has(websiteKey)) {
+        continue;
+      }
+
       const key = (lead.company_name || 'Unknown').toLowerCase().trim();
       if (key && !uniqueLeadsMap.has(key)) {
          uniqueLeadsMap.set(key, lead);
+         seenWebsites.add(websiteKey);
       }
     }
 
     let finalLeads = Array.from(uniqueLeadsMap.values());
-    
+
+    // Skip re-enriching/re-inserting companies already in the queue or pool
+    // (best-effort app-level check; the DB unique index is the backstop).
+    const candidateWebsiteKeys = new Set(finalLeads.map((lead) => normalizeWebsiteForDedup(lead.website)));
+    const [{ data: existingQueueRows }, { data: existingPoolRows }] = await Promise.all([
+      supabase.from('admin_scraping_queue').select('website').not('website', 'is', null).limit(5000),
+      supabase.from('admin_leads_pool').select('website').not('website', 'is', null).limit(5000),
+    ]);
+    const existingWebsiteKeys = new Set(
+      [...(existingQueueRows || []), ...(existingPoolRows || [])]
+        .map((row: any) => normalizeWebsiteForDedup(row.website))
+        .filter(Boolean)
+    );
+    finalLeads = finalLeads.filter((lead) => {
+      const websiteKey = normalizeWebsiteForDedup(lead.website);
+      return websiteKey && candidateWebsiteKeys.has(websiteKey) && !existingWebsiteKeys.has(websiteKey);
+    });
+
+    if (finalLeads.length === 0) {
+      return NextResponse.json({ success: true, count: 0, message: 'All matching companies are already in the queue or lead pool.' });
+    }
+
     // 3. Automatically deep-scrape to find emails. Only keep leads where an email is found.
-    const leadsWithEmails = await Promise.all(
-      finalLeads.map(async (lead) => {
+    const leadsWithEmailsRaw = await runWithConcurrencyLimit(finalLeads, ENRICH_CONCURRENCY_LIMIT, async (lead: any) => {
         // If the snippet already had an email, keep it!
         if (lead.contact_email && lead.contact_email.includes('@')) {
-          return lead;
+          return { ...lead, email_source: 'found' };
         }
 
         try {
@@ -158,11 +189,10 @@ You are a data extractor. Find the best contact email address and the decision m
 
 CRITICAL INSTRUCTIONS:
 1. Identify the CEO, Founder, Owner, or top decision maker from the LinkedIn Data or Website Data.
-2. If you find their name, construct their direct email based on the website domain (e.g., "john.doe@domain.com", "john@domain.com", "j.smith@domain.com"). 
-3. If you absolutely cannot find a specific person, guess their primary contact email (e.g., "hello@domain.com", "info@domain.com").
-4. You must ALWAYS return an email.
+2. Only return an email you found explicitly written in the LinkedIn data or website content (set "source" to "found"). Do NOT invent or guess an email address from a name and domain pattern.
+3. If no email is explicitly present anywhere in the provided data, return {"email": null, "name": null, "source": null} rather than guessing one.
 
-Return EXACTLY a JSON object: {"email": "found_or_guessed@email.com", "name": "Decision Maker Name or null"}.
+Return EXACTLY a JSON object: {"email": "email@domain.com or null", "name": "Decision Maker Name or null", "source": "found or null"}.
 Do not include markdown formatting.
 
 --- COMPANY DOMAIN ---
@@ -179,9 +209,9 @@ ${markdownText}
               contents: emailPrompt,
               config: { responseMimeType: 'application/json' },
             });
-            
+
             const emailResText = emailAiRes.text || '{}';
-            let emailParsed = { email: null, name: null };
+            let emailParsed: { email: string | null; name: string | null; source: string | null } = { email: null, name: null, source: null };
             try {
               const match = emailResText.match(/\{[\s\S]*\}/);
               const jsonString = match ? match[0] : emailResText;
@@ -189,12 +219,13 @@ ${markdownText}
             } catch (e) {
               console.error('Failed to parse email AI JSON:', emailResText);
             }
-            
+
             if (emailParsed.email) {
               console.log(`Found email for ${urlToScrape}: ${emailParsed.email} (${emailParsed.name || 'No Name'})`);
               lead.contact_email = emailParsed.email;
               lead.contact_name = emailParsed.name || null;
               lead.ai_company_summary = 'Deep enriched with LinkedIn decision-maker data';
+              lead.email_source = 'found';
               return lead;
             } else {
               console.log(`No email found on website: ${urlToScrape}`);
@@ -206,11 +237,12 @@ ${markdownText}
           console.error(`Failed to auto-enrich email for ${lead.website}:`, err);
         }
         return null;
-      })
-    );
+    });
 
-    // Filter out nulls (leads without emails)
-    finalLeads = leadsWithEmails.filter(l => l !== null && l.contact_email);
+    // Filter out nulls (leads without emails) and rejected/failed enrichments
+    finalLeads = leadsWithEmailsRaw
+      .map((result) => (result.status === 'fulfilled' ? result.value : null))
+      .filter((l: any) => l !== null && l.contact_email);
 
     if (finalLeads.length === 0) {
        return NextResponse.json({ success: true, count: 0, message: '0 unique leads with emails found. Try a broader search.' });
@@ -225,6 +257,7 @@ ${markdownText}
       contact_name: item.contact_name || null,
       contact_email: item.contact_email || null,
       ai_company_summary: item.ai_company_summary || null,
+      email_source: item.email_source || null,
       status: 'pending'
     }));
 

@@ -1109,6 +1109,17 @@ ADD COLUMN IF NOT EXISTS year_founded integer,
 ADD COLUMN IF NOT EXISTS tech_stack jsonb,
 ADD COLUMN IF NOT EXISTS ceo_name text;
 
+-- Bring admin_leads_pool's AI/enrichment columns in line with admin_scraping_queue
+alter table public.admin_leads_pool
+  add column if not exists pain_points text,
+  add column if not exists ai_solution_angle text,
+  add column if not exists recommended_offer text,
+  add column if not exists ai_company_summary text,
+  add column if not exists ai_lead_analysis text,
+  add column if not exists ai_outreach_strategy text,
+  add column if not exists ai_personalized_first_line text,
+  add column if not exists email_source text check (email_source is null or email_source in ('found', 'guessed'));
+
 -- Add enrichment columns to leads
 ALTER TABLE leads
 ADD COLUMN IF NOT EXISTS funding_stage text,
@@ -1126,7 +1137,8 @@ create table if not exists public.admin_scraping_queue (
   contact_name text,
   contact_email text,
   status text default 'pending',
-  
+  email_source text check (email_source is null or email_source in ('found', 'guessed')),
+
   -- AI / Enrichment Fields
   pain_points text,
   ai_solution_angle text,
@@ -1141,7 +1153,7 @@ create table if not exists public.admin_scraping_queue (
   employee_count text,
   year_founded text,
   ceo_name text,
-  
+
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
@@ -1160,6 +1172,7 @@ create policy "Admins can manage scraping queue" on public.admin_scraping_queue
 
 create index if not exists admin_scraping_queue_status_idx on public.admin_scraping_queue(status);
 create index if not exists admin_scraping_queue_search_query_idx on public.admin_scraping_queue(search_query);
+create unique index if not exists idx_admin_scraping_queue_website_unique on public.admin_scraping_queue (lower(website)) where website is not null;
 -- supabase: no-transaction
 
 CREATE INDEX CONCURRENTLY IF NOT EXISTS ai_usage_logs_user_budget_idx

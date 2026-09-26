@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
+import { createAuditLog } from '@/lib/audit/create-audit-log';
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -43,6 +44,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (error) {
       throw error;
     }
+
+    await createAuditLog({
+      userId: user.id,
+      action: 'waitlist_signup_updated',
+      message: `Updated waitlist signup ${id}${body.status ? ` to status "${body.status}"` : ''}`,
+      metadata: { waitlist_signup_id: id, updates },
+    });
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
