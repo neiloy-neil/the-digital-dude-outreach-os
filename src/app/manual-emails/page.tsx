@@ -2,16 +2,20 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import AppShell from '@/components/reachmira/AppShell';
 import PageHeader from '@/components/reachmira/PageHeader';
 import EmptyState from '@/components/reachmira/EmptyState';
 import StatusBadge from '@/components/leads/StatusBadge';
+import RichTextEditor from '@/components/leads/RichTextEditor';
+import { Button, Field, Input, Modal, Select, useConfirm } from '@/components/reachmira/ui';
 import Link from 'next/link';
-import { MailPlus, Send, Sparkles, Clock3 } from 'lucide-react';
+import { MailPlus, PenSquare, Send, Sparkles, Clock3 } from 'lucide-react';
 import { getLeadStatusLabel } from '@/lib/leads/status';
 import Spinner from '@/components/reachmira/Spinner';
+import { useToast } from '@/lib/toast/toast-context';
+import type { EmailAccount } from '@/types/database.types';
 
 type DraftRow = {
   id: string;
@@ -38,8 +42,12 @@ type SentEmailRow = {
   metadata?: Record<string, unknown> | null;
 };
 
+const EMPTY_COMPOSE_FORM = { to: '', subject: '', body: '', emailAccountId: '', includeSignature: true };
+
 export default function ManualEmailsPage() {
   const supabase = createClient();
+  const toast = useToast();
+  const { confirm, confirmDialog } = useConfirm();
   const [loading, setLoading] = useState(true);
   const [drafts, setDrafts] = useState<DraftRow[]>([]);
   const [sentEmails, setSentEmails] = useState<SentEmailRow[]>([]);
@@ -48,49 +56,128 @@ export default function ManualEmailsPage() {
   const [sentPage, setSentPage] = useState(1);
   const pageSize = 8;
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const [{ data: draftData, error: draftError }, { data: sentData, error: sentError }] = await Promise.all([
-          supabase
-            .from('leads')
-            .select('id,email,company_name,company,decision_maker_name,first_name,last_name,manual_email_subject,manual_personalization_status,updated_at,status')
-            .not('manual_email_body', 'is', null)
-            .order('updated_at', { ascending: false })
-            .limit(50),
-          supabase
-            .from('sent_emails')
-            .select('*')
-            .order('sent_at', { ascending: false })
-            .limit(50),
-        ]);
+  const [emailAccounts, setEmailAccounts] = useState<EmailAccount[]>([]);
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [composeForm, setComposeForm] = useState(EMPTY_COMPOSE_FORM);
+  const [composeSending, setComposeSending] = useState(false);
 
-        if (draftError) throw draftError;
-        if (sentError) throw sentError;
-        setDrafts((draftData || []) as DraftRow[]);
-        setSentEmails(
-          (sentData || []).map((row: Record<string, unknown>) => {
-            const metadata = (row.metadata && typeof row.metadata === 'object' ? row.metadata : {}) as Record<string, unknown>;
-            return {
-              ...row,
-              subject: String(row.subject || ''),
-              recipient_email: String(row.recipient_email || metadata.recipient_email || metadata.to || '') || null,
-              sender_email: String(row.sender_email || metadata.sender_email || '') || null,
-              status: String(row.status || 'sent'),
-              email_type: String(row.email_type || metadata.email_type || 'custom_email'),
-              metadata,
-            } as SentEmailRow;
-          })
-        );
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Failed to load manual emails');
-      } finally {
-        setLoading(false);
+  const load = useCallback(async () => {
+    try {
+      const [{ data: draftData, error: draftError }, { data: sentData, error: sentError }, accountsResponse] = await Promise.all([
+        supabase
+          .from('leads')
+          .select('id,email,company_name,company,decision_maker_name,first_name,last_name,manual_email_subject,manual_personalization_status,updated_at,status')
+          .not('manual_email_body', 'is', null)
+          .order('updated_at', { ascending: false })
+          .limit(50),
+        supabase
+          .from('sent_emails')
+          .select('*')
+          .order('sent_at', { ascending: false })
+          .limit(50),
+        fetch('/api/email-accounts'),
+      ]);
+
+      if (draftError) throw draftError;
+      if (sentError) throw sentError;
+      setDrafts((draftData || []) as DraftRow[]);
+      setSentEmails(
+        (sentData || []).map((row: Record<string, unknown>) => {
+          const metadata = (row.metadata && typeof row.metadata === 'object' ? row.metadata : {}) as Record<string, unknown>;
+          return {
+            ...row,
+            subject: String(row.subject || ''),
+            recipient_email: String(row.recipient_email || metadata.recipient_email || metadata.to || '') || null,
+            sender_email: String(row.sender_email || metadata.sender_email || '') || null,
+            status: String(row.status || 'sent'),
+            email_type: String(row.email_type || metadata.email_type || 'custom_email'),
+            metadata,
+          } as SentEmailRow;
+        })
+      );
+
+      const accountsPayload = (await accountsResponse.json()) as EmailAccount[] | { error?: string };
+      if (accountsResponse.ok && Array.isArray(accountsPayload)) {
+        const activeAccounts = accountsPayload.filter((account) => account.status === 'active');
+        setEmailAccounts(activeAccounts);
+        setComposeForm((current) => (current.emailAccountId ? current : { ...current, emailAccountId: activeAccounts[0]?.id || '' }));
       }
-    };
-
-    load();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load manual emails');
+    } finally {
+      setLoading(false);
+    }
   }, [supabase]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    load();
+  }, [load]);
+
+  const handleCompose = async () => {
+    const recipient = composeForm.to.trim();
+    if (!recipient || !composeForm.subject.trim() || !composeForm.body.trim() || composeForm.body === '<p><br></p>') {
+      toast.error('Recipient, subject, and body are all required.');
+      return;
+    }
+
+    const confirmed = await confirm({
+      title: 'Send this email?',
+      description: `Send this email to ${recipient}?`,
+      confirmLabel: 'Send Now',
+    });
+    if (!confirmed) return;
+
+    setComposeSending(true);
+    try {
+      const sendRequest = async (confirmVerificationRisk = false) =>
+        fetch('/api/manual-emails/compose', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: recipient,
+            subject: composeForm.subject,
+            body: composeForm.body,
+            emailAccountId: composeForm.emailAccountId || null,
+            includeSignature: composeForm.includeSignature,
+            confirmVerificationRisk,
+          }),
+        });
+
+      let response = await sendRequest(false);
+      let payload = (await response.json()) as {
+        error?: string;
+        requiresConfirmation?: boolean;
+        warning?: { message?: string };
+      };
+
+      if (response.status === 409 && payload.requiresConfirmation) {
+        const confirmedRisk = await confirm({
+          title: 'Send despite warning?',
+          description: payload.warning?.message || payload.error || 'This email has a verification warning. Send anyway?',
+          confirmLabel: 'Send Anyway',
+          tone: 'danger',
+        });
+        if (!confirmedRisk) {
+          toast.info('Send canceled.');
+          return;
+        }
+
+        response = await sendRequest(true);
+        payload = (await response.json()) as { error?: string; requiresConfirmation?: boolean; warning?: { message?: string } };
+      }
+
+      if (!response.ok) throw new Error(payload.error || 'Failed to send email');
+      toast.success('Email sent successfully.');
+      setComposeOpen(false);
+      setComposeForm((current) => ({ ...EMPTY_COMPOSE_FORM, emailAccountId: current.emailAccountId }));
+      await load();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Failed to send email');
+    } finally {
+      setComposeSending(false);
+    }
+  };
 
   const tabs = useMemo(
     () => [
@@ -137,6 +224,10 @@ export default function ManualEmailsPage() {
               <MailPlus className="h-4 w-4" />
               View Leads
             </Link>
+            <Button variant="primary" onClick={() => setComposeOpen(true)}>
+              <PenSquare className="h-4 w-4" />
+              Compose
+            </Button>
             <Link href="/leads/import" className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700">
               <Sparkles className="h-4 w-4" />
               Import Leads
@@ -244,6 +335,74 @@ export default function ManualEmailsPage() {
           </section>
         </div>
       )}
+
+      <Modal open={composeOpen} onClose={() => setComposeOpen(false)} title="Compose Email" maxWidth="2xl">
+        <div className="space-y-4">
+          <Field label="To">
+            <Input
+              type="email"
+              placeholder="prospect@company.com"
+              value={composeForm.to}
+              onChange={(e) => setComposeForm((current) => ({ ...current, to: e.target.value }))}
+            />
+          </Field>
+
+          <Field label="Send From" hint={emailAccounts.length === 0 ? 'No connected email accounts found.' : undefined}>
+            <Select
+              value={composeForm.emailAccountId}
+              onChange={(e) => setComposeForm((current) => ({ ...current, emailAccountId: e.target.value }))}
+            >
+              {emailAccounts.length === 0 && <option value="">No accounts connected</option>}
+              {emailAccounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.sender_name || account.email_address}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field label="Subject">
+            <Input
+              placeholder="Quick question about..."
+              value={composeForm.subject}
+              onChange={(e) => setComposeForm((current) => ({ ...current, subject: e.target.value }))}
+            />
+          </Field>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-500">Body</label>
+            <div className="mt-1 rounded-xl border border-[var(--border)] bg-white">
+              <RichTextEditor
+                value={composeForm.body}
+                onChange={(value) => setComposeForm((current) => ({ ...current, body: value }))}
+                placeholder="Write your message..."
+              />
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 text-sm text-zinc-600">
+            <input
+              type="checkbox"
+              checked={composeForm.includeSignature}
+              onChange={(e) => setComposeForm((current) => ({ ...current, includeSignature: e.target.checked }))}
+              className="rounded border-[var(--border)]"
+            />
+            Include email signature
+          </label>
+
+          <div className="flex items-center justify-end gap-3 border-t border-[var(--border)] pt-4">
+            <Button variant="secondary" onClick={() => setComposeOpen(false)} disabled={composeSending}>
+              Cancel
+            </Button>
+            <Button variant="primary" onClick={handleCompose} loading={composeSending} disabled={emailAccounts.length === 0}>
+              <Send className="h-4 w-4" />
+              Send Now
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {confirmDialog}
     </AppShell>
   );
 }
