@@ -17,6 +17,16 @@ jobs:
         with:
           version: latest
 
+      - name: Repair pre-existing migration history mismatch
+        # This project's remote migration history contains a version
+        # (20260608082741) applied before this repo's migrations directory
+        # was the source of truth, with no matching local file. This only
+        # edits the supabase_migrations bookkeeping table, not the schema.
+        # Safe to leave in place: once repaired, later runs are a no-op.
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: supabase migration repair --status reverted 20260608082741 --db-url "$SUPABASE_DB_URL" || true
+
       - name: Apply pending migrations
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
