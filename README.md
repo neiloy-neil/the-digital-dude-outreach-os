@@ -258,3 +258,7 @@ Dashboard + Activity Timeline context
 3. Start the dev server with `npm run dev`.
 4. Add at least one email account in `/settings/email-accounts`.
 5. Create a campaign, import leads, run AI analysis, review drafts, and launch.
+
+---
+
+Built by [The Digital Dude](https://www.digitaldude.co.uk). Read the [ReachMira case study](https://www.digitaldude.co.uk/work/reachmira-outreach-crm).
